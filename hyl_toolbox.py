@@ -5,13 +5,14 @@ from configparser import ConfigParser
 from pathlib import Path
 
 try:
-    from PySide6.QtCore import QSettings, Qt, QPoint, QSize
+    from PySide6.QtCore import QSettings, Qt, QPoint, QSize, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup
     from PySide6.QtGui import QIcon, QPixmap, QPainter, QPen, QColor
     from PySide6.QtWidgets import (
         QApplication,
         QCheckBox,
         QFileDialog,
         QFrame,
+        QGraphicsOpacityEffect,
         QHBoxLayout,
         QLabel,
         QLineEdit,
@@ -35,8 +36,11 @@ except ModuleNotFoundError:
     Qt = None
     QPoint = None
     QSize = None
+    QPropertyAnimation = None
+    QEasingCurve = None
+    QParallelAnimationGroup = None
     QIcon = QPixmap = QPainter = QPen = QColor = None
-    QCheckBox = QFileDialog = QFrame = QHBoxLayout = QLabel = QLineEdit = QListWidget = QListView = None
+    QCheckBox = QFileDialog = QFrame = QGraphicsOpacityEffect = QHBoxLayout = QLabel = QLineEdit = QListWidget = QListView = None
     QMainWindow = QMessageBox = QPushButton = QPlainTextEdit = QProgressBar = QStackedWidget = None
     QVBoxLayout = QWidget = QComboBox = QSizePolicy = QStyledItemDelegate = None
 
@@ -1004,6 +1008,56 @@ if QWidget is not None:
         popup_view.viewport().setAutoFillBackground(False)
 
 
+    def animate_fade(widget: QWidget, start: float = 0.0, end: float = 1.0, duration: int = 180):
+        if QGraphicsOpacityEffect is None or QPropertyAnimation is None:
+            return None
+        effect = widget.graphicsEffect()
+        if not isinstance(effect, QGraphicsOpacityEffect):
+            effect = QGraphicsOpacityEffect(widget)
+            widget.setGraphicsEffect(effect)
+        effect.setOpacity(start)
+        animation = QPropertyAnimation(effect, b'opacity', widget)
+        animation.setDuration(duration)
+        animation.setStartValue(start)
+        animation.setEndValue(end)
+        animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        animation.start(QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
+        widget._fade_animation = animation
+        return animation
+
+
+    def animate_stack_switch(stack: QStackedWidget, index: int):
+        if index < 0 or index == stack.currentIndex():
+            return
+        stack.setCurrentIndex(index)
+        page = stack.currentWidget()
+        if page is not None:
+            animate_fade(page, 0.0, 1.0, 190)
+
+
+    def pulse_widget(widget: QWidget, duration: int = 150):
+        if QPropertyAnimation is None:
+            return None
+        original = widget.geometry()
+        grown = original.adjusted(-2, -2, 2, 2)
+        grow = QPropertyAnimation(widget, b'geometry', widget)
+        grow.setDuration(duration)
+        grow.setStartValue(original)
+        grow.setEndValue(grown)
+        grow.setEasingCurve(QEasingCurve.Type.OutCubic)
+        shrink = QPropertyAnimation(widget, b'geometry', widget)
+        shrink.setDuration(duration)
+        shrink.setStartValue(grown)
+        shrink.setEndValue(original)
+        shrink.setEasingCurve(QEasingCurve.Type.OutCubic)
+        group = QParallelAnimationGroup(widget)
+        grow.finished.connect(shrink.start)
+        group.addAnimation(grow)
+        group.start(QParallelAnimationGroup.DeletionPolicy.DeleteWhenStopped)
+        widget._pulse_animation = (group, shrink)
+        return group
+
+
     class DropZoneCard(QFrame):
         def __init__(self, body_text: str, on_files_dropped=None):
             super().__init__()
@@ -1054,6 +1108,7 @@ if QWidget is not None:
                 self.setProperty('active', True)
                 self.style().unpolish(self)
                 self.style().polish(self)
+                pulse_widget(self)
                 event.acceptProposedAction()
             else:
                 event.ignore()
@@ -1907,7 +1962,7 @@ if QWidget is not None:
             self.stack.addWidget(self.pdf_tools_tab)
             self.stack.addWidget(self.base64_tab)
             shell.addWidget(self.stack, 1)
-            self.sidebar.currentRowChanged.connect(self.stack.setCurrentIndex)
+            self.sidebar.currentRowChanged.connect(self.switch_tool_page)
             content_layout.addWidget(central, 1)
             root_layout.addWidget(self.content_surface)
             self.setCentralWidget(root)
@@ -1945,6 +2000,9 @@ if QWidget is not None:
             self.max_button.setToolTip('还原' if is_max else '最大化')
             self.max_button.update()
 
+        def switch_tool_page(self, index: int):
+            animate_stack_switch(self.stack, index)
+
         def changeEvent(self, event):
             super().changeEvent(event)
             self.update_window_controls()
@@ -1956,6 +2014,7 @@ if QWidget is not None:
             style_combo_popup(self.image_convert_tab.jpg_background_combo, self.current_theme)
             style_combo_popup(self.base64_tab.mode_combo, self.current_theme)
             self.setStyleSheet(get_theme_stylesheet(self.current_theme))
+            animate_fade(self.content_surface, 0.65, 1.0, 180)
             self.update_window_controls()
 
 
