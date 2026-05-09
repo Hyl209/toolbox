@@ -8,8 +8,8 @@ MODULE_PATH = ROOT / 'hyl_toolbox.py'
 
 
 def load_module():
-    sys.modules.pop('hyl_toolbox_test_module', None)
-    spec = importlib.util.spec_from_file_location('hyl_toolbox_test_module', MODULE_PATH)
+    sys.modules.pop('tests_tool_pages_module', None)
+    spec = importlib.util.spec_from_file_location('tests_tool_pages_module', MODULE_PATH)
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
@@ -178,5 +178,24 @@ def test_validate_image_convert_form_accepts_valid_target_size():
         image = pathlib.Path(tmp) / 'demo.png'
         image.write_text('x', encoding='utf-8')
         errors = toolbox.validate_image_convert_form([image], tmp, 'webp', '85', '128')
+    assert errors == []
+
+
+def test_validate_pdf_form_requires_text_options_for_text_export():
+    toolbox = load_module()
+    with tempfile.TemporaryDirectory() as tmp:
+        pdf = pathlib.Path(tmp) / 'demo.pdf'
+        pdf.write_bytes(b'%PDF-1.4')
+        errors = toolbox.validate_pdf_form('text', [pdf], '', '', '', '', '')
+    assert '璇烽€夋嫨杈撳嚭鐩綍' in errors
+    assert '璇烽€夋嫨鏂囨湰瀵煎嚭鏍煎紡' in errors
+
+
+def test_validate_pdf_form_accepts_valid_text_export():
+    toolbox = load_module()
+    with tempfile.TemporaryDirectory() as tmp:
+        pdf = pathlib.Path(tmp) / 'demo.pdf'
+        pdf.write_bytes(b'%PDF-1.4')
+        errors = toolbox.validate_pdf_form('text', [pdf], tmp, '', '', '', 'txt')
     assert errors == []
 

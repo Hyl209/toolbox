@@ -11,6 +11,7 @@ a = Analysis(
         ('mp4-mp3/config_store.py', 'mp4-mp3'),
         ('zipandpng/zipandpng.py', 'zipandpng'),
         ('image-convert/converter.py', 'image-convert'),
+        ('pdf-tools/converter.py', 'pdf-tools'),
         ('logo.png', '.'),
     ],
     hiddenimports=['ncmdump'],

@@ -41,6 +41,7 @@ MUSIC_DIR = ROOT / 'music'
 ZIP_DIR = ROOT / 'zipandpng'
 MP4_DIR = ROOT / 'mp4-mp3'
 IMAGE_CONVERT_DIR = ROOT / 'image-convert'
+PDF_TOOLS_DIR = ROOT / 'pdf-tools'
 LOGO_PATH = ROOT / 'logo.png'
 DARK_STYLESHEET = """
 QMainWindow, QWidget {
@@ -338,6 +339,10 @@ def _load_image_convert_module():
     return _load_module('image_convert_module', IMAGE_CONVERT_DIR / 'converter.py')
 
 
+def _load_pdf_tools_module():
+    return _load_module('pdf_tools_module', PDF_TOOLS_DIR / 'converter.py')
+
+
 def make_settings(base_dir: str):
     settings_path = Path(base_dir) / 'hyl_toolbox.ini'
     if QSettings is not None:
@@ -361,6 +366,7 @@ def get_tool_definitions() -> list[dict]:
         {'key': 'zipandpng', 'title': 'PNG伪装'},
         {'key': 'mp4mp3', 'title': 'MP4转MP3'},
         {'key': 'imageconvert', 'title': '图片格式互转'},
+        {'key': 'pdftools', 'title': 'PDF工具'},
     ]
 
 
@@ -384,6 +390,10 @@ def get_mp4_module():
 
 def get_image_convert_module():
     return _load_image_convert_module()
+
+
+def get_pdf_tools_module():
+    return _load_pdf_tools_module()
 
 
 def choose_output_suffix(cover_path: str) -> str:
@@ -518,6 +528,41 @@ def validate_image_convert_form(files: list[Path], output_dir: str, target_forma
         image_module.validate_target_size_kb(target_size_text)
     except ValueError as exc:
         errors.append(str(exc))
+    return errors
+
+
+def collect_pdf_tool_inputs(paths: list[str]) -> list[Path]:
+    pdf_module = get_pdf_tools_module()
+    return pdf_module.collect_pdf_inputs(paths)
+
+
+def format_pdf_drop_summary(files: list[Path]) -> str:
+    if not files:
+        return '拖入 PDF 文件或文件夹'
+    names = [p.stem for p in files[:6]]
+    summary = '\n'.join(names)
+    if len(files) > 6:
+        summary += f'\n... 另有 {len(files) - 6} 个PDF'
+    return f'已添加 {len(files)} 个PDF\n\n{summary}'
+
+
+def validate_pdf_form(action: str, files: list[Path], output_dir: str, page_ranges_text: str, image_format: str, dpi_text: str, text_export_format: str = '') -> list[str]:
+    errors: list[str] = []
+    pdf_module = get_pdf_tools_module()
+    errors.extend(pdf_module.validate_pdf_action(action, files, page_ranges_text))
+    if not output_dir.strip():
+        errors.append('请选择输出目录')
+    if action == 'images':
+        if not image_format.strip():
+            errors.append('请选择图片格式')
+        try:
+            dpi = int(dpi_text.strip())
+            if dpi <= 0:
+                errors.append('DPI 必须大于 0')
+        except ValueError:
+            errors.append('DPI 必须是整数')
+    if action == 'text' and not text_export_format.strip():
+        errors.append('请选择文本导出格式')
     return errors
 
 
@@ -682,12 +727,10 @@ if QWidget is not None:
             self.log.appendPlainText(f'已保存输出目录: {output_dir}')
             self.progress.setMaximum(max(1, len(self.files)))
             self.progress.setValue(0)
-
             delete_source = self.delete_source_checkbox.isChecked()
             ncm_module = _load_ncm_module()
             success_count = 0
             deleted_count = 0
-
             try:
                 for idx, (src, out) in enumerate(ncm_module.convert_many(self.files, Path(output_dir), self.overwrite_checkbox.isChecked()), start=1):
                     self.log.appendPlainText(f'OK {src} -> {out}')
@@ -901,7 +944,6 @@ if QWidget is not None:
             card, layout = make_card('图片格式互转', '拖入 JPG / PNG / WebP / HEIC 图片，支持批量转换与压缩')
             self.drop_zone = DropZoneCard('拖入 JPG / PNG / WebP / HEIC 图片或文件夹', self.add_paths)
             layout.addWidget(self.drop_zone)
-
             format_row = QHBoxLayout()
             format_row.addWidget(QLabel('输出格式'))
             self.format_combo = QComboBox()
@@ -914,7 +956,6 @@ if QWidget is not None:
             self.target_size_edit = QLineEdit('')
             format_row.addWidget(self.target_size_edit)
             layout.addLayout(format_row)
-
             alpha_row = QHBoxLayout()
             self.preserve_alpha_checkbox = QCheckBox('保留透明通道')
             self.preserve_alpha_checkbox.setChecked(True)
@@ -925,7 +966,6 @@ if QWidget is not None:
             alpha_row.addWidget(self.jpg_background_combo)
             alpha_row.addStretch(1)
             layout.addLayout(alpha_row)
-
             output_row = QHBoxLayout()
             self.output_edit = QLineEdit(load_setting(settings, 'imageconvert/output_dir'))
             self.output_edit.setPlaceholderText('选择输出目录')
@@ -934,14 +974,12 @@ if QWidget is not None:
             output_row.addWidget(self.output_edit)
             output_row.addWidget(choose_btn)
             layout.addLayout(output_row)
-
             action_row = QHBoxLayout()
             action_row.addStretch(1)
             self.convert_button = QPushButton('开始转换')
             self.convert_button.clicked.connect(self.convert_files)
             action_row.addWidget(self.convert_button)
             layout.addLayout(action_row)
-
             self.progress = QProgressBar()
             layout.addWidget(self.progress)
             self.log = QPlainTextEdit()
@@ -1021,6 +1059,146 @@ if QWidget is not None:
             QMessageBox.information(self, '完成', summary)
 
 
+    class PdfToolsTab(QWidget):
+        def __init__(self, settings):
+            super().__init__()
+            self.settings = settings
+            self.files: list[Path] = []
+            root = QVBoxLayout(self)
+            card, layout = make_card('PDF工具', '支持合并、拆分、转图片、导出 TXT / DOCX')
+            self.drop_zone = DropZoneCard('拖入 PDF 文件或文件夹', self.add_paths)
+            layout.addWidget(self.drop_zone)
+            action_row = QHBoxLayout()
+            action_row.addWidget(QLabel('操作'))
+            self.action_combo = QComboBox()
+            self.action_combo.addItems(['merge', 'split', 'images', 'text'])
+            self.action_combo.currentTextChanged.connect(self.update_action_ui)
+            action_row.addWidget(self.action_combo)
+            action_row.addWidget(QLabel('页码范围'))
+            self.page_ranges_edit = QLineEdit('')
+            self.page_ranges_edit.setPlaceholderText('例如 1-3,5')
+            action_row.addWidget(self.page_ranges_edit)
+            action_row.addWidget(QLabel('图片格式'))
+            self.image_format_combo = QComboBox()
+            self.image_format_combo.addItems(['png', 'jpg', 'webp'])
+            action_row.addWidget(self.image_format_combo)
+            action_row.addWidget(QLabel('DPI'))
+            self.dpi_edit = QLineEdit('150')
+            action_row.addWidget(self.dpi_edit)
+            layout.addLayout(action_row)
+            text_row = QHBoxLayout()
+            self.text_format_label = QLabel('文本格式')
+            text_row.addWidget(self.text_format_label)
+            self.text_format_combo = QComboBox()
+            self.text_format_combo.addItems(['txt', 'docx'])
+            text_row.addWidget(self.text_format_combo)
+            self.ocr_checkbox = QCheckBox('文字层为空时启用 OCR')
+            text_row.addWidget(self.ocr_checkbox)
+            text_row.addStretch(1)
+            layout.addLayout(text_row)
+            output_row = QHBoxLayout()
+            self.output_edit = QLineEdit(load_setting(settings, 'pdftools/output_dir'))
+            self.output_edit.setPlaceholderText('选择输出目录')
+            choose_btn = QPushButton('选择路径')
+            choose_btn.clicked.connect(self.choose_output_dir)
+            output_row.addWidget(self.output_edit)
+            output_row.addWidget(choose_btn)
+            layout.addLayout(output_row)
+            button_row = QHBoxLayout()
+            button_row.addStretch(1)
+            self.run_button = QPushButton('开始处理')
+            self.run_button.clicked.connect(self.run_action)
+            button_row.addWidget(self.run_button)
+            layout.addLayout(button_row)
+            self.progress = QProgressBar()
+            layout.addWidget(self.progress)
+            self.log = QPlainTextEdit()
+            self.log.setReadOnly(True)
+            self.log.setMinimumHeight(140)
+            layout.addWidget(self.log)
+            root.addWidget(card)
+            self.update_action_ui(self.action_combo.currentText())
+
+        def add_paths(self, paths: list[str]):
+            files = collect_pdf_tool_inputs(paths)
+            existing = {p.resolve() for p in self.files}
+            new_files: list[Path] = []
+            for file in files:
+                resolved = file.resolve()
+                if resolved not in existing:
+                    self.files.append(resolved)
+                    existing.add(resolved)
+                    new_files.append(resolved)
+            self.drop_zone.set_body_text(format_pdf_drop_summary(self.files))
+            if new_files:
+                self.log.appendPlainText('\n'.join(p.name for p in new_files))
+            else:
+                self.log.appendPlainText('没有新增 PDF')
+
+        def choose_output_dir(self):
+            path = QFileDialog.getExistingDirectory(self, '选择输出目录', self.output_edit.text() or str(ROOT))
+            if path:
+                self.output_edit.setText(path)
+                save_setting(self.settings, 'pdftools/output_dir', path)
+
+        def clear_form(self):
+            self.files = []
+            self.drop_zone.set_body_text(format_pdf_drop_summary(self.files))
+
+        def update_action_ui(self, action: str):
+            is_split = action == 'split'
+            is_images = action == 'images'
+            is_text = action == 'text'
+            self.page_ranges_edit.setEnabled(is_split)
+            self.image_format_combo.setEnabled(is_images)
+            self.dpi_edit.setEnabled(is_images)
+            self.text_format_label.setVisible(is_text)
+            self.text_format_combo.setVisible(is_text)
+            self.ocr_checkbox.setVisible(is_text)
+
+        def run_action(self):
+            action = self.action_combo.currentText()
+            output_dir = self.output_edit.text().strip()
+            page_ranges_text = self.page_ranges_edit.text()
+            image_format = self.image_format_combo.currentText()
+            dpi_text = self.dpi_edit.text()
+            text_export_format = self.text_format_combo.currentText()
+            errors = validate_pdf_form(action, self.files, output_dir, page_ranges_text, image_format, dpi_text, text_export_format)
+            if errors:
+                QMessageBox.warning(self, '提示', '\n'.join(errors))
+                return
+            pdf_module = get_pdf_tools_module()
+            save_setting(self.settings, 'pdftools/output_dir', output_dir)
+            self.progress.setMaximum(max(1, len(self.files)))
+            self.progress.setValue(0)
+            try:
+                if action == 'merge':
+                    out = pdf_module.merge_pdfs(self.files, Path(output_dir) / 'merged.pdf')
+                    self.log.appendPlainText(f'OK merged -> {out}')
+                elif action == 'split':
+                    reader = pdf_module.PdfReader(str(self.files[0]))
+                    page_indexes = pdf_module.parse_page_ranges(page_ranges_text, len(reader.pages))
+                    outputs = pdf_module.split_pdf(self.files[0], Path(output_dir), page_indexes)
+                    self.log.appendPlainText(f'OK split -> {len(outputs)} files')
+                elif action == 'images':
+                    outputs = pdf_module.pdf_to_images(self.files[0], Path(output_dir), image_format, int(dpi_text.strip()))
+                    self.log.appendPlainText(f'OK images -> {len(outputs)} files')
+                else:
+                    out = pdf_module.export_pdf_text(
+                        self.files[0],
+                        Path(output_dir),
+                        text_export_format,
+                        ocr_fallback=self.ocr_checkbox.isChecked(),
+                    )
+                    self.log.appendPlainText(f'OK text -> {out}')
+                self.progress.setValue(self.progress.maximum())
+                self.clear_form()
+                QMessageBox.information(self, '完成', 'PDF 处理完成')
+            except Exception as exc:
+                self.log.appendPlainText(f'ERROR {exc}')
+                QMessageBox.critical(self, '处理失败', str(exc))
+
+
     class ToolboxWindow(QMainWindow):
         def __init__(self, settings):
             super().__init__()
@@ -1031,12 +1209,10 @@ if QWidget is not None:
             self.setStyleSheet(get_theme_stylesheet(self.current_theme))
             if LOGO_PATH.exists() and QIcon is not None:
                 self.setWindowIcon(QIcon(str(LOGO_PATH)))
-
             central = QWidget()
             shell = QHBoxLayout(central)
             shell.setContentsMargins(15, 18, 15, 18)
             shell.setSpacing(18)
-
             side_panel = QFrame()
             side_panel.setProperty('panel', True)
             side_layout = QVBoxLayout(side_panel)
@@ -1059,22 +1235,23 @@ if QWidget is not None:
             self.sidebar.addItem('ZIP伪装PNG')
             self.sidebar.addItem('MP4转MP3')
             self.sidebar.addItem('图片格式互转')
+            self.sidebar.addItem('PDF工具')
             self.sidebar.setCurrentRow(0)
             side_layout.addWidget(self.sidebar, 1)
             side_layout.addWidget(self.theme_button, 0, Qt.AlignHCenter | Qt.AlignBottom)
             shell.addWidget(side_panel)
-
             self.stack = QStackedWidget()
             self.music_tab = MusicTab(settings)
             self.zip_tab = ZipAndPngTab(settings)
             self.mp4_tab = Mp4ToMp3Tab(settings)
             self.image_convert_tab = ImageConvertTab(settings)
+            self.pdf_tools_tab = PdfToolsTab(settings)
             self.stack.addWidget(self.music_tab)
             self.stack.addWidget(self.zip_tab)
             self.stack.addWidget(self.mp4_tab)
             self.stack.addWidget(self.image_convert_tab)
+            self.stack.addWidget(self.pdf_tools_tab)
             shell.addWidget(self.stack, 1)
-
             self.sidebar.currentRowChanged.connect(self.stack.setCurrentIndex)
             self.setCentralWidget(central)
 
@@ -1099,7 +1276,6 @@ if QWidget is not None:
         window = ToolboxWindow(settings)
         window.show()
         return app.exec()
-
 else:
     def build_main_window_for_test(settings_dir: str):
         raise RuntimeError('PySide6 is not installed in this Python environment')
