@@ -199,3 +199,44 @@ def test_validate_pdf_form_accepts_valid_text_export():
         errors = toolbox.validate_pdf_form('text', [pdf], tmp, '', '', '', 'txt')
     assert errors == []
 
+
+def test_collect_base64_image_inputs_filters_supported_images_only():
+    toolbox = load_module()
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        (root / 'a.png').write_text('x', encoding='utf-8')
+        (root / 'b.txt').write_text('y', encoding='utf-8')
+        nested = root / 'nested'
+        nested.mkdir()
+        (nested / 'c.webp').write_text('z', encoding='utf-8')
+        paths = toolbox.collect_base64_image_inputs([str(root)])
+    assert [p.name for p in paths] == ['a.png']
+
+
+def test_base64_drop_summary_shows_selected_images():
+    toolbox = load_module()
+    assert toolbox.format_base64_drop_summary([]) == '鎷栧叆 PNG / JPG / JPEG / WebP / GIF / BMP 鍥剧墖'
+    one = toolbox.format_base64_drop_summary([pathlib.Path('cover.png')])
+    assert '宸叉坊鍔?1 寮犲浘鐗? in one
+    assert 'cover.png' in one
+
+
+def test_validate_base64_form_requires_mode_specific_inputs():
+    toolbox = load_module()
+    encode_errors = toolbox.validate_base64_form('encode', [], '', '', '')
+    assert '璇峰厛娣诲姞瑕佽浆鎹㈢殑鍥剧墖' in encode_errors
+    assert '璇烽€夋嫨杈撳嚭鐩綍' in encode_errors
+    assert '璇疯緭鍏ヨ緭鍑烘枃浠跺悕' in encode_errors
+    decode_errors = toolbox.validate_base64_form('decode', [], '', '', '')
+    assert '璇疯緭鍏?Base64 鍐呭' in decode_errors
+    assert '璇烽€夋嫨杈撳嚭鐩綍' in decode_errors
+
+
+def test_validate_base64_form_accepts_valid_encode_request():
+    toolbox = load_module()
+    with tempfile.TemporaryDirectory() as tmp:
+        image = pathlib.Path(tmp) / 'demo.png'
+        image.write_text('x', encoding='utf-8')
+        errors = toolbox.validate_base64_form('encode', [image], '', tmp, 'demo')
+    assert errors == []
+

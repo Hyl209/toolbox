@@ -5,8 +5,8 @@ from configparser import ConfigParser
 from pathlib import Path
 
 try:
-    from PySide6.QtCore import QSettings, Qt
-    from PySide6.QtGui import QIcon, QPixmap
+    from PySide6.QtCore import QSettings, Qt, QPoint
+    from PySide6.QtGui import QIcon, QPixmap, QPainter, QPen, QColor
     from PySide6.QtWidgets import (
         QApplication,
         QCheckBox,
@@ -25,15 +25,17 @@ try:
         QVBoxLayout,
         QWidget,
         QComboBox,
+        QSizePolicy,
     )
 except ModuleNotFoundError:
     QSettings = None
     QApplication = None
     Qt = None
-    QIcon = QPixmap = None
+    QPoint = None
+    QIcon = QPixmap = QPainter = QPen = QColor = None
     QCheckBox = QFileDialog = QFrame = QHBoxLayout = QLabel = QLineEdit = QListWidget = None
     QMainWindow = QMessageBox = QPushButton = QPlainTextEdit = QProgressBar = QStackedWidget = None
-    QVBoxLayout = QWidget = QComboBox = None
+    QVBoxLayout = QWidget = QComboBox = QSizePolicy = None
 
 ROOT = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
 APP_DIR = Path(sys.executable).resolve().parent if getattr(sys, 'frozen', False) else Path(__file__).resolve().parent
@@ -42,30 +44,45 @@ ZIP_DIR = ROOT / 'zipandpng'
 MP4_DIR = ROOT / 'mp4-mp3'
 IMAGE_CONVERT_DIR = ROOT / 'image-convert'
 PDF_TOOLS_DIR = ROOT / 'pdf-tools'
+BASE64_DIR = ROOT / 'base64'
 LOGO_PATH = ROOT / 'logo.png'
 DARK_STYLESHEET = """
-QMainWindow, QWidget {
-    background-color: #0b0f14;
-    color: #e8ecf1;
-    font-family: 'Segoe UI', 'Microsoft YaHei';
+QMainWindow {
+    background-color: #1b1f25;
+}
+QWidget {
+    background-color: #1f2329;
+    color: #eef2f7;
+    font-family: 'PingFang SC', 'Source Han Sans SC', 'Microsoft YaHei UI', 'Segoe UI';
     font-size: 13px;
+    font-weight: 400;
+}
+QWidget[windowSurface='true'] {
+    background-color: #1b1f25;
+    border: none;
+    border-radius: 24px;
+    padding: 10px;
 }
 QListWidget {
-    background-color: #0b0f14;
-    border: 1px solid #1f2937;
-    border-radius: 18px;
-    color: #7f8ea3;
+    background-color: rgba(47, 54, 64, 0.78);
+    border: 1px solid #424955;
+    border-radius: 24px;
+    color: #aab4c2;
     padding: 12px;
+    outline: none;
 }
 QListWidget::item {
-    padding: 14px 12px;
-    border-radius: 12px;
-    margin: 6px 0;
-    color: #6f7f92;
+    padding: 12px 14px;
+    border-radius: 16px;
+    margin: 4px 0;
+    color: #aeb8c6;
 }
 QListWidget::item:selected {
-    background-color: #161f2b;
-    color: #f3f6fb;
+    background-color: rgba(118, 160, 214, 0.28);
+    color: #f4f7fb;
+}
+QListWidget::item:hover {
+    background-color: rgba(90, 114, 145, 0.18);
 }
 QListWidget::item:focus,
 QListWidget:focus,
@@ -74,111 +91,199 @@ QListWidget::item:selected:focus {
     border: none;
 }
 QLineEdit, QPlainTextEdit {
-    background-color: #0b0f14;
-    border: 1px solid #243041;
-    border-radius: 12px;
-    padding: 10px 12px;
-    color: #f3f6fb;
+    background-color: #2a3038;
+    border: 1px solid #46505c;
+    border-radius: 16px;
+    padding: 10px 14px;
+    color: #eef2f7;
+    selection-background-color: #6d94c8;
+}
+QComboBox {
+    background-color: #2a3038;
+    border: 1px solid #46505c;
+    border-radius: 18px;
+    padding: 8px 32px 8px 16px;
+    min-width: 118px;
+    color: #eef2f7;
+}
+QComboBox:focus {
+    border: 1px solid #7ea6d9;
+    background-color: #303741;
+}
+QComboBox::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 18px;
+    border: none;
+    background: transparent;
+}
+QComboBox::down-arrow {
+    image: none;
+    width: 7px;
+    height: 7px;
+    border-right: 1.6px solid #eef2f7;
+    border-bottom: 1.6px solid #eef2f7;
+    transform: rotate(45deg);
+    margin-right: 10px;
+}
+QPlainTextEdit {
+    padding: 12px 14px;
+}
+QLineEdit:focus, QPlainTextEdit:focus {
+    border: 1px solid #7ea6d9;
+    background-color: #303741;
 }
 QPushButton {
-    background-color: #2563eb;
-    color: white;
-    border: none;
-    border-radius: 12px;
-    padding: 10px 18px;
-    font-weight: 600;
-}
-QPushButton[themeToggle='true'] {
-    padding: 0;
-    min-width: 44px;
-    max-width: 44px;
-    min-height: 44px;
-    max-height: 44px;
-    border-radius: 14px;
-    font-size: 18px;
+    background-color: #6f95c7;
+    color: #eef4fb;
+    border: 1px solid #7ea4d3;
+    border-radius: 16px;
+    padding: 9px 16px;
     font-weight: 500;
+    min-height: 18px;
 }
 QPushButton:hover {
-    background-color: #3b82f6;
+    background-color: #7b9fd0;
 }
 QPushButton:pressed {
-    background-color: #1d4ed8;
+    background-color: #6488b7;
+}
+QPushButton[windowControl='true'] {
+    background-color: #9aa6b5;
+    border: none;
+    border-radius: 12px;
+    min-width: 24px;
+    max-width: 24px;
+    min-height: 24px;
+    max-height: 24px;
+    padding: 0;
+}
+QPushButton[windowControl='true']:hover {
+    background-color: #a9b4c1;
+}
+QPushButton[windowControl='true']:pressed {
+    background-color: #8793a3;
+}
+QFrame[dragBar='true'] {
+    background-color: transparent;
+    border: none;
+}
+QFrame[dragBar='true'] QLabel {
+    color: #9aa6b5;
+}
+QWidget[contentSurface='true'] {
+    background-color: #1f2329;
+    border: none;
+    border-radius: 32px;
+}
+QPushButton[themeToggle='true'] {
+    background-color: rgba(58, 66, 78, 0.92);
+    border: 1px solid #4b5563;
+    padding: 0;
+    min-width: 38px;
+    max-width: 38px;
+    min-height: 38px;
+    max-height: 38px;
+    border-radius: 19px;
+    font-size: 15px;
+    font-weight: 500;
+}
+QCheckBox {
+    color: #c8d0dc;
+    spacing: 8px;
 }
 QProgressBar {
-    border: 1px solid #243041;
-    border-radius: 10px;
-    background: #0b0f14;
+    border: none;
+    border-radius: 8px;
+    background: #2f3640;
     text-align: center;
+    min-height: 8px;
+    max-height: 8px;
 }
 QProgressBar::chunk {
-    background-color: #22c55e;
-    border-radius: 10px;
+    background-color: #7ea6d9;
+    border-radius: 8px;
 }
-QFrame[card='true'] {
-    background-color: #0b0f14;
-    border: 1px solid #1f2937;
-    border-radius: 20px;
-}
+QFrame[card='true'],
 QFrame[panel='true'] {
-    background-color: #0b0f14;
-    border: 1px solid #1f2937;
-    border-radius: 20px;
+    background-color: rgba(44, 50, 59, 0.88);
+    border: 1px solid #3f4652;
+    border-radius: 26px;
 }
 QFrame[dropzone='true'] {
-    background-color: #0b0f14;
-    border: 2px dashed #31445f;
-    border-radius: 18px;
+    background-color: rgba(43, 49, 58, 0.92);
+    border: 1px solid #4b5562;
+    border-radius: 22px;
 }
 QFrame[dropzone='true'][active='true'] {
-    border: 2px dashed #60a5fa;
-    background-color: #182235;
+    background-color: rgba(62, 82, 108, 0.42);
+    border: 1px solid #7ea6d9;
+}
+QLabel {
+    color: #eef2f7;
+    background: transparent;
 }
 QLabel[cardTitle='true'] {
-    font-size: 20px;
-    font-weight: 700;
-    color: #ffffff;
+    font-size: 18px;
+    font-weight: 600;
+    color: #f3f6fb;
 }
 QLabel[cardSub='true'] {
-    color: #7f8ea3;
+    color: #9aa6b5;
+    font-size: 12px;
 }
 QLabel[brandTitle='true'] {
-    font-size: 22px;
-    font-weight: 700;
-    color: #ffffff;
+    font-size: 20px;
+    font-weight: 600;
+    color: #f3f6fb;
 }
 QLabel[brandSub='true'] {
-    color: #7f8ea3;
+    color: #9eabb9;
     font-size: 12px;
 }
 QLabel[dropBody='true'] {
-    color: #6f7f92;
+    color: #a4b0bf;
     font-size: 13px;
 }
 """
 
 LIGHT_STYLESHEET = """
-QMainWindow, QWidget {
-    background-color: #f7f3e8;
-    color: #4f4638;
-    font-family: 'Segoe UI', 'Microsoft YaHei';
+QMainWindow {
+    background-color: #e5e9ef;
+}
+QWidget {
+    background-color: #eef1f5;
+    color: #1f252d;
+    font-family: 'PingFang SC', 'Source Han Sans SC', 'Microsoft YaHei UI', 'Segoe UI';
     font-size: 13px;
+    font-weight: 400;
+}
+QWidget[windowSurface='true'] {
+    background-color: #e5e9ef;
+    border: none;
+    border-radius: 24px;
+    padding: 10px;
 }
 QListWidget {
-    background-color: #f7f3e8;
-    border: 1px solid #e3d9bd;
-    border-radius: 18px;
-    color: #9c8d69;
+    background-color: rgba(255, 255, 255, 0.72);
+    border: 1px solid #d9dfe7;
+    border-radius: 24px;
+    color: #697586;
     padding: 12px;
+    outline: none;
 }
 QListWidget::item {
-    padding: 14px 12px;
-    border-radius: 12px;
-    margin: 6px 0;
-    color: #9f9171;
+    padding: 12px 14px;
+    border-radius: 16px;
+    margin: 4px 0;
+    color: #586474;
 }
 QListWidget::item:selected {
-    background-color: #fff7d6;
-    color: #5d5033;
+    background-color: #dfeafc;
+    color: #1f252d;
+}
+QListWidget::item:hover {
+    background-color: rgba(226, 234, 246, 0.72);
 }
 QListWidget::item:focus,
 QListWidget:focus,
@@ -187,84 +292,158 @@ QListWidget::item:selected:focus {
     border: none;
 }
 QLineEdit, QPlainTextEdit {
-    background-color: #f7f3e8;
-    border: 1px solid #e3d9bd;
-    border-radius: 12px;
-    padding: 10px 12px;
-    color: #5d5033;
+    background-color: #eef1f5;
+    border: 1px solid #d8dee6;
+    border-radius: 16px;
+    padding: 10px 14px;
+    color: #1f252d;
+    selection-background-color: #d4e4ff;
+}
+QComboBox {
+    background-color: #eef1f5;
+    border: 1px solid #d8dee6;
+    border-radius: 18px;
+    padding: 8px 32px 8px 16px;
+    min-width: 118px;
+    color: #1f252d;
+}
+QComboBox:focus {
+    border: 1px solid #8fb4e8;
+    background-color: #e8edf4;
+}
+QComboBox::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 18px;
+    border: none;
+    background: transparent;
+}
+QComboBox::down-arrow {
+    image: none;
+    width: 7px;
+    height: 7px;
+    border-right: 1.6px solid #1f252d;
+    border-bottom: 1.6px solid #1f252d;
+    transform: rotate(45deg);
+    margin-right: 10px;
+}
+QPlainTextEdit {
+    padding: 12px 14px;
+}
+QLineEdit:focus, QPlainTextEdit:focus {
+    border: 1px solid #8fb4e8;
+    background-color: #e8edf4;
 }
 QPushButton {
-    background-color: #f4dc8c;
-    color: #5a4924;
-    border: none;
-    border-radius: 12px;
-    padding: 10px 18px;
-    font-weight: 600;
-}
-QPushButton[themeToggle='true'] {
-    padding: 0;
-    min-width: 44px;
-    max-width: 44px;
-    min-height: 44px;
-    max-height: 44px;
-    border-radius: 14px;
-    font-size: 18px;
+    background-color: #e4efff;
+    color: #24415f;
+    border: 1px solid #cfd9e8;
+    border-radius: 16px;
+    padding: 9px 16px;
     font-weight: 500;
+    min-height: 18px;
 }
 QPushButton:hover {
-    background-color: #f7e4a6;
+    background-color: #edf4ff;
 }
 QPushButton:pressed {
-    background-color: #ead27e;
+    background-color: #d7e7fb;
+}
+QPushButton[windowControl='true'] {
+    background-color: #d8dee7;
+    border: none;
+    border-radius: 12px;
+    min-width: 24px;
+    max-width: 24px;
+    min-height: 24px;
+    max-height: 24px;
+    padding: 0;
+}
+QPushButton[windowControl='true']:hover {
+    background-color: #c8d0db;
+}
+QPushButton[windowControl='true']:pressed {
+    background-color: #b5bfcc;
+}
+QFrame[dragBar='true'] {
+    background-color: transparent;
+    border: none;
+}
+QFrame[dragBar='true'] QLabel {
+    color: #7f8a99;
+}
+QWidget[contentSurface='true'] {
+    background-color: #eef1f5;
+    border: none;
+    border-radius: 32px;
+}
+QPushButton[themeToggle='true'] {
+    background-color: rgba(255, 255, 255, 0.82);
+    border: 1px solid #d6dde7;
+    padding: 0;
+    min-width: 38px;
+    max-width: 38px;
+    min-height: 38px;
+    max-height: 38px;
+    border-radius: 19px;
+    font-size: 15px;
+    font-weight: 500;
+}
+QCheckBox {
+    color: #4e5968;
+    spacing: 8px;
 }
 QProgressBar {
-    border: 1px solid #e3d9bd;
-    border-radius: 10px;
-    background: #f7f3e8;
+    border: none;
+    border-radius: 8px;
+    background: #dde5ee;
     text-align: center;
+    min-height: 8px;
+    max-height: 8px;
 }
 QProgressBar::chunk {
-    background-color: #f4dc8c;
-    border-radius: 10px;
+    background-color: #8fb4e8;
+    border-radius: 8px;
 }
-QFrame[card='true'] {
-    background-color: #f7f3e8;
-    border: 1px solid #e3d9bd;
-    border-radius: 20px;
-}
+QFrame[card='true'],
 QFrame[panel='true'] {
-    background-color: #f7f3e8;
-    border: 1px solid #e3d9bd;
-    border-radius: 20px;
+    background-color: rgba(255, 255, 255, 0.76);
+    border: 1px solid #d9dfe7;
+    border-radius: 26px;
 }
 QFrame[dropzone='true'] {
-    background-color: #f7f3e8;
-    border: 2px dashed #dbcda8;
-    border-radius: 18px;
+    background-color: rgba(248, 250, 253, 0.88);
+    border: 1px solid #d8e0ea;
+    border-radius: 22px;
 }
 QFrame[dropzone='true'][active='true'] {
-    border: 2px dashed #e5c96d;
-    background-color: #fff7d6;
+    background-color: rgba(230, 239, 251, 0.92);
+    border: 1px solid #8fb4e8;
+}
+QLabel {
+    color: #1f252d;
+    background: transparent;
 }
 QLabel[cardTitle='true'] {
-    font-size: 20px;
-    font-weight: 700;
-    color: #5a4a34;
+    font-size: 18px;
+    font-weight: 600;
+    color: #20262d;
 }
 QLabel[cardSub='true'] {
-    color: #aa9b7c;
+    color: #748091;
+    font-size: 12px;
 }
 QLabel[brandTitle='true'] {
-    font-size: 22px;
-    font-weight: 700;
-    color: #5a4a34;
+    font-size: 20px;
+    font-weight: 600;
+    color: #20262d;
 }
 QLabel[brandSub='true'] {
-    color: #aa9b7c;
+    color: #7f8a99;
     font-size: 12px;
 }
 QLabel[dropBody='true'] {
-    color: #aa9b7c;
+    color: #7a8796;
     font-size: 13px;
 }
 """
@@ -367,6 +546,7 @@ def get_tool_definitions() -> list[dict]:
         {'key': 'mp4mp3', 'title': 'MP4转MP3'},
         {'key': 'imageconvert', 'title': '图片格式互转'},
         {'key': 'pdftools', 'title': 'PDF工具'},
+        {'key': 'base64', 'title': '图片Base64'},
     ]
 
 
@@ -394,6 +574,10 @@ def get_image_convert_module():
 
 def get_pdf_tools_module():
     return _load_pdf_tools_module()
+
+
+def get_base64_module():
+    return _load_module('base64_converter_module', BASE64_DIR / 'converter.py')
 
 
 def choose_output_suffix(cover_path: str) -> str:
@@ -536,6 +720,50 @@ def collect_pdf_tool_inputs(paths: list[str]) -> list[Path]:
     return pdf_module.collect_pdf_inputs(paths)
 
 
+def collect_base64_image_inputs(paths: list[str]) -> list[Path]:
+    base64_module = get_base64_module()
+    unique: dict[Path, None] = {}
+    for raw in paths:
+        path = Path(raw).resolve()
+        if path.is_file() and path.suffix.lower() in base64_module.SUPPORTED_IMAGE_SUFFIXES:
+            unique[path] = None
+        elif path.is_dir():
+            for item in sorted(path.iterdir()):
+                if item.is_file() and item.suffix.lower() in base64_module.SUPPORTED_IMAGE_SUFFIXES:
+                    unique[item.resolve()] = None
+    return sorted(unique.keys())
+
+
+def format_base64_drop_summary(files: list[Path]) -> str:
+    if not files:
+        return '拖入 PNG / JPG / JPEG / WebP / GIF / BMP 图片'
+    names = [p.name for p in files[:6]]
+    summary = '\n'.join(names)
+    if len(files) > 6:
+        summary += f'\n... 另有 {len(files) - 6} 张图片'
+    return f'已添加 {len(files)} 张图片\n\n{summary}'
+
+
+def validate_base64_form(mode: str, image_files: list[Path], base64_text: str, output_dir: str, output_name: str) -> list[str]:
+    errors: list[str] = []
+    if mode == 'encode':
+        if not image_files:
+            errors.append('请先添加要转换的图片')
+        elif len(image_files) != 1:
+            errors.append('图片转 Base64 仅支持单张图片')
+        if not output_dir.strip():
+            errors.append('请选择输出目录')
+    else:
+        if not base64_text.strip():
+            errors.append('请输入 Base64 内容')
+        if not output_dir.strip():
+            errors.append('请选择输出目录')
+    if not output_name.strip():
+        errors.append('请输入输出文件名')
+    return errors
+
+
+
 def format_pdf_drop_summary(files: list[Path]) -> str:
     if not files:
         return '拖入 PDF 文件或文件夹'
@@ -566,13 +794,40 @@ def validate_pdf_form(action: str, files: list[Path], output_dir: str, page_rang
     return errors
 
 
+def get_jpg_background_value(label: str) -> str:
+    mapping = {
+        '白色': 'white',
+        '黑色': 'black',
+        '透明': 'transparent',
+    }
+    return mapping.get(label, label)
+
+
+def get_pdf_action_value(label: str) -> str:
+    mapping = {
+        '合并': 'merge',
+        '拆分': 'split',
+        '转图片': 'images',
+        '提取文本': 'text',
+    }
+    return mapping.get(label, label)
+
+
+def get_base64_mode_value(label: str) -> str:
+    mapping = {
+        '图片转Base64': 'encode',
+        'Base64转图片': 'decode',
+    }
+    return mapping.get(label, label)
+
+
 if QWidget is not None:
     def make_card(title: str, subtitle: str = ''):
         frame = QFrame()
         frame.setProperty('card', True)
         layout = QVBoxLayout(frame)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(14)
+        layout.setContentsMargins(26, 24, 26, 24)
+        layout.setSpacing(16)
         title_label = QLabel(title)
         title_label.setProperty('cardTitle', True)
         layout.addWidget(title_label)
@@ -593,8 +848,8 @@ if QWidget is not None:
             self.setAcceptDrops(True)
             self.setMinimumHeight(190)
             layout = QVBoxLayout(self)
-            layout.setContentsMargins(22, 22, 22, 22)
-            layout.setSpacing(8)
+            layout.setContentsMargins(24, 24, 24, 24)
+            layout.setSpacing(10)
             self.preview_label = QLabel()
             self.preview_label.setAlignment(Qt.AlignCenter)
             self.preview_label.setMinimumHeight(120)
@@ -651,6 +906,87 @@ if QWidget is not None:
             if self.on_files_dropped:
                 self.on_files_dropped(paths)
             event.acceptProposedAction()
+
+
+    class WindowControlButton(QPushButton):
+        def __init__(self, control_type: str, tooltip: str, parent=None):
+            super().__init__('', parent)
+            self.control_type = control_type
+            self.setToolTip(tooltip)
+            self.setProperty('windowControl', True)
+            self.setCursor(Qt.PointingHandCursor)
+            self.setFixedSize(24, 24)
+            self.setFlat(True)
+
+        def paintEvent(self, event):
+            super().paintEvent(event)
+            painter = QPainter(self)
+            painter.setRenderHint(QPainter.Antialiasing, True)
+            color = '#f5f7fa' if self.window().current_theme == 'dark' else '#4d5866'
+            pen = QPen(color)
+            pen.setWidthF(1.8)
+            painter.setPen(pen)
+            if self.control_type == 'min':
+                painter.drawLine(6, 12, 18, 12)
+            elif self.control_type == 'max':
+                painter.drawRect(6, 6, 12, 12)
+            elif self.control_type == 'restore':
+                painter.drawRect(8, 6, 8, 8)
+                painter.drawLine(10, 6, 18, 6)
+                painter.drawLine(18, 6, 18, 14)
+                painter.drawLine(10, 8, 18, 8)
+                painter.drawLine(6, 10, 14, 10)
+                painter.drawLine(6, 10, 6, 18)
+                painter.drawLine(6, 18, 14, 18)
+            else:
+                painter.drawLine(7, 7, 17, 17)
+                painter.drawLine(17, 7, 7, 17)
+            painter.end()
+
+
+    class DragTitleBar(QFrame):
+        def __init__(self, window):
+            super().__init__(window)
+            self.window = window
+            self.setProperty('dragBar', True)
+            self.setFixedHeight(34)
+            layout = QHBoxLayout(self)
+            layout.setContentsMargins(12, 7, 20, 0)
+            layout.setSpacing(8)
+            self.title_label = QLabel('')
+            self.title_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+            layout.addWidget(self.title_label, 1)
+            self.window.window_controls_layout = QHBoxLayout()
+            self.window.window_controls_layout.setContentsMargins(0, 0, 0, 0)
+            self.window.window_controls_layout.setSpacing(10)
+            self.window.min_button = WindowControlButton('min', '最小化', self)
+            self.window.max_button = WindowControlButton('max', '最大化', self)
+            self.window.close_button = WindowControlButton('close', '关闭', self)
+            self.window.min_button.clicked.connect(self.window.showMinimized)
+            self.window.max_button.clicked.connect(self.window.toggle_max_restore)
+            self.window.close_button.clicked.connect(self.window.close)
+            self.window.window_controls_layout.addWidget(self.window.min_button)
+            self.window.window_controls_layout.addWidget(self.window.max_button)
+            self.window.window_controls_layout.addWidget(self.window.close_button)
+            layout.addLayout(self.window.window_controls_layout)
+
+        def mousePressEvent(self, event):
+            if event.button() == Qt.LeftButton:
+                self.window.start_window_drag(event.globalPosition().toPoint())
+            super().mousePressEvent(event)
+
+        def mouseMoveEvent(self, event):
+            self.window.update_window_drag(event.globalPosition().toPoint())
+            super().mouseMoveEvent(event)
+
+        def mouseReleaseEvent(self, event):
+            self.window.stop_window_drag()
+            super().mouseReleaseEvent(event)
+
+        def mouseDoubleClickEvent(self, event):
+            if event.button() == Qt.LeftButton:
+                self.window.toggle_max_restore()
+            super().mouseDoubleClickEvent(event)
 
 
     class MusicTab(QWidget):
@@ -948,6 +1284,7 @@ if QWidget is not None:
             format_row.addWidget(QLabel('输出格式'))
             self.format_combo = QComboBox()
             self.format_combo.addItems(['jpg', 'png', 'webp', 'heic'])
+            self.format_combo.setMinimumWidth(132)
             format_row.addWidget(self.format_combo)
             format_row.addWidget(QLabel('质量'))
             self.quality_edit = QLineEdit('85')
@@ -962,7 +1299,8 @@ if QWidget is not None:
             alpha_row.addWidget(self.preserve_alpha_checkbox)
             alpha_row.addWidget(QLabel('JPG底色'))
             self.jpg_background_combo = QComboBox()
-            self.jpg_background_combo.addItems(['white', 'black', 'transparent'])
+            self.jpg_background_combo.addItems(['白色', '黑色', '透明'])
+            self.jpg_background_combo.setMinimumWidth(154)
             alpha_row.addWidget(self.jpg_background_combo)
             alpha_row.addStretch(1)
             layout.addLayout(alpha_row)
@@ -1043,7 +1381,7 @@ if QWidget is not None:
                         target_format=target_format,
                         quality=quality,
                         preserve_alpha=self.preserve_alpha_checkbox.isChecked(),
-                        jpg_background=self.jpg_background_combo.currentText(),
+                        jpg_background=get_jpg_background_value(self.jpg_background_combo.currentText()),
                         target_size_kb=target_size_kb,
                     )
                     self.log.appendPlainText(f'OK {src} -> {out}')
@@ -1071,7 +1409,8 @@ if QWidget is not None:
             action_row = QHBoxLayout()
             action_row.addWidget(QLabel('操作'))
             self.action_combo = QComboBox()
-            self.action_combo.addItems(['merge', 'split', 'images', 'text'])
+            self.action_combo.addItems(['合并', '拆分', '转图片', '提取文本'])
+            self.action_combo.setMinimumWidth(132)
             self.action_combo.currentTextChanged.connect(self.update_action_ui)
             action_row.addWidget(self.action_combo)
             action_row.addWidget(QLabel('页码范围'))
@@ -1081,6 +1420,7 @@ if QWidget is not None:
             action_row.addWidget(QLabel('图片格式'))
             self.image_format_combo = QComboBox()
             self.image_format_combo.addItems(['png', 'jpg', 'webp'])
+            self.image_format_combo.setMinimumWidth(132)
             action_row.addWidget(self.image_format_combo)
             action_row.addWidget(QLabel('DPI'))
             self.dpi_edit = QLineEdit('150')
@@ -1146,9 +1486,10 @@ if QWidget is not None:
             self.drop_zone.set_body_text(format_pdf_drop_summary(self.files))
 
         def update_action_ui(self, action: str):
-            is_split = action == 'split'
-            is_images = action == 'images'
-            is_text = action == 'text'
+            action_value = get_pdf_action_value(action)
+            is_split = action_value == 'split'
+            is_images = action_value == 'images'
+            is_text = action_value == 'text'
             self.page_ranges_edit.setEnabled(is_split)
             self.image_format_combo.setEnabled(is_images)
             self.dpi_edit.setEnabled(is_images)
@@ -1157,7 +1498,7 @@ if QWidget is not None:
             self.ocr_checkbox.setVisible(is_text)
 
         def run_action(self):
-            action = self.action_combo.currentText()
+            action = get_pdf_action_value(self.action_combo.currentText())
             output_dir = self.output_edit.text().strip()
             page_ranges_text = self.page_ranges_edit.text()
             image_format = self.image_format_combo.currentText()
@@ -1199,28 +1540,170 @@ if QWidget is not None:
                 QMessageBox.critical(self, '处理失败', str(exc))
 
 
+    class Base64Tab(QWidget):
+        def __init__(self, settings):
+            super().__init__()
+            self.settings = settings
+            self.files: list[Path] = []
+            root = QVBoxLayout(self)
+            card, layout = make_card('图片Base64', '支持图片转 Base64 / Data URL，或把 Base64 还原为图片')
+            self.drop_zone = DropZoneCard('拖入 PNG / JPG / JPEG / WebP / GIF / BMP 图片', self.add_paths)
+            layout.addWidget(self.drop_zone)
+            mode_row = QHBoxLayout()
+            mode_row.addWidget(QLabel('模式'))
+            self.mode_combo = QComboBox()
+            self.mode_combo.addItems(['图片转Base64', 'Base64转图片'])
+            self.mode_combo.setMinimumWidth(144)
+            self.mode_combo.currentTextChanged.connect(self.update_mode_ui)
+            mode_row.addWidget(self.mode_combo)
+            self.data_url_checkbox = QCheckBox('输出 Data URL')
+            mode_row.addWidget(self.data_url_checkbox)
+            mode_row.addStretch(1)
+            layout.addLayout(mode_row)
+            layout.addWidget(QLabel('Base64 内容'))
+            self.base64_edit = QPlainTextEdit()
+            self.base64_edit.setPlaceholderText('可直接粘贴 Base64 或 data:image/...;base64,...')
+            self.base64_edit.setMinimumHeight(150)
+            layout.addWidget(self.base64_edit)
+            name_row = QHBoxLayout()
+            name_row.addWidget(QLabel('输出文件名'))
+            self.output_name_edit = QLineEdit('output')
+            name_row.addWidget(self.output_name_edit)
+            layout.addLayout(name_row)
+            output_row = QHBoxLayout()
+            self.output_edit = QLineEdit(load_setting(settings, 'base64/output_dir'))
+            self.output_edit.setPlaceholderText('选择输出目录')
+            choose_btn = QPushButton('选择路径')
+            choose_btn.clicked.connect(self.choose_output_dir)
+            output_row.addWidget(self.output_edit)
+            output_row.addWidget(choose_btn)
+            layout.addLayout(output_row)
+            action_row = QHBoxLayout()
+            action_row.addStretch(1)
+            self.run_button = QPushButton('开始处理')
+            self.run_button.clicked.connect(self.run_action)
+            action_row.addWidget(self.run_button)
+            layout.addLayout(action_row)
+            self.log = QPlainTextEdit()
+            self.log.setReadOnly(True)
+            self.log.setMinimumHeight(140)
+            layout.addWidget(self.log)
+            root.addWidget(card)
+            self.update_mode_ui(self.mode_combo.currentText())
+
+        def add_paths(self, paths: list[str]):
+            files = collect_base64_image_inputs(paths)
+            existing = {p.resolve() for p in self.files}
+            new_files: list[Path] = []
+            for file in files:
+                resolved = file.resolve()
+                if resolved not in existing:
+                    self.files.append(resolved)
+                    existing.add(resolved)
+                    new_files.append(resolved)
+            self.drop_zone.set_body_text(format_base64_drop_summary(self.files))
+            if new_files:
+                picked = new_files[0]
+                if not self.output_name_edit.text().strip() or self.output_name_edit.text().strip() == 'output':
+                    self.output_name_edit.setText(picked.stem)
+                self.log.appendPlainText('\n'.join(p.name for p in new_files))
+            else:
+                self.log.appendPlainText('没有新增图片')
+
+        def choose_output_dir(self):
+            path = QFileDialog.getExistingDirectory(self, '选择输出目录', self.output_edit.text() or str(ROOT))
+            if path:
+                self.output_edit.setText(path)
+                save_setting(self.settings, 'base64/output_dir', path)
+
+        def clear_form(self):
+            self.files = []
+            self.drop_zone.set_body_text(format_base64_drop_summary(self.files))
+            if self.mode_combo.currentText() == '图片转Base64':
+                self.base64_edit.clear()
+
+        def update_mode_ui(self, label: str):
+            mode = get_base64_mode_value(label)
+            is_encode = mode == 'encode'
+            self.drop_zone.setEnabled(is_encode)
+            self.data_url_checkbox.setVisible(is_encode)
+            self.base64_edit.setReadOnly(is_encode)
+            if is_encode:
+                self.base64_edit.setPlaceholderText('编码结果会显示在这里，可继续保存为 txt')
+                self.run_button.setText('生成 Base64')
+            else:
+                self.base64_edit.setPlaceholderText('可直接粘贴 Base64 或 data:image/...;base64,...')
+                self.run_button.setText('还原图片')
+
+        def run_action(self):
+            mode = get_base64_mode_value(self.mode_combo.currentText())
+            base64_text = self.base64_edit.toPlainText()
+            output_dir = self.output_edit.text().strip()
+            output_name = self.output_name_edit.text().strip()
+            errors = validate_base64_form(mode, self.files, base64_text, output_dir, output_name)
+            if errors:
+                QMessageBox.warning(self, '提示', '\n'.join(errors))
+                return
+            base64_module = get_base64_module()
+            save_setting(self.settings, 'base64/output_dir', output_dir)
+            try:
+                if mode == 'encode':
+                    image_path = self.files[0]
+                    encoded = base64_module.encode_image_to_base64(image_path)
+                    if self.data_url_checkbox.isChecked():
+                        encoded = base64_module.build_data_url(encoded, image_path.suffix)
+                    self.base64_edit.setPlainText(encoded)
+                    out = base64_module.save_base64_text(encoded, output_dir, output_name)
+                    self.log.appendPlainText(f'OK base64 -> {out}')
+                    self.clear_form()
+                else:
+                    out = base64_module.decode_base64_to_file(base64_text, output_dir, output_name)
+                    self.log.appendPlainText(f'OK image -> {out}')
+                QMessageBox.information(self, '完成', 'Base64 处理完成')
+            except Exception as exc:
+                self.log.appendPlainText(f'ERROR {exc}')
+                QMessageBox.critical(self, '处理失败', str(exc))
+
+
     class ToolboxWindow(QMainWindow):
         def __init__(self, settings):
             super().__init__()
             self.settings = settings
             self.current_theme = load_setting(settings, 'ui/theme', 'dark')
+            self._drag_offset = None
+            self._normal_geometry = None
+            self.setWindowFlags(self.windowFlags() | Qt.FramelessWindowHint)
             self.setWindowTitle('格式转换工具')
             self.resize(1180, 820)
             self.setStyleSheet(get_theme_stylesheet(self.current_theme))
             if LOGO_PATH.exists() and QIcon is not None:
                 self.setWindowIcon(QIcon(str(LOGO_PATH)))
+            root = QWidget()
+            root.setObjectName('windowSurface')
+            root.setProperty('windowSurface', True)
+            root_layout = QVBoxLayout(root)
+            root_layout.setContentsMargins(10, 10, 10, 10)
+            root_layout.setSpacing(0)
+            self.content_surface = QWidget()
+            self.content_surface.setProperty('contentSurface', True)
+            content_layout = QVBoxLayout(self.content_surface)
+            content_layout.setContentsMargins(0, 0, 0, 0)
+            content_layout.setSpacing(0)
+            self.drag_bar = DragTitleBar(self)
+            content_layout.addWidget(self.drag_bar)
             central = QWidget()
+            central.setAttribute(Qt.WA_TranslucentBackground, True)
             shell = QHBoxLayout(central)
-            shell.setContentsMargins(15, 18, 15, 18)
-            shell.setSpacing(18)
+            shell.setContentsMargins(18, 20, 18, 20)
+            shell.setSpacing(20)
             side_panel = QFrame()
             side_panel.setProperty('panel', True)
             side_layout = QVBoxLayout(side_panel)
-            side_layout.setContentsMargins(0, 18, 0, 18)
-            side_layout.setSpacing(12)
-            brand = QLabel('   格式转换工具')
+            side_layout.setContentsMargins(18, 22, 18, 18)
+            side_layout.setSpacing(14)
+            brand = QLabel('  格式转换工具')
             brand.setProperty('brandTitle', True)
-            sub = QLabel('       by HhhYl')
+            sub = QLabel('    Clean local toolbox')
             sub.setProperty('brandSub', True)
             side_layout.addWidget(brand)
             side_layout.addWidget(sub)
@@ -1230,12 +1713,13 @@ if QWidget is not None:
             self.theme_button.setMaximumSize(44, 44)
             self.theme_button.clicked.connect(self.toggle_theme)
             self.sidebar = QListWidget()
-            self.sidebar.setFixedWidth(180)
+            self.sidebar.setFixedWidth(196)
             self.sidebar.addItem('NCM转换MP3')
             self.sidebar.addItem('ZIP伪装PNG')
             self.sidebar.addItem('MP4转MP3')
             self.sidebar.addItem('图片格式互转')
             self.sidebar.addItem('PDF工具')
+            self.sidebar.addItem('图片Base64')
             self.sidebar.setCurrentRow(0)
             side_layout.addWidget(self.sidebar, 1)
             side_layout.addWidget(self.theme_button, 0, Qt.AlignHCenter | Qt.AlignBottom)
@@ -1246,20 +1730,62 @@ if QWidget is not None:
             self.mp4_tab = Mp4ToMp3Tab(settings)
             self.image_convert_tab = ImageConvertTab(settings)
             self.pdf_tools_tab = PdfToolsTab(settings)
+            self.base64_tab = Base64Tab(settings)
             self.stack.addWidget(self.music_tab)
             self.stack.addWidget(self.zip_tab)
             self.stack.addWidget(self.mp4_tab)
             self.stack.addWidget(self.image_convert_tab)
             self.stack.addWidget(self.pdf_tools_tab)
+            self.stack.addWidget(self.base64_tab)
             shell.addWidget(self.stack, 1)
             self.sidebar.currentRowChanged.connect(self.stack.setCurrentIndex)
-            self.setCentralWidget(central)
+            content_layout.addWidget(central, 1)
+            root_layout.addWidget(self.content_surface)
+            self.setCentralWidget(root)
+            self.central_surface = self.content_surface
+            self.update_window_controls()
+
+        def start_window_drag(self, global_pos):
+            if self.isMaximized():
+                return
+            self._drag_offset = global_pos - self.frameGeometry().topLeft()
+
+        def update_window_drag(self, global_pos):
+            if self._drag_offset is None or self.isMaximized():
+                return
+            self.move(global_pos - self._drag_offset)
+
+        def stop_window_drag(self):
+            self._drag_offset = None
+
+        def toggle_max_restore(self):
+            if self.isMaximized():
+                self.showNormal()
+                if self._normal_geometry is not None:
+                    self.setGeometry(self._normal_geometry)
+            else:
+                self._normal_geometry = self.geometry()
+                self.showMaximized()
+            self.update_window_controls()
+
+        def update_window_controls(self):
+            if not hasattr(self, 'max_button'):
+                return
+            is_max = self.isMaximized()
+            self.max_button.control_type = 'restore' if is_max else 'max'
+            self.max_button.setToolTip('还原' if is_max else '最大化')
+            self.max_button.update()
+
+        def changeEvent(self, event):
+            super().changeEvent(event)
+            self.update_window_controls()
 
         def toggle_theme(self):
             self.current_theme = 'light' if self.current_theme == 'dark' else 'dark'
             save_setting(self.settings, 'ui/theme', self.current_theme)
             self.theme_button.setText('🌙' if self.current_theme == 'dark' else '☀️')
             self.setStyleSheet(get_theme_stylesheet(self.current_theme))
+            self.update_window_controls()
 
 
     def build_main_window_for_test(settings_dir: str):

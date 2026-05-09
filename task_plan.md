@@ -1,23 +1,27 @@
-# 图片格式互转功能计划
+# PDF 工具接入计划
 
 ## 目标
-为 `hyl tools` 新增一个与 `music/`、`mp4-mp3/`、`zipandpng/` 同级的新文件夹功能模块，用于 JPG/PNG/WebP/HEIC 图片格式互转，并支持批量转换、质量调整、目标体积压缩、透明通道保留与 JPG 透明底色可选。
+为 `hyl tools` 的 `pdf-tools/` 继续补齐剩余 PDF 能力：在已完成 `pypdf` 合并/拆分、`PyMuPDF` 转图片、GUI 页面与 spec 接入基础上，继续完善 `PDF -> TXT / DOCX`、依赖探测、表单校验与 README。
 
 ## 阶段
-- [x] Phase 1：确认现有工具箱接入方式与模块边界
-- [x] Phase 2：明确图片互转功能设计与约束
-- [ ] Phase 3：向 daddy 提交方案并等待确认
-- [ ] Phase 4：确认后实施新模块、GUI 接入与测试
+- [x] Phase 1：确认当前 PDF 核心模块现状
+- [x] Phase 2：为 PyMuPDF / GUI / 打包补 RED 测试
+- [x] Phase 3：实现 PDF 后端与 GUI 接入
+- [x] Phase 4：更新 spec、跑验证并整理文档
+- [ ] Phase 5：为 TXT / DOCX / OCR 兜底补 RED 测试
+- [ ] Phase 6：实现文本导出与 GUI 扩展
+- [ ] Phase 7：回归验证并更新 README
 
-## 已确认决策
-- 新功能必须新建独立文件夹，与 `music/`、`mp4-mp3/`、`zipandpng/` 同级。
-- 依赖方案采用 ImageMagick 路线（第二种方案）。
-- JPG 输出时，透明区域处理需要“保持可选”，不能写死白底/黑底。
-- daddy 希望支持输入目标数字，把图片尽量压缩到指定大小。
+## 已确认现状
+- `merge_pdfs()` / `split_pdf()` 已真实实现。
+- `pdf_to_images()` 已接入 `PyMuPDF`。
+- `hyl_toolbox.py` 已接入 PDF 页面。
+- `HylToolbox.spec` 已包含 `pdf-tools/converter.py`。
 
 ## 关键问题
-- 目标体积压缩对 JPG / WebP 可以较好逼近；对 PNG / HEIC 只能尽力逼近，不能保证每张图都精确命中。
-- 若目标体积过小，可能必须同时降低质量、缩小尺寸或移除部分元数据；是否允许自动缩放分辨率仍待确认。
+- 当前 GUI 仍只覆盖 merge / split / images，未覆盖 txt / docx。
+- 需要把“文字层优先，OCR 兜底”真正落到导出路径中。
+- WSL 侧继续以纯逻辑/模块测试为主，避免虚报 GUI 真机效果。
 
 ## 错误记录
 - 暂无

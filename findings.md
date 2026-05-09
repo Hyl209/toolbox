@@ -1,9 +1,7 @@
 # Findings
 
-- 已存在三个功能子目录：`music/`、`mp4-mp3/`、`zipandpng/`。
-- 根目录 GUI 入口为 `hyl_toolbox.py`，README 已说明它统一调度多个子功能。
-- 新功能应按用户要求，新建与现有模块同级的独立文件夹，而不是直接塞进旧模块。
-- GUI 结构为：侧边栏 `QListWidget` + `QStackedWidget` 多 Tab 页面，新增功能需要新增一个 Tab 并接入侧边栏。
-- 用户确认采用第二种方案，即 ImageMagick 路线。
-- 用户要求 JPG 透明底色保持可选。
-- 用户额外要求支持输入目标大小数字，尽量压缩到指定体积。
+- `pdf-tools/converter.py` 已具备 PDF 收集、页码解析、`pypdf` 合并拆分、`PyMuPDF` 转图片。
+- `hyl_toolbox.py` 已接入 `PDF工具` 页面，并支持 `merge / split / images / text`。
+- `HylToolbox.spec` 已包含 `pdf-tools/converter.py`。
+- `pdf-tools` 现已支持 `.txt` / `.docx` 导出，以及文字层为空时 OCR 兜底。
+- `zipandpng/__init__.py` 已补出包导出，修复 pytest 下 `import zipandpng` 命名空间不一致问题。
