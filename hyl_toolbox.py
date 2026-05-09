@@ -2014,7 +2014,7 @@ if QWidget is not None:
             style_combo_popup(self.image_convert_tab.jpg_background_combo, self.current_theme)
             style_combo_popup(self.base64_tab.mode_combo, self.current_theme)
             self.setStyleSheet(get_theme_stylesheet(self.current_theme))
-            animate_fade(self.content_surface, 0.65, 1.0, 180)
+            self.content_surface.setGraphicsEffect(None)
             self.update_window_controls()
 
 
