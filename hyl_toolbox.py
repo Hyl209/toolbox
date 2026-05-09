@@ -1054,8 +1054,8 @@ if QWidget is not None:
             super().__init__(parent)
             self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
             self.setModal(True)
-            self.setAttribute(Qt.WA_StyledBackground, True)
-            self.setObjectName('themedMessageDialog')
+            self.setAttribute(Qt.WA_StyledBackground, False)
+            self.setAttribute(Qt.WA_TranslucentBackground, True)
             self._closed_with_fade = False
             theme_name = getattr(parent, 'current_theme', 'light') if parent is not None else 'light'
             if theme_name == 'dark':
@@ -1063,7 +1063,6 @@ if QWidget is not None:
                 border = '#46505c'
                 title_color = '#f4f7fb'
                 text_color = '#d5dce6'
-                shadow = 'rgba(6, 10, 16, 0.34)'
                 button_bg = '#6f95c7'
                 button_hover = '#7b9fd0'
                 button_text_color = '#eef4fb'
@@ -1073,13 +1072,11 @@ if QWidget is not None:
                 border = '#d8e0ea'
                 title_color = '#243447'
                 text_color = '#4e5968'
-                shadow = 'rgba(76, 95, 122, 0.14)'
                 button_bg = '#e4efff'
                 button_hover = '#edf4ff'
                 button_text_color = '#24415f'
                 button_border = '#cfd9e8'
             self.setStyleSheet(
-                f"QDialog#themedMessageDialog {{background: transparent;}}"
                 f"QFrame[messageCard='true'] {{background-color: {surface}; border: 1px solid {border}; border-radius: 24px;}}"
                 f"QLabel[messageTitle='true'] {{color: {title_color}; font-size: 17px; font-weight: 600; background: transparent;}}"
                 f"QLabel[messageLine='true'] {{color: {text_color}; font-size: 13px; font-weight: 500; background: transparent;}}"
