@@ -5,7 +5,7 @@ from configparser import ConfigParser
 from pathlib import Path
 
 try:
-    from PySide6.QtCore import QSettings, Qt, QPoint, QSize, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup
+    from PySide6.QtCore import QSettings, Qt, QPoint, QSize, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, QEventLoop, QTimer
     from PySide6.QtGui import QIcon, QPixmap, QPainter, QPen, QColor
     from PySide6.QtWidgets import (
         QApplication,
@@ -29,6 +29,7 @@ try:
         QComboBox,
         QSizePolicy,
         QStyledItemDelegate,
+        QDialog,
     )
 except ModuleNotFoundError:
     QSettings = None
@@ -39,9 +40,11 @@ except ModuleNotFoundError:
     QPropertyAnimation = None
     QEasingCurve = None
     QParallelAnimationGroup = None
+    QEventLoop = None
+    QTimer = None
     QIcon = QPixmap = QPainter = QPen = QColor = None
     QCheckBox = QFileDialog = QFrame = QGraphicsOpacityEffect = QHBoxLayout = QLabel = QLineEdit = QListWidget = QListView = None
-    QMainWindow = QMessageBox = QPushButton = QPlainTextEdit = QProgressBar = QStackedWidget = None
+    QMainWindow = QMessageBox = QPushButton = QPlainTextEdit = QProgressBar = QStackedWidget = QDialog = None
     QVBoxLayout = QWidget = QComboBox = QSizePolicy = QStyledItemDelegate = None
 
 ROOT = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
@@ -1026,6 +1029,127 @@ if QWidget is not None:
         return animation
 
 
+    def fade_out_and_close(widget: QWidget, duration: int = 160):
+        if QGraphicsOpacityEffect is None or QPropertyAnimation is None:
+            widget.close()
+            return None
+        effect = widget.graphicsEffect()
+        if not isinstance(effect, QGraphicsOpacityEffect):
+            effect = QGraphicsOpacityEffect(widget)
+            widget.setGraphicsEffect(effect)
+        effect.setOpacity(1.0)
+        animation = QPropertyAnimation(effect, b'opacity', widget)
+        animation.setDuration(duration)
+        animation.setStartValue(1.0)
+        animation.setEndValue(0.0)
+        animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        animation.finished.connect(widget.accept if hasattr(widget, 'accept') else widget.close)
+        animation.start(QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
+        widget._fade_close_animation = animation
+        return animation
+
+
+    class ThemedMessageDialog(QDialog):
+        def __init__(self, parent, title: str, lines: list[str], button_text: str = '完成'):
+            super().__init__(parent)
+            self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
+            self.setModal(True)
+            self.setAttribute(Qt.WA_StyledBackground, True)
+            self.setObjectName('themedMessageDialog')
+            self._closed_with_fade = False
+            theme_name = getattr(parent, 'current_theme', 'light') if parent is not None else 'light'
+            if theme_name == 'dark':
+                surface = '#232933'
+                border = '#46505c'
+                title_color = '#f4f7fb'
+                text_color = '#d5dce6'
+                shadow = 'rgba(6, 10, 16, 0.34)'
+                button_bg = '#6f95c7'
+                button_hover = '#7b9fd0'
+                button_text_color = '#eef4fb'
+                button_border = '#7ea4d3'
+            else:
+                surface = '#f7f9fc'
+                border = '#d8e0ea'
+                title_color = '#243447'
+                text_color = '#4e5968'
+                shadow = 'rgba(76, 95, 122, 0.14)'
+                button_bg = '#e4efff'
+                button_hover = '#edf4ff'
+                button_text_color = '#24415f'
+                button_border = '#cfd9e8'
+            self.setStyleSheet(
+                f"QDialog#themedMessageDialog {{background: transparent;}}"
+                f"QFrame[messageCard='true'] {{background-color: {surface}; border: 1px solid {border}; border-radius: 24px;}}"
+                f"QLabel[messageTitle='true'] {{color: {title_color}; font-size: 17px; font-weight: 600; background: transparent;}}"
+                f"QLabel[messageLine='true'] {{color: {text_color}; font-size: 13px; font-weight: 500; background: transparent;}}"
+                f"QPushButton[messageButton='true'] {{background-color: {button_bg}; color: {button_text_color}; border: 1px solid {button_border}; border-radius: 18px; padding: 9px 22px; min-width: 108px; font-weight: 600;}}"
+                f"QPushButton[messageButton='true']:hover {{background-color: {button_hover};}}"
+            )
+            root = QVBoxLayout(self)
+            root.setContentsMargins(24, 24, 24, 24)
+            card = QFrame()
+            card.setProperty('messageCard', True)
+            card_layout = QVBoxLayout(card)
+            card_layout.setContentsMargins(28, 24, 28, 22)
+            card_layout.setSpacing(12)
+            title_label = QLabel(title)
+            title_label.setProperty('messageTitle', True)
+            card_layout.addWidget(title_label)
+            for line in lines:
+                if not line:
+                    continue
+                label = QLabel(line)
+                label.setProperty('messageLine', True)
+                label.setWordWrap(True)
+                card_layout.addWidget(label)
+            button_row = QHBoxLayout()
+            button_row.addStretch(1)
+            confirm_button = QPushButton(button_text)
+            confirm_button.setProperty('messageButton', True)
+            confirm_button.clicked.connect(self.close_with_fade)
+            button_row.addWidget(confirm_button)
+            button_row.addStretch(1)
+            card_layout.addSpacing(4)
+            card_layout.addLayout(button_row)
+            root.addWidget(card)
+            self.resize(360, card.sizeHint().height() + 48)
+            animate_fade(self, 0.0, 1.0, 180)
+
+        def close_with_fade(self):
+            if self._closed_with_fade:
+                return
+            self._closed_with_fade = True
+            fade_out_and_close(self, 160)
+
+
+    def show_themed_message(parent, title: str, lines: list[str], button_text: str = '完成'):
+        dialog = ThemedMessageDialog(parent, title, lines, button_text)
+        if QEventLoop is None or QTimer is None:
+            dialog.exec()
+            return
+        loop = QEventLoop()
+        dialog.finished.connect(loop.quit)
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
+        loop.exec()
+
+
+    def show_themed_warning(parent, title: str, message: str):
+        lines = [line for line in message.splitlines() if line.strip()] or [message]
+        show_themed_message(parent, title, lines, '完成')
+
+
+    def show_themed_success(parent, title: str, lines: list[str]):
+        show_themed_message(parent, title, lines, '完成')
+
+
+    def show_themed_error(parent, title: str, message: str):
+        lines = [line for line in message.splitlines() if line.strip()] or [message]
+        show_themed_message(parent, title, lines, '完成')
+
+
     def animate_stack_switch(stack: QStackedWidget, index: int):
         current_index = stack.currentIndex()
         if index < 0 or index == current_index:
@@ -1037,15 +1161,15 @@ if QWidget is not None:
         if QPropertyAnimation is None:
             return
         end_pos = page.pos()
-        offset = 28 if index > current_index else -28
+        offset = 100 if index > current_index else -100
         start_pos = QPoint(end_pos.x(), end_pos.y() + offset)
         page.move(start_pos)
         move = QPropertyAnimation(page, b'pos', page)
-        move.setDuration(320)
+        move.setDuration(600)
         move.setStartValue(start_pos)
         move.setEndValue(end_pos)
         move.setEasingCurve(QEasingCurve.Type.OutCubic)
-        fade = animate_fade(page, 0.35, 1.0, 260)
+        fade = animate_fade(page, 0.35, 1.0, 350)
         move.start(QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
         page._slide_animation = (move, fade)
 
@@ -1285,14 +1409,14 @@ if QWidget is not None:
         def convert_files(self):
             output_dir = self.output_edit.text().strip()
             if not output_dir:
-                QMessageBox.warning(self, '提示', '请先选择输出目录')
+                show_themed_warning(self, '提示', '请先选择输出目录')
                 return
             if not self.files:
-                QMessageBox.warning(self, '提示', '请先添加要转换的 .ncm 文件')
+                show_themed_warning(self, '提示', '请先添加要转换的 .ncm 文件')
                 return
             available, message = get_music_backend_status()
             if not available:
-                QMessageBox.warning(self, '缺少依赖', message)
+                show_themed_warning(self, '缺少依赖', message)
                 self.log.appendPlainText(f'ERROR {message}')
                 return
             save_setting(self.settings, 'music/output_dir', output_dir)
@@ -1315,16 +1439,23 @@ if QWidget is not None:
                         except Exception as exc:
                             self.log.appendPlainText(f'DELETE FAILED {src}: {exc}')
                     self.progress.setValue(idx)
+                fail_count = max(0, len(self.files) - success_count)
+                lines = [
+                    f'✅ 成功：{success_count}个',
+                    f'❌ 失败：{fail_count}个',
+                ]
+                if deleted_count:
+                    lines.append(f'🗑 删除：{deleted_count}个')
                 self.files = []
                 self.drop_zone.set_body_text(format_music_drop_summary(self.files))
                 summary = f'转换完成: 成功{success_count} 个文件'
                 if delete_source:
                     summary += f'，删除NCM {deleted_count} 个'
-                QMessageBox.information(self, '完成', summary)
+                show_themed_success(self, '完成', lines)
                 self.log.appendPlainText(summary)
             except Exception as exc:
                 self.log.appendPlainText(f'ERROR {exc}')
-                QMessageBox.critical(self, '转换失败', str(exc))
+                show_themed_error(self, '转换失败', str(exc))
 
 
     class Mp4ToMp3Tab(QWidget):
@@ -1388,7 +1519,7 @@ if QWidget is not None:
             output_dir = self.output_edit.text().strip()
             errors = validate_mp4_form(self.files, output_dir)
             if errors:
-                QMessageBox.warning(self, '提示', '\n'.join(errors))
+                show_themed_warning(self, '提示', '\n'.join(errors))
                 return
             save_setting(self.settings, 'mp4mp3/output_dir', output_dir)
             self.log.appendPlainText(f'已保存输出目录: {output_dir}')
@@ -1404,11 +1535,11 @@ if QWidget is not None:
                     self.progress.setValue(idx)
                 self.clear_form()
                 summary = f'转换完成: 成功{success_count} 个视频'
-                QMessageBox.information(self, '完成', summary)
+                show_themed_success(self, '完成', [summary])
                 self.log.appendPlainText(summary)
             except Exception as exc:
                 self.log.appendPlainText(f'ERROR {exc}')
-                QMessageBox.critical(self, '转换失败', str(exc))
+                show_themed_error(self, '转换失败', str(exc))
 
 
     class ZipAndPngTab(QWidget):
@@ -1488,7 +1619,7 @@ if QWidget is not None:
                 self.output_name_edit.text().strip(),
             )
             if errors:
-                QMessageBox.warning(self, '提示', '\n'.join(errors))
+                show_themed_warning(self, '提示', '\n'.join(errors))
                 return
             save_setting(self.settings, 'zipandpng/output_dir', self.output_dir_edit.text().strip())
             out_name = normalize_output_name(
@@ -1596,12 +1727,12 @@ if QWidget is not None:
             target_size_text = self.target_size_edit.text()
             errors = validate_image_convert_form(self.files, output_dir, target_format, quality_text, target_size_text)
             if errors:
-                QMessageBox.warning(self, '提示', '\n'.join(errors))
+                show_themed_warning(self, '提示', '\n'.join(errors))
                 return
             image_module = get_image_convert_module()
             available, message = image_module.probe_imagemagick()
             if not available:
-                QMessageBox.warning(self, '缺少依赖', message)
+                show_themed_warning(self, '缺少依赖', message)
                 self.log.appendPlainText(f'ERROR {message}')
                 return
             save_setting(self.settings, 'imageconvert/output_dir', output_dir)
@@ -1626,12 +1757,12 @@ if QWidget is not None:
                     self.progress.setValue(idx)
                 except Exception as exc:
                     self.log.appendPlainText(f'ERROR {src}: {exc}')
-                    QMessageBox.critical(self, '转换失败', str(exc))
+                    show_themed_error(self, '转换失败', str(exc))
                     return
             self.clear_form()
             summary = f'转换完成: 成功{success_count} 张图片'
             self.log.appendPlainText(summary)
-            QMessageBox.information(self, '完成', summary)
+            show_themed_success(self, '完成', [summary])
 
 
     class PdfToolsTab(QWidget):
@@ -1743,7 +1874,7 @@ if QWidget is not None:
             text_export_format = self.text_format_combo.currentText()
             errors = validate_pdf_form(action, self.files, output_dir, page_ranges_text, image_format, dpi_text, text_export_format)
             if errors:
-                QMessageBox.warning(self, '提示', '\n'.join(errors))
+                show_themed_warning(self, '提示', '\n'.join(errors))
                 return
             pdf_module = get_pdf_tools_module()
             save_setting(self.settings, 'pdftools/output_dir', output_dir)
@@ -1771,10 +1902,10 @@ if QWidget is not None:
                     self.log.appendPlainText(f'OK text -> {out}')
                 self.progress.setValue(self.progress.maximum())
                 self.clear_form()
-                QMessageBox.information(self, '完成', 'PDF 处理完成')
+                show_themed_success(self, '完成', ['PDF 处理完成'])
             except Exception as exc:
                 self.log.appendPlainText(f'ERROR {exc}')
-                QMessageBox.critical(self, '处理失败', str(exc))
+                show_themed_error(self, '处理失败', str(exc))
 
 
     class Base64Tab(QWidget):
@@ -1880,7 +2011,7 @@ if QWidget is not None:
             output_name = self.output_name_edit.text().strip()
             errors = validate_base64_form(mode, self.files, base64_text, output_dir, output_name)
             if errors:
-                QMessageBox.warning(self, '提示', '\n'.join(errors))
+                show_themed_warning(self, '提示', '\n'.join(errors))
                 return
             base64_module = get_base64_module()
             save_setting(self.settings, 'base64/output_dir', output_dir)
@@ -1897,10 +2028,10 @@ if QWidget is not None:
                 else:
                     out = base64_module.decode_base64_to_file(base64_text, output_dir, output_name)
                     self.log.appendPlainText(f'OK image -> {out}')
-                QMessageBox.information(self, '完成', 'Base64 处理完成')
+                show_themed_success(self, '完成', ['Base64 处理完成'])
             except Exception as exc:
                 self.log.appendPlainText(f'ERROR {exc}')
-                QMessageBox.critical(self, '处理失败', str(exc))
+                show_themed_error(self, '处理失败', str(exc))
 
 
     class ToolboxWindow(QMainWindow):
