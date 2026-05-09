@@ -5,7 +5,7 @@ from configparser import ConfigParser
 from pathlib import Path
 
 try:
-    from PySide6.QtCore import QSettings, Qt, QPoint
+    from PySide6.QtCore import QSettings, Qt, QPoint, QSize
     from PySide6.QtGui import QIcon, QPixmap, QPainter, QPen, QColor
     from PySide6.QtWidgets import (
         QApplication,
@@ -16,6 +16,7 @@ try:
         QLabel,
         QLineEdit,
         QListWidget,
+        QListView,
         QMainWindow,
         QMessageBox,
         QPushButton,
@@ -26,16 +27,18 @@ try:
         QWidget,
         QComboBox,
         QSizePolicy,
+        QStyledItemDelegate,
     )
 except ModuleNotFoundError:
     QSettings = None
     QApplication = None
     Qt = None
     QPoint = None
+    QSize = None
     QIcon = QPixmap = QPainter = QPen = QColor = None
-    QCheckBox = QFileDialog = QFrame = QHBoxLayout = QLabel = QLineEdit = QListWidget = None
+    QCheckBox = QFileDialog = QFrame = QHBoxLayout = QLabel = QLineEdit = QListWidget = QListView = None
     QMainWindow = QMessageBox = QPushButton = QPlainTextEdit = QProgressBar = QStackedWidget = None
-    QVBoxLayout = QWidget = QComboBox = QSizePolicy = None
+    QVBoxLayout = QWidget = QComboBox = QSizePolicy = QStyledItemDelegate = None
 
 ROOT = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
 APP_DIR = Path(sys.executable).resolve().parent if getattr(sys, 'frozen', False) else Path(__file__).resolve().parent
@@ -63,12 +66,37 @@ QWidget[windowSurface='true'] {
     border-radius: 24px;
     padding: 10px;
 }
-QListWidget {
-    background-color: rgba(47, 54, 64, 0.78);
-    border: 1px solid #424955;
-    border-radius: 24px;
+QListWidget[navList='true'] {
+    background-color: #1f2329;
+    border: none;
+    border-radius: 0;
     color: #aab4c2;
-    padding: 12px;
+    padding: 4px 0;
+    outline: none;
+}
+QListWidget[navList='true']::item {
+    padding: 12px 14px;
+    border-radius: 16px;
+    margin: 4px 0;
+    color: #aeb8c6;
+}
+QListWidget[navList='true']::item:selected {
+    background-color: rgba(118, 160, 214, 0.28);
+    color: #f4f7fb;
+}
+QListWidget[navList='true']::item:hover {
+    background-color: rgba(90, 114, 145, 0.18);
+}
+QListWidget[navList='true'],
+QListWidget[navList='true']::viewport {
+    background-color: #1f2329;
+}
+QListWidget {
+    background-color: transparent;
+    border: none;
+    border-radius: 0;
+    color: #aab4c2;
+    padding: 4px 0;
     outline: none;
 }
 QListWidget::item {
@@ -126,6 +154,35 @@ QComboBox::down-arrow {
     transform: rotate(45deg);
     margin-right: 10px;
 }
+QComboBox QAbstractItemView {
+    background-color: #2a3038;
+    color: #eef2f7;
+    border: 1px solid #46505c;
+    border-radius: 14px;
+    outline: none;
+    padding: 6px;
+    selection-background-color: #6d94c8;
+    selection-color: #eef2f7;
+}
+QComboBox QAbstractItemView::item,
+QComboBox QListView::item {
+    min-height: 28px;
+    padding: 6px 10px;
+    border-radius: 10px;
+}
+QComboBox QAbstractItemView::item:selected,
+QComboBox QListView::item:selected {
+    background-color: #6d94c8;
+    color: #eef2f7;
+}
+QComboBox QListView,
+QComboBox QListView viewport,
+QAbstractItemView,
+QAbstractItemView::item,
+QFrame QAbstractItemView {
+    background-color: #2a3038;
+    color: #eef2f7;
+}
 QPlainTextEdit {
     padding: 12px 14px;
 }
@@ -175,6 +232,10 @@ QWidget[contentSurface='true'] {
     background-color: #1f2329;
     border: none;
     border-radius: 32px;
+}
+QFrame[navPanel='true'] {
+    background-color: #1f2329;
+    border: none;
 }
 QPushButton[themeToggle='true'] {
     background-color: rgba(58, 66, 78, 0.92);
@@ -264,12 +325,37 @@ QWidget[windowSurface='true'] {
     border-radius: 24px;
     padding: 10px;
 }
-QListWidget {
-    background-color: rgba(255, 255, 255, 0.72);
-    border: 1px solid #d9dfe7;
-    border-radius: 24px;
+QListWidget[navList='true'] {
+    background-color: #eef1f5;
+    border: none;
+    border-radius: 0;
     color: #697586;
-    padding: 12px;
+    padding: 4px 0;
+    outline: none;
+}
+QListWidget[navList='true']::item {
+    padding: 12px 14px;
+    border-radius: 16px;
+    margin: 4px 0;
+    color: #586474;
+}
+QListWidget[navList='true']::item:selected {
+    background-color: #dfeafc;
+    color: #1f252d;
+}
+QListWidget[navList='true']::item:hover {
+    background-color: rgba(226, 234, 246, 0.72);
+}
+QListWidget[navList='true'],
+QListWidget[navList='true']::viewport {
+    background-color: #eef1f5;
+}
+QListWidget {
+    background-color: transparent;
+    border: none;
+    border-radius: 0;
+    color: #697586;
+    padding: 4px 0;
     outline: none;
 }
 QListWidget::item {
@@ -327,6 +413,35 @@ QComboBox::down-arrow {
     transform: rotate(45deg);
     margin-right: 10px;
 }
+QComboBox QAbstractItemView {
+    background-color: #eef1f5;
+    color: #1f252d;
+    border: 1px solid #d8dee6;
+    border-radius: 14px;
+    outline: none;
+    padding: 6px;
+    selection-background-color: #d4e4ff;
+    selection-color: #1f252d;
+}
+QComboBox QAbstractItemView::item,
+QComboBox QListView::item {
+    min-height: 28px;
+    padding: 6px 10px;
+    border-radius: 10px;
+}
+QComboBox QAbstractItemView::item:selected,
+QComboBox QListView::item:selected {
+    background-color: #d4e4ff;
+    color: #1f252d;
+}
+QComboBox QListView,
+QComboBox QListView viewport,
+QAbstractItemView,
+QAbstractItemView::item,
+QFrame QAbstractItemView {
+    background-color: #eef1f5;
+    color: #1f252d;
+}
 QPlainTextEdit {
     padding: 12px 14px;
 }
@@ -376,6 +491,10 @@ QWidget[contentSurface='true'] {
     background-color: #eef1f5;
     border: none;
     border-radius: 32px;
+}
+QFrame[navPanel='true'] {
+    background-color: #eef1f5;
+    border: none;
 }
 QPushButton[themeToggle='true'] {
     background-color: rgba(255, 255, 255, 0.82);
@@ -838,6 +957,53 @@ if QWidget is not None:
         return frame, layout
 
 
+    def make_transparent_row():
+        row = QWidget()
+        row.setAttribute(Qt.WA_StyledBackground, True)
+        row.setStyleSheet('background: transparent;')
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        return row, layout
+
+
+    class ComboItemDelegate(QStyledItemDelegate):
+        def sizeHint(self, option, index):
+            hint = super().sizeHint(option, index)
+            return QSize(max(hint.width(), 120), 34)
+
+
+    def style_combo_popup(combo: QComboBox, theme_name: str):
+        if QListView is None:
+            return
+        popup_view = combo.view()
+        if popup_view is None:
+            return
+        popup_view.setObjectName('comboPopupView')
+        popup_view.setProperty('comboPopupTheme', theme_name)
+        popup_view.viewport().setProperty('comboPopupTheme', theme_name)
+        if theme_name == 'light':
+            popup_style = (
+                'QListView, QListView[comboPopupTheme="light"] {background-color: #eef1f5; color: #1f252d; '
+                'border: 1px solid #d8dee6; border-radius: 0; outline: none; padding: 2px;} '
+                'QListView::item {border-radius: 10px;} '
+                'QListView::item:selected {background-color: #d4e4ff; color: #1f252d;} '
+                'QWidget[comboPopupTheme="light"] {background-color: #eef1f5; color: #1f252d; border-radius: 0;}'
+            )
+        else:
+            popup_style = (
+                'QListView, QListView[comboPopupTheme="dark"] {background-color: #2a3038; color: #eef2f7; '
+                'border: 1px solid #46505c; border-radius: 0; outline: none; padding: 2px;} '
+                'QListView::item {border-radius: 10px;} '
+                'QListView::item:selected {background-color: #6d94c8; color: #eef2f7;} '
+                'QWidget[comboPopupTheme="dark"] {background-color: #2a3038; color: #eef2f7; border-radius: 0;}'
+            )
+        popup_view.setStyleSheet(popup_style)
+        popup_view.setItemDelegate(ComboItemDelegate(popup_view))
+        popup_view.setSpacing(2)
+        popup_view.setFrameShape(QFrame.NoFrame)
+        popup_view.viewport().setAutoFillBackground(False)
+
+
     class DropZoneCard(QFrame):
         def __init__(self, body_text: str, on_files_dropped=None):
             super().__init__()
@@ -1006,7 +1172,7 @@ if QWidget is not None:
             row.addWidget(self.output_edit)
             row.addWidget(choose_btn)
             layout.addLayout(row)
-            action_row = QHBoxLayout()
+            action_row_widget, action_row = make_transparent_row()
             self.overwrite_checkbox = QCheckBox('覆盖同名文件')
             action_row.addWidget(self.overwrite_checkbox)
             self.delete_source_checkbox = QCheckBox('删除原 NCM')
@@ -1015,7 +1181,7 @@ if QWidget is not None:
             self.convert_button = QPushButton('开始转换')
             self.convert_button.clicked.connect(self.convert_files)
             action_row.addWidget(self.convert_button)
-            layout.addLayout(action_row)
+            layout.addWidget(action_row_widget)
             self.progress = QProgressBar()
             layout.addWidget(self.progress)
             self.log = QPlainTextEdit()
@@ -1194,7 +1360,7 @@ if QWidget is not None:
             row = QHBoxLayout()
             self.output_dir_edit = QLineEdit(load_setting(settings, 'zipandpng/output_dir'))
             self.output_dir_edit.setPlaceholderText('选择或输入伪装 png 输出目录')
-            choose_btn = QPushButton('选择输出目录')
+            choose_btn = QPushButton('选择路径')
             choose_btn.clicked.connect(self.choose_output_dir)
             row.addWidget(self.output_dir_edit)
             row.addWidget(choose_btn)
@@ -1293,7 +1459,7 @@ if QWidget is not None:
             self.target_size_edit = QLineEdit('')
             format_row.addWidget(self.target_size_edit)
             layout.addLayout(format_row)
-            alpha_row = QHBoxLayout()
+            alpha_row_widget, alpha_row = make_transparent_row()
             self.preserve_alpha_checkbox = QCheckBox('保留透明通道')
             self.preserve_alpha_checkbox.setChecked(True)
             alpha_row.addWidget(self.preserve_alpha_checkbox)
@@ -1301,9 +1467,10 @@ if QWidget is not None:
             self.jpg_background_combo = QComboBox()
             self.jpg_background_combo.addItems(['白色', '黑色', '透明'])
             self.jpg_background_combo.setMinimumWidth(154)
+            style_combo_popup(self.jpg_background_combo, load_setting(settings, 'ui/theme', 'dark'))
             alpha_row.addWidget(self.jpg_background_combo)
             alpha_row.addStretch(1)
-            layout.addLayout(alpha_row)
+            layout.addWidget(alpha_row_widget)
             output_row = QHBoxLayout()
             self.output_edit = QLineEdit(load_setting(settings, 'imageconvert/output_dir'))
             self.output_edit.setPlaceholderText('选择输出目录')
@@ -1549,17 +1716,18 @@ if QWidget is not None:
             card, layout = make_card('图片Base64', '支持图片转 Base64 / Data URL，或把 Base64 还原为图片')
             self.drop_zone = DropZoneCard('拖入 PNG / JPG / JPEG / WebP / GIF / BMP 图片', self.add_paths)
             layout.addWidget(self.drop_zone)
-            mode_row = QHBoxLayout()
+            mode_row_widget, mode_row = make_transparent_row()
             mode_row.addWidget(QLabel('模式'))
             self.mode_combo = QComboBox()
             self.mode_combo.addItems(['图片转Base64', 'Base64转图片'])
             self.mode_combo.setMinimumWidth(144)
+            style_combo_popup(self.mode_combo, load_setting(settings, 'ui/theme', 'dark'))
             self.mode_combo.currentTextChanged.connect(self.update_mode_ui)
             mode_row.addWidget(self.mode_combo)
             self.data_url_checkbox = QCheckBox('输出 Data URL')
             mode_row.addWidget(self.data_url_checkbox)
             mode_row.addStretch(1)
-            layout.addLayout(mode_row)
+            layout.addWidget(mode_row_widget)
             layout.addWidget(QLabel('Base64 内容'))
             self.base64_edit = QPlainTextEdit()
             self.base64_edit.setPlaceholderText('可直接粘贴 Base64 或 data:image/...;base64,...')
@@ -1697,7 +1865,7 @@ if QWidget is not None:
             shell.setContentsMargins(18, 20, 18, 20)
             shell.setSpacing(20)
             side_panel = QFrame()
-            side_panel.setProperty('panel', True)
+            side_panel.setProperty('navPanel', True)
             side_layout = QVBoxLayout(side_panel)
             side_layout.setContentsMargins(18, 22, 18, 18)
             side_layout.setSpacing(14)
@@ -1713,6 +1881,7 @@ if QWidget is not None:
             self.theme_button.setMaximumSize(44, 44)
             self.theme_button.clicked.connect(self.toggle_theme)
             self.sidebar = QListWidget()
+            self.sidebar.setProperty('navList', True)
             self.sidebar.setFixedWidth(196)
             self.sidebar.addItem('NCM转换MP3')
             self.sidebar.addItem('ZIP伪装PNG')
@@ -1784,6 +1953,8 @@ if QWidget is not None:
             self.current_theme = 'light' if self.current_theme == 'dark' else 'dark'
             save_setting(self.settings, 'ui/theme', self.current_theme)
             self.theme_button.setText('🌙' if self.current_theme == 'dark' else '☀️')
+            style_combo_popup(self.image_convert_tab.jpg_background_combo, self.current_theme)
+            style_combo_popup(self.base64_tab.mode_combo, self.current_theme)
             self.setStyleSheet(get_theme_stylesheet(self.current_theme))
             self.update_window_controls()
 

@@ -240,3 +240,26 @@ def test_validate_base64_form_accepts_valid_encode_request():
         errors = toolbox.validate_base64_form('encode', [image], '', tmp, 'demo')
     assert errors == []
 
+
+def test_light_theme_nav_panel_matches_background():
+    toolbox = load_module()
+    assert "QFrame[navPanel='true']" in toolbox.LIGHT_STYLESHEET
+    assert "background-color: #eef1f5;" in toolbox.LIGHT_STYLESHEET
+    assert "QFrame[panel='true']" in toolbox.LIGHT_STYLESHEET
+
+
+def test_dark_theme_nav_panel_matches_background():
+    toolbox = load_module()
+    assert "QFrame[navPanel='true']" in toolbox.DARK_STYLESHEET
+    assert "background-color: #1f2329;" in toolbox.DARK_STYLESHEET
+
+
+def test_nav_list_theme_rules_exist_for_both_modes():
+    toolbox = load_module()
+    assert "QListWidget[navList='true']" in toolbox.LIGHT_STYLESHEET
+    assert "QListWidget[navList='true']::viewport" in toolbox.LIGHT_STYLESHEET
+    assert "background-color: #eef1f5;" in toolbox.LIGHT_STYLESHEET
+    assert "QListWidget[navList='true']" in toolbox.DARK_STYLESHEET
+    assert "QListWidget[navList='true']::viewport" in toolbox.DARK_STYLESHEET
+    assert "background-color: #1f2329;" in toolbox.DARK_STYLESHEET
+
