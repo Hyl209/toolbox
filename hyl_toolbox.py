@@ -1077,19 +1077,19 @@ if QWidget is not None:
                 button_text_color = '#24415f'
                 button_border = '#cfd9e8'
             self.setStyleSheet(
-                f"QFrame[messageCard='true'] {{background-color: {surface}; border: 1px solid {border}; border-radius: 24px;}}"
+                f"QFrame[messageCard='true'] {{background-color: {surface}; border: 1px solid {border}; border-radius: 10px;}}"
                 f"QLabel[messageTitle='true'] {{color: {title_color}; font-size: 17px; font-weight: 600; background: transparent;}}"
                 f"QLabel[messageLine='true'] {{color: {text_color}; font-size: 13px; font-weight: 500; background: transparent;}}"
-                f"QPushButton[messageButton='true'] {{background-color: {button_bg}; color: {button_text_color}; border: 1px solid {button_border}; border-radius: 18px; padding: 9px 22px; min-width: 108px; font-weight: 600;}}"
+                f"QPushButton[messageButton='true'] {{background-color: {button_bg}; color: {button_text_color}; border: 1px solid {button_border}; border-radius: 6px; padding: 8px 20px; min-width: 96px; font-weight: 600;}}"
                 f"QPushButton[messageButton='true']:hover {{background-color: {button_hover};}}"
             )
             root = QVBoxLayout(self)
-            root.setContentsMargins(24, 24, 24, 24)
+            root.setContentsMargins(10, 10, 10, 10)
             card = QFrame()
             card.setProperty('messageCard', True)
             card_layout = QVBoxLayout(card)
-            card_layout.setContentsMargins(28, 24, 28, 22)
-            card_layout.setSpacing(12)
+            card_layout.setContentsMargins(18, 16, 18, 16)
+            card_layout.setSpacing(10)
             title_label = QLabel(title)
             title_label.setProperty('messageTitle', True)
             card_layout.addWidget(title_label)
@@ -1107,10 +1107,10 @@ if QWidget is not None:
             confirm_button.clicked.connect(self.close_with_fade)
             button_row.addWidget(confirm_button)
             button_row.addStretch(1)
-            card_layout.addSpacing(4)
+            card_layout.addSpacing(2)
             card_layout.addLayout(button_row)
             root.addWidget(card)
-            self.resize(360, card.sizeHint().height() + 48)
+            self.resize(352, card.sizeHint().height() + 20)
             animate_fade(self, 0.0, 1.0, 180)
 
         def close_with_fade(self):
