@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+build/
+dist/
+mp4-mp3/mp4mp3_config.json
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+*/.venv/
+.venv-pytest/
+*/.venv-pytest/
+build/
+dist/
+mp4-mp3/mp4mp3_config.json
