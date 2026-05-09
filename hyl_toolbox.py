@@ -1041,11 +1041,11 @@ if QWidget is not None:
         start_pos = QPoint(end_pos.x(), end_pos.y() + offset)
         page.move(start_pos)
         move = QPropertyAnimation(page, b'pos', page)
-        move.setDuration(210)
+        move.setDuration(320)
         move.setStartValue(start_pos)
         move.setEndValue(end_pos)
         move.setEasingCurve(QEasingCurve.Type.OutCubic)
-        fade = animate_fade(page, 0.35, 1.0, 180)
+        fade = animate_fade(page, 0.35, 1.0, 260)
         move.start(QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
         page._slide_animation = (move, fade)
 
