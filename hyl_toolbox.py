@@ -1027,12 +1027,27 @@ if QWidget is not None:
 
 
     def animate_stack_switch(stack: QStackedWidget, index: int):
-        if index < 0 or index == stack.currentIndex():
+        current_index = stack.currentIndex()
+        if index < 0 or index == current_index:
             return
         stack.setCurrentIndex(index)
         page = stack.currentWidget()
-        if page is not None:
-            animate_fade(page, 0.0, 1.0, 190)
+        if page is None:
+            return
+        if QPropertyAnimation is None:
+            return
+        end_pos = page.pos()
+        offset = 28 if index > current_index else -28
+        start_pos = QPoint(end_pos.x(), end_pos.y() + offset)
+        page.move(start_pos)
+        move = QPropertyAnimation(page, b'pos', page)
+        move.setDuration(210)
+        move.setStartValue(start_pos)
+        move.setEndValue(end_pos)
+        move.setEasingCurve(QEasingCurve.Type.OutCubic)
+        fade = animate_fade(page, 0.35, 1.0, 180)
+        move.start(QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
+        page._slide_animation = (move, fade)
 
 
     def pulse_widget(widget: QWidget, duration: int = 150):
