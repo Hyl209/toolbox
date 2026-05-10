@@ -1,8 +1,29 @@
 import importlib.util
+import json
 import os
 import sys
+import hashlib
+import hmac
+import base64
+import binascii
 from configparser import ConfigParser
 from pathlib import Path
+
+
+def build_help_popup_state(image_path: Path):
+    resolved = Path(image_path)
+    if not resolved.exists():
+        raise FileNotFoundError(str(resolved))
+    return {
+        'image_path': resolved,
+        'close_on_main_click': True,
+        'frameless': True,
+        'max_width': 420,
+        'max_height': 560,
+        'caption': '感谢打赏',
+        'caption_font_size': 18,
+        'caption_font_weight': 700,
+    }
 
 try:
     from PySide6.QtCore import QSettings, Qt, QPoint, QSize, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, QEventLoop, QTimer
@@ -23,6 +44,7 @@ try:
         QPushButton,
         QPlainTextEdit,
         QProgressBar,
+        QScrollArea,
         QStackedWidget,
         QVBoxLayout,
         QWidget,
@@ -45,10 +67,11 @@ except ModuleNotFoundError:
     QIcon = QPixmap = QPainter = QPen = QColor = None
     QCheckBox = QFileDialog = QFrame = QGraphicsOpacityEffect = QHBoxLayout = QLabel = QLineEdit = QListWidget = QListView = None
     QMainWindow = QMessageBox = QPushButton = QPlainTextEdit = QProgressBar = QStackedWidget = QDialog = None
-    QVBoxLayout = QWidget = QComboBox = QSizePolicy = QStyledItemDelegate = None
+    QVBoxLayout = QWidget = QComboBox = QSizePolicy = QStyledItemDelegate = QScrollArea = None
 
 ROOT = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
-APP_DIR = Path(sys.executable).resolve().parent if getattr(sys, 'frozen', False) else Path(__file__).resolve().parent
+SOURCE_DIR = Path(__file__).resolve().parent
+APP_DIR = SOURCE_DIR if getattr(sys, 'frozen', False) and (SOURCE_DIR / 'users.json').exists() else (Path(sys.executable).resolve().parent if getattr(sys, 'frozen', False) else SOURCE_DIR)
 MUSIC_DIR = ROOT / 'music'
 ZIP_DIR = ROOT / 'zipandpng'
 MP4_DIR = ROOT / 'mp4-mp3'
@@ -56,6 +79,7 @@ IMAGE_CONVERT_DIR = ROOT / 'image-convert'
 PDF_TOOLS_DIR = ROOT / 'pdf-tools'
 BASE64_DIR = ROOT / 'base64'
 LOGO_PATH = ROOT / 'logo.png'
+WEIXIN_IMAGE_PATH = MUSIC_DIR / 'weixin.png'
 DARK_STYLESHEET = """
 QMainWindow {
     background-color: #1b1f25;
@@ -665,6 +689,290 @@ def load_setting(settings, key: str, default: str = '') -> str:
     return '' if value is None else str(value)
 
 
+def get_user_store_path(base_dir: str | Path) -> Path:
+    return Path(base_dir) / 'users.json'
+
+
+ALLOWED_PASSWORD_SYMBOLS = '!@#$%^&*()_+-='
+FORBIDDEN_PASSWORD_FRAGMENTS = ('2024', '2025', '2026', 'admin', 'root', 'password')
+DEFAULT_ADMIN_USERNAME = 'admin'
+DEFAULT_ADMIN_PASSWORD = '123'
+
+
+def load_users(store_path: str | Path) -> list[dict[str, str]]:
+    path = Path(store_path)
+    if not path.exists():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding='utf-8'))
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+        return []
+    if not isinstance(data, list):
+        return []
+    users: list[dict[str, str]] = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        username = str(item.get('username', '')).strip()
+        password_hash = str(item.get('password_hash', '')).strip()
+        if username and password_hash:
+            users.append({'username': username, 'password_hash': password_hash})
+    return users
+
+
+def save_users(store_path: str | Path, users: list[dict[str, str]]) -> None:
+    path = Path(store_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = [
+        {'username': item['username'], 'password_hash': item['password_hash']}
+        for item in users
+        if item.get('username') and item.get('password_hash')
+    ]
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
+
+
+def hash_password(password: str) -> str:
+    salt = os.urandom(16).hex()
+    digest = hashlib.sha256(f'{salt}:{password}'.encode('utf-8')).hexdigest()
+    return f'{salt}${digest}'
+
+
+def verify_password(password: str, stored_hash: str) -> bool:
+    try:
+        salt, expected = stored_hash.split('$', 1)
+    except ValueError:
+        return False
+    actual = hashlib.sha256(f'{salt}:{password}'.encode('utf-8')).hexdigest()
+    return hmac.compare_digest(actual, expected)
+
+
+def find_user(users: list[dict[str, str]], username: str):
+    target = username.strip().casefold()
+    for item in users:
+        if str(item.get('username', '')).strip().casefold() == target:
+            return item
+    return None
+
+
+def validate_password_policy(password: str, username: str = '') -> list[str]:
+    clean_name = username.strip().casefold()
+    if clean_name == DEFAULT_ADMIN_USERNAME and password == DEFAULT_ADMIN_PASSWORD:
+        return []
+    errors: list[str] = []
+    if len(password) != 12:
+        errors.append('密码长度必须严格等于 12 位')
+    if password and not password[0].isupper():
+        errors.append('首字符必须是大写字母')
+    if password and not password[-1].isdigit():
+        errors.append('尾字符必须是数字')
+    upper_count = sum(1 for ch in password if ch.isupper())
+    lower_count = sum(1 for ch in password if ch.islower())
+    digit_count = sum(1 for ch in password if ch.isdigit())
+    symbol_count = sum(1 for ch in password if ch in ALLOWED_PASSWORD_SYMBOLS)
+    invalid_symbols = [ch for ch in password if not (ch.isupper() or ch.islower() or ch.isdigit() or ch in ALLOWED_PASSWORD_SYMBOLS)]
+    if upper_count < 2 or lower_count < 2 or digit_count < 2 or symbol_count < 2:
+        errors.append('密码必须包含大写字母、小写字母、数字、特殊符号各至少 2 个')
+    if invalid_symbols:
+        errors.append(f'特殊符号只能从 {ALLOWED_PASSWORD_SYMBOLS} 里选')
+    for index in range(len(password) - 2):
+        chunk = password[index:index + 3]
+        if len(set(chunk)) == 1:
+            errors.append('密码不能包含连续 3 位相同字符')
+            break
+    for index in range(len(password) - 2):
+        a, b, c = password[index:index + 3]
+        if ord(b) == ord(a) + 1 and ord(c) == ord(b) + 1:
+            errors.append('密码不能包含连续 3 位顺序字符')
+            break
+    lowered = password.casefold()
+    if any(fragment in lowered for fragment in FORBIDDEN_PASSWORD_FRAGMENTS):
+        errors.append('密码不能包含 2024、2025、2026、admin、root、password 任何片段')
+    return errors
+
+
+def ensure_default_admin_user(store_path: str | Path) -> bool:
+    users = load_users(store_path)
+    if find_user(users, DEFAULT_ADMIN_USERNAME) is not None:
+        return False
+    users.append({'username': DEFAULT_ADMIN_USERNAME, 'password_hash': hash_password(DEFAULT_ADMIN_PASSWORD)})
+    save_users(store_path, users)
+    return True
+
+
+def register_user(store_path: str | Path, username: str, password: str) -> dict[str, str]:
+    clean_name = username.strip()
+    users = load_users(store_path)
+    if find_user(users, clean_name) is not None:
+        raise ValueError('该用户名已存在')
+    password_errors = validate_password_policy(password, clean_name)
+    if password_errors:
+        raise ValueError('\n'.join(password_errors))
+    record = {'username': clean_name, 'password_hash': hash_password(password)}
+    users.append(record)
+    save_users(store_path, users)
+    return {'username': clean_name}
+
+
+def verify_user_credentials(store_path: str | Path, username: str, password: str) -> bool:
+    user = find_user(load_users(store_path), username)
+    if user is None:
+        return False
+    return verify_password(password, str(user.get('password_hash', '')))
+
+
+def validate_auth_form(username: str, password: str, confirm_password: str = '', is_register: bool = False) -> list[str]:
+    errors: list[str] = []
+    clean_name = username.strip()
+    if not clean_name:
+        errors.append('请输入用户名')
+    elif len(clean_name) < 3:
+        errors.append('用户名至少需要 3 个字符')
+    if not password:
+        errors.append('请输入密码')
+    elif is_register:
+        errors.extend(validate_password_policy(password, clean_name))
+    elif clean_name.casefold() == DEFAULT_ADMIN_USERNAME and password == DEFAULT_ADMIN_PASSWORD:
+        pass
+    elif len(password) < 4:
+        errors.append('密码长度至少需要 4 个字符')
+    if is_register and password != confirm_password:
+        errors.append('两次输入的密码不一致')
+    return errors
+
+
+def build_auth_state(store_path: str | Path) -> dict[str, object]:
+    users = load_users(store_path)
+    has_users = bool(users)
+    return {
+        'has_users': has_users,
+        'mode': 'login' if has_users else 'register',
+        'user_count': len(users),
+    }
+
+
+def normalize_auth_preferences(remember_password: bool, auto_login: bool) -> dict[str, bool]:
+    normalized_remember = bool(remember_password or auto_login)
+    normalized_auto = bool(auto_login and normalized_remember)
+    return {
+        'remember_password': normalized_remember,
+        'auto_login': normalized_auto,
+    }
+
+
+def encode_saved_password(username: str, password: str) -> str:
+    if not username or not password:
+        return ''
+    key = hashlib.sha256(f'hyl-auth:{username.strip().casefold()}'.encode('utf-8')).digest()
+    payload = password.encode('utf-8')
+    encoded = bytes(byte ^ key[index % len(key)] for index, byte in enumerate(payload))
+    return encoded.hex()
+
+
+def decode_saved_password(username: str, encoded_secret: str) -> str:
+    if not username or not encoded_secret:
+        return ''
+    try:
+        payload = bytes.fromhex(encoded_secret)
+    except ValueError:
+        return ''
+    key = hashlib.sha256(f'hyl-auth:{username.strip().casefold()}'.encode('utf-8')).digest()
+    decoded = bytes(byte ^ key[index % len(key)] for index, byte in enumerate(payload))
+    try:
+        return decoded.decode('utf-8')
+    except UnicodeDecodeError:
+        return ''
+
+
+def save_auth_preferences(settings, username: str, remember_password: bool, auto_login: bool, saved_secret: str = '') -> None:
+    normalized = normalize_auth_preferences(remember_password, auto_login)
+    save_setting(settings, 'auth/last_user', username.strip())
+    save_setting(settings, 'auth/remember_password', '1' if normalized['remember_password'] else '0')
+    save_setting(settings, 'auth/auto_login', '1' if normalized['auto_login'] else '0')
+    save_setting(settings, 'auth/saved_secret', saved_secret if normalized['remember_password'] else '')
+
+
+def load_auth_preferences(settings) -> dict[str, object]:
+    normalized = normalize_auth_preferences(
+        load_setting(settings, 'auth/remember_password', '0') == '1',
+        load_setting(settings, 'auth/auto_login', '0') == '1',
+    )
+    last_username = load_setting(settings, 'auth/last_user', '').strip()
+    if not last_username:
+        last_username = load_setting(settings, 'auth/last_username', '').strip()
+    return {
+        'last_username': last_username,
+        'remember_password': normalized['remember_password'],
+        'auto_login': normalized['auto_login'],
+        'saved_secret': load_setting(settings, 'auth/saved_secret', '') if normalized['remember_password'] else '',
+    }
+
+
+def should_auto_login(users: list[dict], prefs: dict[str, object]) -> dict[str, str] | None:
+    username = str(prefs.get('last_username', '')).strip()
+    if not prefs.get('remember_password') or not prefs.get('auto_login') or not username:
+        return None
+    password = decode_saved_password(username, str(prefs.get('saved_secret', '')))
+    if not password:
+        return None
+    user = find_user(users, username)
+    if user is None:
+        return None
+    if not verify_password(password, str(user.get('password_hash', ''))):
+        return None
+    return {
+        'username': username,
+        'password': password,
+    }
+
+
+def clear_auth_fields(fields: dict[str, str]) -> dict[str, str]:
+    return {key: '' for key in fields}
+
+
+def prepare_auth_mode_fields(previous_mode: str, next_mode: str, current_fields: dict[str, str], login_snapshot: dict[str, str] | None) -> dict[str, dict[str, str] | None]:
+    snapshot = dict(login_snapshot or {})
+    visible_fields = dict(current_fields)
+    if next_mode in {'register', 'change_password'} and previous_mode == 'login':
+        snapshot = dict(current_fields)
+        visible_fields = clear_auth_fields(current_fields)
+    elif next_mode == 'login' and previous_mode in {'register', 'change_password'} and snapshot:
+        visible_fields = dict(snapshot)
+    return {
+        'visible_fields': visible_fields,
+        'login_snapshot': snapshot or None,
+    }
+
+
+def build_user_menu_state(username: str) -> dict[str, str]:
+    clean_name = username.strip()
+    return {
+        'username': clean_name or '未登录',
+        'avatar_text': (clean_name[:1] or 'U').upper(),
+        'logout_text': '退出账号',
+        'avatar_button_size': 38,
+        'avatar_border_radius': 19,
+        'avatar_uses_theme_toggle_style': True,
+        'menu_width': 236,
+        'menu_height': 148,
+        'menu_padding': 20,
+        'menu_spacing': 14,
+    }
+
+
+def update_user_password(store_path: str | Path, username: str, current_password: str, new_password: str) -> None:
+    users = load_users(store_path)
+    user = find_user(users, username)
+    if user is None:
+        raise ValueError('账号不存在')
+    if not verify_password(current_password, str(user.get('password_hash', ''))):
+        raise ValueError('当前密码错误')
+    password_errors = validate_password_policy(new_password, username)
+    if password_errors:
+        raise ValueError('\n'.join(password_errors))
+    user['password_hash'] = hash_password(new_password)
+    save_users(store_path, users)
+
+
 def get_tool_definitions() -> list[dict]:
     return [
         {'key': 'music', 'title': 'NCM转换'},
@@ -739,11 +1047,37 @@ def split_dropped_files(paths: list[str]) -> dict[str, str]:
 def format_music_drop_summary(files: list[Path]) -> str:
     if not files:
         return '拖入 .ncm 文件或文件夹'
-    names = [p.stem for p in files[:6]]
-    summary = '\n'.join(names)
-    if len(files) > 6:
-        summary += f'\n... 另有 {len(files) - 6} 首歌曲'
-    return f'已添加 {len(files)} 首歌曲\n\n{summary}'
+    names = [p.stem for p in files[:3]]
+    text = '\n'.join(names)
+    if len(files) > 3:
+        text += f'\n…共 {len(files)} 首歌曲'
+    return text
+
+
+def get_music_file_items(paths: list[str]) -> list[dict[str, str]]:
+    ncm_module = _load_ncm_module()
+    files = ncm_module.collect_input_paths([Path(p) for p in paths])
+    return [ncm_module.extract_song_info(path) for path in files]
+
+
+def build_music_item_text(item: dict[str, str]) -> str:
+    title = str(item.get('title', '')).strip() or Path(str(item.get('file_path', ''))).stem
+    artist = str(item.get('artist', '')).strip()
+    return f'{title}\n{artist}' if artist else title
+
+
+def load_pixmap_from_data_url(data_url: str):
+    if QPixmap is None or not data_url or not data_url.startswith('data:image'):
+        return None
+    try:
+        _, encoded = data_url.split(',', 1)
+        payload = base64.b64decode(encoded)
+    except (ValueError, TypeError, binascii.Error):
+        return None
+    pixmap = QPixmap()
+    if not pixmap.loadFromData(payload):
+        return None
+    return pixmap
 
 
 def format_drop_card_text(path_text: str, empty_text: str) -> str:
@@ -1349,10 +1683,25 @@ if QWidget is not None:
             super().__init__()
             self.settings = settings
             self.files: list[Path] = []
+            self.file_items: list[dict[str, str]] = []
             root = QVBoxLayout(self)
             card, layout = make_card('NCM转换MP3')
             self.drop_zone = DropZoneCard('拖入 .ncm 文件或文件夹', self.add_paths)
             layout.addWidget(self.drop_zone)
+            self.song_list_hint = QLabel('已添加歌曲')
+            self.song_list_hint.setProperty('cardSub', True)
+            layout.addWidget(self.song_list_hint)
+            self.song_list_scroll = QScrollArea()
+            self.song_list_scroll.setWidgetResizable(True)
+            self.song_list_scroll.setMinimumHeight(220)
+            self.song_list_scroll.setFrameShape(QFrame.NoFrame)
+            self.song_list_scroll.setStyleSheet('QScrollArea {border: none; background: transparent;}')
+            self.song_list_container = QWidget()
+            self.song_list_layout = QVBoxLayout(self.song_list_container)
+            self.song_list_layout.setContentsMargins(0, 0, 0, 0)
+            self.song_list_layout.setSpacing(10)
+            self.song_list_scroll.setWidget(self.song_list_container)
+            layout.addWidget(self.song_list_scroll)
             row = QHBoxLayout()
             self.output_edit = QLineEdit(load_setting(settings, 'music/output_dir'))
             self.output_edit.setPlaceholderText('选择输出目录')
@@ -1378,20 +1727,25 @@ if QWidget is not None:
             self.log.setMinimumHeight(140)
             layout.addWidget(self.log)
             root.addWidget(card)
+            self.refresh_song_list()
 
         def add_paths(self, paths: list[str]):
-            files = collect_music_inputs(paths)
+            items = get_music_file_items(paths)
             existing = {p.resolve() for p in self.files}
-            new_files: list[Path] = []
-            for file in files:
-                resolved = file.resolve()
-                if resolved not in existing:
-                    self.files.append(resolved)
-                    existing.add(resolved)
-                    new_files.append(resolved)
+            new_items: list[dict[str, str]] = []
+            for item in items:
+                file_path = Path(str(item.get('file_path', ''))).resolve()
+                if file_path not in existing:
+                    normalized = dict(item)
+                    normalized['file_path'] = str(file_path)
+                    self.files.append(file_path)
+                    self.file_items.append(normalized)
+                    existing.add(file_path)
+                    new_items.append(normalized)
             self.drop_zone.set_body_text(format_music_drop_summary(self.files))
-            if new_files:
-                self.log.appendPlainText('\n'.join(p.stem for p in new_files))
+            self.refresh_song_list()
+            if new_items:
+                self.log.appendPlainText('\n'.join(str(item.get('display_name', '')) for item in new_items))
             else:
                 self.log.appendPlainText('没有新增歌曲')
 
@@ -1400,6 +1754,59 @@ if QWidget is not None:
             if path:
                 self.output_edit.setText(path)
                 save_setting(self.settings, 'music/output_dir', path)
+
+        def refresh_song_list(self):
+            while self.song_list_layout.count():
+                item = self.song_list_layout.takeAt(0)
+                widget = item.widget()
+                if widget is not None:
+                    widget.deleteLater()
+            if not self.file_items:
+                empty = QLabel('暂时还没有歌曲喵，拖一点 .ncm 进来吧~')
+                empty.setProperty('cardSub', True)
+                empty.setAlignment(Qt.AlignCenter)
+                empty.setMinimumHeight(80)
+                self.song_list_layout.addWidget(empty)
+                self.song_list_layout.addStretch(1)
+                return
+            for index, item in enumerate(self.file_items, start=1):
+                self.song_list_layout.addWidget(self.build_song_item_widget(index, item))
+            self.song_list_layout.addStretch(1)
+
+        def build_song_item_widget(self, index: int, item: dict[str, str]):
+            row = QFrame()
+            row.setProperty('card', True)
+            row.setStyleSheet('QFrame[card="true"] {border-radius: 18px; padding: 0px;}')
+            layout = QHBoxLayout(row)
+            layout.setContentsMargins(14, 12, 14, 12)
+            layout.setSpacing(12)
+            cover_label = QLabel()
+            cover_label.setFixedSize(56, 56)
+            cover_label.setAlignment(Qt.AlignCenter)
+            cover_label.setStyleSheet('border-radius: 12px; background-color: rgba(120, 146, 184, 0.18);')
+            pixmap = load_pixmap_from_data_url(str(item.get('cover_data_url', '')))
+            if pixmap is not None:
+                cover_label.setPixmap(pixmap.scaled(56, 56, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation))
+            else:
+                cover_label.setText('♪')
+            layout.addWidget(cover_label)
+            text_col = QVBoxLayout()
+            text_col.setContentsMargins(0, 0, 0, 0)
+            text_col.setSpacing(4)
+            title_label = QLabel(str(item.get('title', '')) or Path(str(item.get('file_path', ''))).stem)
+            title_label.setStyleSheet('font-size: 14px; font-weight: 700;')
+            title_label.setWordWrap(True)
+            text_col.addWidget(title_label)
+            artist_text = str(item.get('artist', '')).strip() or Path(str(item.get('file_path', ''))).name
+            artist_label = QLabel(artist_text)
+            artist_label.setProperty('cardSub', True)
+            artist_label.setWordWrap(True)
+            text_col.addWidget(artist_label)
+            layout.addLayout(text_col, 1)
+            index_label = QLabel(f'{index:02d}')
+            index_label.setStyleSheet('font-size: 12px; color: #9aa6b5; font-weight: 600;')
+            layout.addWidget(index_label, 0, Qt.AlignRight | Qt.AlignVCenter)
+            return row
 
         def convert_files(self):
             output_dir = self.output_edit.text().strip()
@@ -1442,7 +1849,9 @@ if QWidget is not None:
                 if deleted_count:
                     lines.append(f'🗑 删除：{deleted_count}个')
                 self.files = []
+                self.file_items = []
                 self.drop_zone.set_body_text(format_music_drop_summary(self.files))
+                self.refresh_song_list()
                 summary = f'转换完成: 成功{success_count} 个文件'
                 if delete_source:
                     summary += f'，删除NCM {deleted_count} 个'
@@ -2029,13 +2438,270 @@ if QWidget is not None:
                 show_themed_error(self, '处理失败', str(exc))
 
 
+    class AuthDialog(QDialog):
+        def __init__(self, settings, store_path: Path, parent=None):
+            super().__init__(parent)
+            self.settings = settings
+            self.store_path = Path(store_path)
+            self.current_theme = load_setting(settings, 'ui/theme', 'dark')
+            self.authenticated_username = ''
+            self.mode = 'login'
+            self.login_form_snapshot = None
+            self.setWindowTitle('登录')
+            self.setModal(True)
+            self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
+            self._drag_offset = None
+            self.resize(440, 360)
+            self._build_ui()
+            self.apply_theme()
+            self.restore_saved_state()
+
+        def _build_ui(self):
+            root = QVBoxLayout(self)
+            root.setContentsMargins(10, 10, 10, 10)
+            root.setSpacing(0)
+            self.content_surface = QWidget()
+            self.content_surface.setProperty('contentSurface', True)
+            content_layout = QVBoxLayout(self.content_surface)
+            content_layout.setContentsMargins(0, 0, 0, 0)
+            content_layout.setSpacing(0)
+            self.drag_bar = DragTitleBar(self)
+            self.drag_bar.title_label.setText('')
+            if hasattr(self, 'min_button'):
+                self.min_button.hide()
+            if hasattr(self, 'max_button'):
+                self.max_button.hide()
+            content_layout.addWidget(self.drag_bar)
+            body = QWidget()
+            body_layout = QVBoxLayout(body)
+            body_layout.setContentsMargins(24, 18, 24, 24)
+            body_layout.setSpacing(14)
+            self.title_label = QLabel('登录工具箱')
+            self.title_label.setProperty('brandTitle', True)
+            body_layout.addWidget(self.title_label)
+            self.subtitle_label = QLabel('请先登录后再进入工具箱')
+            self.subtitle_label.setProperty('cardSub', True)
+            self.subtitle_label.setWordWrap(True)
+            body_layout.addWidget(self.subtitle_label)
+            self.username_edit = QLineEdit()
+            self.username_edit.setPlaceholderText('用户名')
+            body_layout.addWidget(self.username_edit)
+            self.password_edit = QLineEdit()
+            self.password_edit.setPlaceholderText('密码')
+            self.password_edit.setEchoMode(QLineEdit.Password)
+            body_layout.addWidget(self.password_edit)
+            self.confirm_password_edit = QLineEdit()
+            self.confirm_password_edit.setPlaceholderText('确认密码')
+            self.confirm_password_edit.setEchoMode(QLineEdit.Password)
+            body_layout.addWidget(self.confirm_password_edit)
+            self.current_password_edit = QLineEdit()
+            self.current_password_edit.setPlaceholderText('当前密码')
+            self.current_password_edit.setEchoMode(QLineEdit.Password)
+            body_layout.addWidget(self.current_password_edit)
+            self.new_password_edit = QLineEdit()
+            self.new_password_edit.setPlaceholderText('新密码')
+            self.new_password_edit.setEchoMode(QLineEdit.Password)
+            body_layout.addWidget(self.new_password_edit)
+            self.new_password_confirm_edit = QLineEdit()
+            self.new_password_confirm_edit.setPlaceholderText('确认新密码')
+            self.new_password_confirm_edit.setEchoMode(QLineEdit.Password)
+            body_layout.addWidget(self.new_password_confirm_edit)
+            self.remember_checkbox = QCheckBox('记住密码')
+            self.auto_login_checkbox = QCheckBox('自动登录')
+            self.remember_checkbox.toggled.connect(self.on_remember_toggled)
+            self.auto_login_checkbox.toggled.connect(self.on_auto_login_toggled)
+            body_layout.addWidget(self.remember_checkbox)
+            body_layout.addWidget(self.auto_login_checkbox)
+            self.status_label = QLabel('')
+            self.status_label.setWordWrap(True)
+            body_layout.addWidget(self.status_label)
+            button_row = QHBoxLayout()
+            self.toggle_button = QPushButton('去注册')
+            self.toggle_button.clicked.connect(self.toggle_mode)
+            button_row.addWidget(self.toggle_button)
+            self.change_password_button = QPushButton('修改密码')
+            self.change_password_button.clicked.connect(lambda: self.refresh_mode('change_password'))
+            button_row.addWidget(self.change_password_button)
+            button_row.addStretch(1)
+            self.submit_button = QPushButton('登录')
+            self.submit_button.clicked.connect(self.submit)
+            button_row.addWidget(self.submit_button)
+            body_layout.addLayout(button_row)
+            content_layout.addWidget(body)
+            root.addWidget(self.content_surface)
+            self.close_button.clicked.disconnect()
+            self.close_button.clicked.connect(self.reject)
+
+        def restore_saved_state(self):
+            prefs = load_auth_preferences(self.settings)
+            self.username_edit.setText(str(prefs['last_username']))
+            self.remember_checkbox.setChecked(bool(prefs['remember_password']))
+            self.auto_login_checkbox.setChecked(bool(prefs['auto_login']))
+            if prefs['remember_password'] and prefs['last_username']:
+                saved_password = decode_saved_password(str(prefs['last_username']), str(prefs['saved_secret']))
+                if saved_password:
+                    self.password_edit.setText(saved_password)
+            state = build_auth_state(self.store_path)
+            self.refresh_mode(state['mode'])
+            auto_login_payload = should_auto_login(load_users(self.store_path), prefs)
+            if state['has_users'] and auto_login_payload is not None:
+                self.username_edit.setText(auto_login_payload['username'])
+                self.password_edit.setText(auto_login_payload['password'])
+                self.submit(auto_trigger=True)
+
+        def apply_theme(self):
+            self.setStyleSheet(get_theme_stylesheet(self.current_theme))
+            self._set_status_error_style()
+
+        def _set_status_error_style(self):
+            self.status_label.setStyleSheet('color: #d46a6a;' if self.current_theme == 'dark' else 'color: #b74c4c;')
+
+        def _set_status_success_style(self):
+            self.status_label.setStyleSheet('color: #6fa36f;' if self.current_theme == 'dark' else 'color: #3d8b5a;')
+
+        def start_window_drag(self, global_pos):
+            self._drag_offset = global_pos - self.frameGeometry().topLeft()
+
+        def update_window_drag(self, global_pos):
+            if self._drag_offset is None:
+                return
+            self.move(global_pos - self._drag_offset)
+
+        def stop_window_drag(self):
+            self._drag_offset = None
+
+        def toggle_max_restore(self):
+            return
+
+        def refresh_mode(self, mode: str):
+            previous_mode = self.mode
+            self.mode = mode if mode in {'register', 'change_password'} else 'login'
+            transitioned = prepare_auth_mode_fields(
+                previous_mode,
+                self.mode,
+                {
+                    'username': self.username_edit.text(),
+                    'password': self.password_edit.text(),
+                    'confirm_password': self.confirm_password_edit.text(),
+                    'current_password': self.current_password_edit.text(),
+                    'new_password': self.new_password_edit.text(),
+                    'new_password_confirm': self.new_password_confirm_edit.text(),
+                },
+                self.login_form_snapshot,
+            )
+            self.login_form_snapshot = transitioned['login_snapshot']
+            visible_fields = transitioned['visible_fields']
+            self.username_edit.setText(visible_fields['username'])
+            self.password_edit.setText(visible_fields['password'])
+            self.confirm_password_edit.setText(visible_fields['confirm_password'])
+            self.current_password_edit.setText(visible_fields['current_password'])
+            self.new_password_edit.setText(visible_fields['new_password'])
+            self.new_password_confirm_edit.setText(visible_fields['new_password_confirm'])
+            is_register = self.mode == 'register'
+            is_change = self.mode == 'change_password'
+            self.confirm_password_edit.setVisible(is_register)
+            self.current_password_edit.setVisible(is_change)
+            self.new_password_edit.setVisible(is_change)
+            self.new_password_confirm_edit.setVisible(is_change)
+            self.remember_checkbox.setVisible(not is_register and not is_change)
+            self.auto_login_checkbox.setVisible(not is_register and not is_change)
+            self.change_password_button.setVisible(self.mode == 'login' and build_auth_state(self.store_path)['has_users'])
+            if is_register:
+                self.title_label.setText('注册本地账号')
+                self.subtitle_label.setText('第一次使用请先注册，本地可保存多个账号。')
+                self.submit_button.setText('注册')
+                self.toggle_button.setText('去登录')
+            elif is_change:
+                self.title_label.setText('修改密码')
+                self.subtitle_label.setText('请输入当前密码并设置新密码。')
+                self.submit_button.setText('确认修改')
+                self.toggle_button.setText('返回登录')
+            else:
+                self.title_label.setText('登录工具箱')
+                self.subtitle_label.setText('请输入已注册的本地账号和密码。')
+                self.submit_button.setText('登录')
+                self.toggle_button.setText('去注册')
+            self.status_label.setText('')
+
+        def toggle_mode(self):
+            if self.mode == 'register':
+                self.refresh_mode('login')
+            elif self.mode == 'change_password':
+                self.refresh_mode('login')
+            else:
+                self.refresh_mode('register')
+
+        def on_remember_toggled(self, checked: bool):
+            if not checked and self.auto_login_checkbox.isChecked():
+                self.auto_login_checkbox.setChecked(False)
+
+        def on_auto_login_toggled(self, checked: bool):
+            if checked and not self.remember_checkbox.isChecked():
+                self.remember_checkbox.setChecked(True)
+
+        def submit(self, auto_trigger: bool = False):
+            username = self.username_edit.text().strip()
+            password = self.password_edit.text()
+            self._set_status_error_style()
+            if self.mode == 'change_password':
+                errors = validate_auth_form(username, self.new_password_edit.text(), confirm_password=self.new_password_confirm_edit.text(), is_register=True)
+                if not self.current_password_edit.text():
+                    errors.append('请输入当前密码')
+                if errors:
+                    self.status_label.setText('\n'.join(errors))
+                    return
+                try:
+                    update_user_password(self.store_path, username, self.current_password_edit.text(), self.new_password_edit.text())
+                except ValueError as exc:
+                    self.status_label.setText(str(exc))
+                    return
+                self._set_status_success_style()
+                self.status_label.setText('密码修改成功，请使用新密码登录。')
+                self.password_edit.setText(self.new_password_edit.text())
+                self.current_password_edit.clear()
+                self.new_password_edit.clear()
+                self.new_password_confirm_edit.clear()
+                self.refresh_mode('login')
+                return
+            confirm = self.confirm_password_edit.text()
+            errors = validate_auth_form(username, password, confirm_password=confirm, is_register=self.mode == 'register')
+            if errors:
+                self.status_label.setText('\n'.join(errors))
+                return
+            try:
+                if self.mode == 'register':
+                    register_user(self.store_path, username, password)
+                    self._set_status_success_style()
+                    self.status_label.setText('注册成功，请使用新账号登录。')
+                    self.password_edit.clear()
+                    self.confirm_password_edit.clear()
+                    self.refresh_mode('login')
+                    self.username_edit.setText(username)
+                    return
+                if not verify_user_credentials(self.store_path, username, password):
+                    self.status_label.setText('账号或密码错误')
+                    return
+                normalized = normalize_auth_preferences(self.remember_checkbox.isChecked(), self.auto_login_checkbox.isChecked())
+                saved_secret = encode_saved_password(username, password) if normalized['remember_password'] else ''
+                save_auth_preferences(self.settings, username, normalized['remember_password'], normalized['auto_login'], saved_secret)
+                self.authenticated_username = username
+                self.accept()
+            except ValueError as exc:
+                self.status_label.setText(str(exc))
+                return
+            if auto_trigger:
+                return
+
+
     class ToolboxWindow(QMainWindow):
-        def __init__(self, settings):
+        def __init__(self, settings, authenticated_username: str = ''):
             super().__init__()
             self.settings = settings
+            self.authenticated_username = authenticated_username.strip() or load_setting(settings, 'auth/last_user', '')
             self.current_theme = load_setting(settings, 'ui/theme', 'dark')
             self._drag_offset = None
             self._normal_geometry = None
+            self.relogin_requested = False
             self.setWindowFlags(self.windowFlags() | Qt.FramelessWindowHint)
             self.setWindowTitle('格式转换工具')
             self.resize(1180, 820)
@@ -2067,11 +2733,11 @@ if QWidget is not None:
             side_layout.setSpacing(14)
             brand = QLabel('  格式转换工具')
             brand.setProperty('brandTitle', True)
-            sub = QLabel('    Clean local toolbox')
+            sub = QLabel('    by HhhYl')
             sub.setProperty('brandSub', True)
             side_layout.addWidget(brand)
             side_layout.addWidget(sub)
-            self.theme_button = QPushButton('🌙' if self.current_theme == 'dark' else '☀️')
+            self.theme_button = QPushButton('☀️' if self.current_theme == 'dark' else '🌙')
             self.theme_button.setProperty('themeToggle', True)
             self.theme_button.setMinimumSize(44, 44)
             self.theme_button.setMaximumSize(44, 44)
@@ -2080,14 +2746,33 @@ if QWidget is not None:
             self.sidebar.setProperty('navList', True)
             self.sidebar.setFixedWidth(196)
             self.sidebar.addItem('NCM转换MP3')
-            self.sidebar.addItem('ZIP伪装PNG')
+            self.sidebar.addItem('图片伪装')
             self.sidebar.addItem('MP4转MP3')
             self.sidebar.addItem('图片格式互转')
             self.sidebar.addItem('PDF工具')
             self.sidebar.addItem('图片Base64')
             self.sidebar.setCurrentRow(0)
             side_layout.addWidget(self.sidebar, 1)
-            side_layout.addWidget(self.theme_button, 0, Qt.AlignHCenter | Qt.AlignBottom)
+            bottom_row = QHBoxLayout()
+            bottom_row.setContentsMargins(0, 0, 0, 0)
+            bottom_row.setSpacing(10)
+            self.user_avatar_button = QPushButton()
+            self.user_avatar_button.setProperty('themeToggle', True)
+            self.user_avatar_button.setMinimumSize(38, 38)
+            self.user_avatar_button.setMaximumSize(38, 38)
+            self.user_avatar_button.setCursor(Qt.PointingHandCursor)
+            self.user_avatar_button.clicked.connect(self.toggle_user_menu)
+            bottom_row.addWidget(self.user_avatar_button, 0, Qt.AlignLeft | Qt.AlignVCenter)
+            bottom_row.addWidget(self.theme_button, 0, Qt.AlignLeft | Qt.AlignVCenter)
+            self.hint_button = QPushButton('❕')
+            self.hint_button.setProperty('themeToggle', True)
+            self.hint_button.setMinimumSize(38, 38)
+            self.hint_button.setMaximumSize(38, 38)
+            self.hint_button.setCursor(Qt.PointingHandCursor)
+            self.hint_button.clicked.connect(self.toggle_help_popup)
+            bottom_row.addWidget(self.hint_button, 0, Qt.AlignLeft | Qt.AlignVCenter)
+            bottom_row.addStretch(1)
+            side_layout.addLayout(bottom_row)
             shell.addWidget(side_panel)
             self.stack = QStackedWidget()
             self.music_tab = MusicTab(settings)
@@ -2108,6 +2793,9 @@ if QWidget is not None:
             root_layout.addWidget(self.content_surface)
             self.setCentralWidget(root)
             self.central_surface = self.content_surface
+            self._build_user_menu()
+            self._build_help_popup()
+            self.update_user_menu_ui()
             self.update_window_controls()
 
         def start_window_drag(self, global_pos):
@@ -2141,6 +2829,137 @@ if QWidget is not None:
             self.max_button.setToolTip('还原' if is_max else '最大化')
             self.max_button.update()
 
+        def _build_user_menu(self):
+            self.user_menu = QFrame(self)
+            self.user_menu.setVisible(False)
+            self.user_menu.setFrameShape(QFrame.StyledPanel)
+            self.user_menu.setStyleSheet('border-radius: 18px; padding: 0px;')
+            layout = QVBoxLayout(self.user_menu)
+            layout.setContentsMargins(20, 20, 20, 20)
+            layout.setSpacing(14)
+            self.user_menu_name_label = QLabel('')
+            self.user_menu_name_label.setProperty('brandSub', True)
+            layout.addWidget(self.user_menu_name_label)
+            self.logout_button = QPushButton('退出账号')
+            self.logout_button.setMinimumHeight(40)
+            self.logout_button.clicked.connect(self.logout)
+            layout.addWidget(self.logout_button)
+            self.user_menu.resize(236, 148)
+
+        def _build_help_popup(self):
+            state = build_help_popup_state(WEIXIN_IMAGE_PATH)
+            self.help_overlay = QFrame(self)
+            self.help_overlay.setGeometry(self.rect())
+            self.help_overlay.setStyleSheet('background-color: rgba(0, 0, 0, 110); border-radius: 24px;')
+            self.help_overlay.setVisible(False)
+            self.help_popup = QFrame(self)
+            self.help_popup.setWindowFlags(Qt.SubWindow | Qt.FramelessWindowHint)
+            self.help_popup.setProperty('contentSurface', True)
+            self.help_popup.setAttribute(Qt.WA_StyledBackground, True)
+            self.help_popup.setStyleSheet('border-radius: 18px; padding: 10px;')
+            self.help_popup.setVisible(False)
+            layout = QVBoxLayout(self.help_popup)
+            layout.setContentsMargins(16, 16, 16, 16)
+            layout.setSpacing(10)
+            self.help_image_label = QLabel()
+            self.help_image_label.setAlignment(Qt.AlignCenter)
+            pixmap = QPixmap(str(state['image_path']))
+            scaled_pixmap = pixmap.scaled(
+                state['max_width'],
+                state['max_height'],
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation,
+            )
+            self.help_image_label.setPixmap(scaled_pixmap)
+            self.help_image_label.setMinimumSize(scaled_pixmap.size())
+            layout.addWidget(self.help_image_label)
+            self.help_caption_label = QLabel(state['caption'])
+            self.help_caption_label.setAlignment(Qt.AlignCenter)
+            self.help_caption_label.setProperty('cardSub', True)
+            self.help_caption_label.setStyleSheet(
+                f'font-size: {state["caption_font_size"]}px; font-weight: {state["caption_font_weight"]};'
+            )
+            layout.addWidget(self.help_caption_label)
+            self.help_popup.adjustSize()
+
+        def update_user_menu_ui(self):
+            state = build_user_menu_state(self.authenticated_username)
+            self.user_avatar_button.setText(state['avatar_text'])
+            self.user_avatar_button.setToolTip(state['username'])
+            self.user_avatar_button.setProperty('themeToggle', state['avatar_uses_theme_toggle_style'])
+            self.user_avatar_button.setMinimumSize(state['avatar_button_size'], state['avatar_button_size'])
+            self.user_avatar_button.setMaximumSize(state['avatar_button_size'], state['avatar_button_size'])
+            self.user_avatar_button.setStyleSheet(
+                f'border-radius: {state["avatar_border_radius"]}px; font-weight: 700; padding: 0px;'
+            )
+            self.user_menu.layout().setContentsMargins(
+                state['menu_padding'],
+                state['menu_padding'],
+                state['menu_padding'],
+                state['menu_padding'],
+            )
+            self.user_menu.layout().setSpacing(state['menu_spacing'])
+            self.user_menu.resize(state['menu_width'], state['menu_height'])
+            self.user_menu_name_label.setText(f'当前用户：{state["username"]}')
+            self.logout_button.setText(state['logout_text'])
+
+        def toggle_user_menu(self):
+            if self.user_menu.isVisible():
+                self.user_menu.hide()
+                return
+            button_pos = self.user_avatar_button.mapTo(self, self.user_avatar_button.rect().topLeft())
+            menu_x = button_pos.x() + self.user_avatar_button.width() - self.user_menu.width()
+            menu_y = button_pos.y() - self.user_menu.height() - 8
+            self.user_menu.move(max(12, menu_x), max(12, menu_y))
+            self.user_menu.show()
+            self.user_menu.raise_()
+
+        def show_help_popup(self):
+            self.help_overlay.setGeometry(self.rect())
+            self.help_overlay.setVisible(True)
+            self.help_overlay.raise_()
+            self.help_popup.adjustSize()
+            popup_x = max(12, (self.width() - self.help_popup.width()) // 2)
+            popup_y = max(12, (self.height() - self.help_popup.height()) // 2)
+            self.help_popup.move(popup_x, popup_y)
+            self.help_popup.setVisible(True)
+            self.help_popup.raise_()
+
+        def hide_help_popup(self):
+            self.help_popup.setVisible(False)
+            self.help_overlay.setVisible(False)
+
+        def toggle_help_popup(self):
+            if self.help_popup.isVisible():
+                self.hide_help_popup()
+                return
+            self.show_help_popup()
+
+        def handle_global_mouse_press(self, global_pos):
+            if not self.help_popup.isVisible():
+                return
+            local_pos = self.mapFromGlobal(global_pos)
+            if self.rect().contains(local_pos):
+                self.hide_help_popup()
+
+        def mousePressEvent(self, event):
+            if self.help_popup.isVisible() and event is not None:
+                self.handle_global_mouse_press(event.globalPosition().toPoint() if hasattr(event, 'globalPosition') else event.globalPos())
+                event.accept()
+                return
+            super().mousePressEvent(event)
+
+        def resizeEvent(self, event):
+            super().resizeEvent(event)
+            if hasattr(self, 'help_overlay'):
+                self.help_overlay.setGeometry(self.rect())
+
+        def logout(self):
+            self.relogin_requested = True
+            save_setting(self.settings, 'auth/auto_login', '0')
+            self.user_menu.hide()
+            self.close()
+
         def switch_tool_page(self, index: int):
             animate_stack_switch(self.stack, index)
 
@@ -2151,7 +2970,7 @@ if QWidget is not None:
         def toggle_theme(self):
             self.current_theme = 'light' if self.current_theme == 'dark' else 'dark'
             save_setting(self.settings, 'ui/theme', self.current_theme)
-            self.theme_button.setText('🌙' if self.current_theme == 'dark' else '☀️')
+            self.theme_button.setText('☀️' if self.current_theme == 'dark' else '🌙')
             style_combo_popup(self.image_convert_tab.jpg_background_combo, self.current_theme)
             style_combo_popup(self.base64_tab.mode_combo, self.current_theme)
             self.setStyleSheet(get_theme_stylesheet(self.current_theme))
@@ -2163,16 +2982,28 @@ if QWidget is not None:
         os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
         app = QApplication.instance() or QApplication([])
         settings = make_settings(settings_dir)
-        window = ToolboxWindow(settings)
+        ensure_default_admin_user(get_user_store_path(settings_dir))
+        window = ToolboxWindow(settings, load_setting(settings, 'auth/last_user', 'admin'))
         return window, app
 
 
     def main():
         app = QApplication.instance() or QApplication(sys.argv)
         settings = make_settings(str(APP_DIR))
-        window = ToolboxWindow(settings)
-        window.show()
-        return app.exec()
+        ensure_default_admin_user(get_user_store_path(APP_DIR))
+        while True:
+            auth_dialog = AuthDialog(settings, get_user_store_path(APP_DIR))
+            result = auth_dialog.result()
+            if result != QDialog.Accepted:
+                result = auth_dialog.exec()
+            if result != QDialog.Accepted:
+                return 0
+            save_setting(settings, 'auth/last_user', auth_dialog.authenticated_username)
+            window = ToolboxWindow(settings, auth_dialog.authenticated_username)
+            window.show()
+            app.exec()
+            if not window.relogin_requested:
+                return 0
 else:
     def build_main_window_for_test(settings_dir: str):
         raise RuntimeError('PySide6 is not installed in this Python environment')

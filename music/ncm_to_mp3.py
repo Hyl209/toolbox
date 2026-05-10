@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import argparse
+import base64
+import json
 import sys
 from pathlib import Path
 
@@ -7,6 +9,10 @@ try:
     from ncmdump import dump
 except ModuleNotFoundError:
     dump = None
+
+
+SUPPORTED_IMAGE_SUFFIXES = {'.jpg', '.jpeg', '.png', '.webp', '.bmp', '.gif'}
+DEFAULT_COVER_MIME = 'image/jpeg'
 
 
 def probe_converter_backend() -> tuple[bool, str]:
@@ -32,6 +38,94 @@ def collect_input_paths(paths: list[Path]) -> list[Path]:
         for item in collect_ncm_files(Path(path)):
             unique[item.resolve()] = None
     return sorted(unique.keys())
+
+
+def _read_ncm_metadata_block(src: Path) -> dict:
+    data = src.read_bytes()
+    marker = b'music:'
+    start = data.find(marker)
+    if start == -1:
+        return {}
+    brace_start = data.find(b'{', start)
+    if brace_start == -1:
+        return {}
+    depth = 0
+    in_string = False
+    escape = False
+    for index in range(brace_start, len(data)):
+        byte = data[index]
+        if in_string:
+            if escape:
+                escape = False
+            elif byte == 0x5C:
+                escape = True
+            elif byte == 0x22:
+                in_string = False
+            continue
+        if byte == 0x22:
+            in_string = True
+        elif byte == 0x7B:
+            depth += 1
+        elif byte == 0x7D:
+            depth -= 1
+            if depth == 0:
+                payload = data[brace_start:index + 1]
+                try:
+                    return json.loads(payload.decode('utf-8', errors='ignore'))
+                except json.JSONDecodeError:
+                    return {}
+    return {}
+
+
+def _guess_mime_from_path(path: Path) -> str:
+    suffix = path.suffix.lower()
+    if suffix == '.png':
+        return 'image/png'
+    if suffix == '.webp':
+        return 'image/webp'
+    if suffix == '.gif':
+        return 'image/gif'
+    if suffix == '.bmp':
+        return 'image/bmp'
+    return DEFAULT_COVER_MIME
+
+
+def _extract_cover_info(src: Path, metadata: dict) -> dict[str, str]:
+    album_pic = metadata.get('albumPic')
+    if isinstance(album_pic, str) and album_pic.strip().startswith('data:image'):
+        return {'cover_data_url': album_pic.strip()}
+    same_stem = src.with_suffix('.jpg')
+    candidates = [same_stem]
+    candidates.extend(src.with_suffix(ext) for ext in SUPPORTED_IMAGE_SUFFIXES if ext != '.jpg')
+    for candidate in candidates:
+        if candidate.exists() and candidate.is_file():
+            encoded = base64.b64encode(candidate.read_bytes()).decode('ascii')
+            mime = _guess_mime_from_path(candidate)
+            return {'cover_data_url': f'data:{mime};base64,{encoded}'}
+    return {'cover_data_url': ''}
+
+
+def extract_song_info(src: Path) -> dict[str, str]:
+    src = src.resolve()
+    metadata = _read_ncm_metadata_block(src)
+    title = str(metadata.get('musicName') or src.stem).strip() or src.stem
+    artists = metadata.get('artist') or []
+    artist_names: list[str] = []
+    if isinstance(artists, list):
+        for item in artists:
+            if isinstance(item, list) and item:
+                artist_names.append(str(item[0]).strip())
+            elif isinstance(item, str):
+                artist_names.append(item.strip())
+    artist_text = ' / '.join(name for name in artist_names if name)
+    info = {
+        'file_path': str(src),
+        'title': title,
+        'artist': artist_text,
+        'display_name': f'{title} - {artist_text}' if artist_text else title,
+    }
+    info.update(_extract_cover_info(src, metadata))
+    return info
 
 
 def convert_file(src: Path, output_dir: Path | None = None, overwrite: bool = False) -> Path:
