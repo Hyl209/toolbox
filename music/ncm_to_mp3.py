@@ -6,6 +6,13 @@ import sys
 from pathlib import Path
 
 try:
+    from mutagen import File as MutagenFile
+    from mutagen.id3 import APIC
+except ModuleNotFoundError:
+    MutagenFile = None
+    APIC = None
+
+try:
     from ncmdump import dump
 except ModuleNotFoundError:
     dump = None
@@ -94,15 +101,70 @@ def _extract_cover_info(src: Path, metadata: dict) -> dict[str, str]:
     album_pic = metadata.get('albumPic')
     if isinstance(album_pic, str) and album_pic.strip().startswith('data:image'):
         return {'cover_data_url': album_pic.strip()}
-    same_stem = src.with_suffix('.jpg')
-    candidates = [same_stem]
+    candidates: list[Path] = []
+    candidates.append(src.with_suffix('.jpg'))
     candidates.extend(src.with_suffix(ext) for ext in SUPPORTED_IMAGE_SUFFIXES if ext != '.jpg')
+    candidates.extend(src.parent.glob('AlbumArt*'))
+    candidates.extend(src.parent.glob('Folder*'))
+    seen: set[Path] = set()
     for candidate in candidates:
-        if candidate.exists() and candidate.is_file():
+        candidate = candidate.resolve()
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        if candidate.exists() and candidate.is_file() and candidate.suffix.lower() in SUPPORTED_IMAGE_SUFFIXES:
             encoded = base64.b64encode(candidate.read_bytes()).decode('ascii')
             mime = _guess_mime_from_path(candidate)
             return {'cover_data_url': f'data:{mime};base64,{encoded}'}
     return {'cover_data_url': ''}
+
+
+def _read_mp3_tag_info(mp3_path: Path) -> dict[str, str]:
+    if MutagenFile is None:
+        return {}
+    try:
+        audio = MutagenFile(mp3_path)
+    except Exception:
+        return {}
+    if audio is None:
+        return {}
+    result: dict[str, str] = {}
+    try:
+        title = audio.get('TIT2')
+        if title:
+            result['title'] = str(title)
+    except Exception:
+        pass
+    try:
+        artist = audio.get('TPE1')
+        if artist:
+            result['artist'] = str(artist)
+    except Exception:
+        pass
+    try:
+        apic = audio.get('APIC:') or audio.get('APIC')
+        if apic and getattr(apic, 'data', None):
+            mime = getattr(apic, 'mime', DEFAULT_COVER_MIME) or DEFAULT_COVER_MIME
+            encoded = base64.b64encode(apic.data).decode('ascii')
+            result['cover_data_url'] = f'data:{mime};base64,{encoded}'
+    except Exception:
+        pass
+    return result
+
+
+def enrich_song_info_from_mp3(item: dict[str, str], mp3_path: Path) -> dict[str, str]:
+    enriched = dict(item)
+    tag_info = _read_mp3_tag_info(mp3_path.resolve())
+    if not tag_info:
+        return enriched
+    title = str(tag_info.get('title') or enriched.get('title') or Path(str(enriched.get('file_path', ''))).stem).strip()
+    artist = str(tag_info.get('artist') or enriched.get('artist') or '').strip()
+    enriched['title'] = title
+    enriched['artist'] = artist
+    enriched['display_name'] = f'{title} - {artist}' if artist else title
+    if tag_info.get('cover_data_url'):
+        enriched['cover_data_url'] = str(tag_info['cover_data_url'])
+    return enriched
 
 
 def extract_song_info(src: Path) -> dict[str, str]:

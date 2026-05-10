@@ -13,6 +13,8 @@ a = Analysis(
         ('image-convert/converter.py', 'image-convert'),
         ('pdf-tools/converter.py', 'pdf-tools'),
         ('logo.png', '.'),
+        ('users.json', '.'),
+        ('hyl_toolbox.ini', '.'),
     ],
     hiddenimports=['ncmdump'],
     hookspath=[],

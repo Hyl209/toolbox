@@ -26,12 +26,13 @@ def build_help_popup_state(image_path: Path):
     }
 
 try:
-    from PySide6.QtCore import QSettings, Qt, QPoint, QSize, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, QEventLoop, QTimer
+    from PySide6.QtCore import QSettings, Qt, QPoint, QSize, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, QEventLoop, QTimer, QFileInfo
     from PySide6.QtGui import QIcon, QPixmap, QPainter, QPen, QColor
     from PySide6.QtWidgets import (
         QApplication,
         QCheckBox,
         QFileDialog,
+        QFileIconProvider,
         QFrame,
         QGraphicsOpacityEffect,
         QHBoxLayout,
@@ -45,6 +46,7 @@ try:
         QPlainTextEdit,
         QProgressBar,
         QScrollArea,
+        QSpacerItem,
         QStackedWidget,
         QVBoxLayout,
         QWidget,
@@ -65,9 +67,10 @@ except ModuleNotFoundError:
     QEventLoop = None
     QTimer = None
     QIcon = QPixmap = QPainter = QPen = QColor = None
-    QCheckBox = QFileDialog = QFrame = QGraphicsOpacityEffect = QHBoxLayout = QLabel = QLineEdit = QListWidget = QListView = None
+    QFileInfo = None
+    QCheckBox = QFileDialog = QFileIconProvider = QFrame = QGraphicsOpacityEffect = QHBoxLayout = QLabel = QLineEdit = QListWidget = QListView = None
     QMainWindow = QMessageBox = QPushButton = QPlainTextEdit = QProgressBar = QStackedWidget = QDialog = None
-    QVBoxLayout = QWidget = QComboBox = QSizePolicy = QStyledItemDelegate = QScrollArea = None
+    QVBoxLayout = QWidget = QComboBox = QSizePolicy = QStyledItemDelegate = QScrollArea = QSpacerItem = None
 
 ROOT = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
 SOURCE_DIR = Path(__file__).resolve().parent
@@ -286,15 +289,16 @@ QCheckBox {
 }
 QProgressBar {
     border: none;
-    border-radius: 8px;
+    border-radius: 10px;
     background: #2f3640;
     text-align: center;
-    min-height: 8px;
-    max-height: 8px;
+    min-height: 18px;
+    max-height: 18px;
+    padding: 0 4px;
 }
 QProgressBar::chunk {
     background-color: #7ea6d9;
-    border-radius: 8px;
+    border-radius: 10px;
 }
 QFrame[card='true'],
 QFrame[panel='true'] {
@@ -303,8 +307,8 @@ QFrame[panel='true'] {
     border-radius: 26px;
 }
 QFrame[dropzone='true'] {
-    background-color: rgba(43, 49, 58, 0.92);
-    border: 1px solid #4b5562;
+    background-color: rgba(44, 50, 59, 0.88);
+    border: 1px solid #3f4652;
     border-radius: 22px;
 }
 QFrame[dropzone='true'][active='true'] {
@@ -545,15 +549,16 @@ QCheckBox {
 }
 QProgressBar {
     border: none;
-    border-radius: 8px;
+    border-radius: 10px;
     background: #dde5ee;
     text-align: center;
-    min-height: 8px;
-    max-height: 8px;
+    min-height: 18px;
+    max-height: 18px;
+    padding: 0 4px;
 }
 QProgressBar::chunk {
     background-color: #8fb4e8;
-    border-radius: 8px;
+    border-radius: 10px;
 }
 QFrame[card='true'],
 QFrame[panel='true'] {
@@ -562,8 +567,8 @@ QFrame[panel='true'] {
     border-radius: 26px;
 }
 QFrame[dropzone='true'] {
-    background-color: rgba(248, 250, 253, 0.88);
-    border: 1px solid #d8e0ea;
+    background-color: rgba(255, 255, 255, 0.76);
+    border: 1px solid #d9dfe7;
     border-radius: 22px;
 }
 QFrame[dropzone='true'][active='true'] {
@@ -1045,13 +1050,7 @@ def split_dropped_files(paths: list[str]) -> dict[str, str]:
 
 
 def format_music_drop_summary(files: list[Path]) -> str:
-    if not files:
-        return '拖入 .ncm 文件或文件夹'
-    names = [p.stem for p in files[:3]]
-    text = '\n'.join(names)
-    if len(files) > 3:
-        text += f'\n…共 {len(files)} 首歌曲'
-    return text
+    return '拖入ncm文件'
 
 
 def get_music_file_items(paths: list[str]) -> list[dict[str, str]]:
@@ -1064,6 +1063,60 @@ def build_music_item_text(item: dict[str, str]) -> str:
     title = str(item.get('title', '')).strip() or Path(str(item.get('file_path', ''))).stem
     artist = str(item.get('artist', '')).strip()
     return f'{title}\n{artist}' if artist else title
+
+
+def format_music_log_added(items: list[dict[str, str]]) -> str:
+    if not items:
+        return '🫥 没有新增歌曲'
+    lines = ['🎵 已添加歌曲', '────────────']
+    for index, item in enumerate(items, start=1):
+        title = str(item.get('title', '')).strip() or Path(str(item.get('file_path', ''))).stem
+        artist = str(item.get('artist', '')).strip()
+        lines.append(f'• {index:02d}｜{title}')
+        if artist:
+            lines.append(f'   👤 {artist}')
+    return '\n'.join(lines)
+
+
+def format_music_log_output_dir(output_dir: str) -> str:
+    return f'📁 输出目录\n────────────\n{output_dir}'
+
+
+def format_music_log_success(src: Path, out: Path) -> str:
+    return '\n'.join([
+        '✅ 转换成功',
+        '────────────',
+        f'🎵 {src.name}',
+        f'💿 {out.name}',
+    ])
+
+
+def format_music_log_delete(src: Path) -> str:
+    return f'🗑 已删除原文件\n────────────\n{src.name}'
+
+
+def format_music_log_delete_failed(src: Path, exc: Exception) -> str:
+    return f'⚠️ 删除失败\n────────────\n{src.name}\n{exc}'
+
+
+def format_music_log_missing_dependency(message: str) -> str:
+    return f'⚠️ 缺少依赖\n────────────\n{message}'
+
+
+def format_music_log_summary(success_count: int, fail_count: int, deleted_count: int) -> str:
+    lines = [
+        '✨ 转换完成',
+        '────────────',
+        f'✅ 成功：{success_count}',
+        f'❌ 失败：{fail_count}',
+    ]
+    if deleted_count:
+        lines.append(f'🗑 删除：{deleted_count}')
+    return '\n'.join(lines)
+
+
+def format_music_log_error(exc: Exception) -> str:
+    return f'❌ 转换失败\n────────────\n{exc}'
 
 
 def load_pixmap_from_data_url(data_url: str):
@@ -1281,6 +1334,29 @@ def get_base64_mode_value(label: str) -> str:
     return mapping.get(label, label)
 
 
+def build_global_scrollbar_style() -> str:
+    return (
+        'QScrollBar:vertical {background: transparent; width: 10px; margin: 6px 0 6px 0;} '
+        'QScrollBar::handle:vertical {background: rgba(125, 147, 181, 0.62); min-height: 36px; border-radius: 5px;} '
+        'QScrollBar::handle:vertical:hover {background: rgba(125, 147, 181, 0.82);} '
+        'QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {height: 0px; background: transparent; border: none;} '
+        'QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {background: transparent;} '
+        'QScrollBar:horizontal {background: transparent; height: 10px; margin: 0 6px 0 6px;} '
+        'QScrollBar::handle:horizontal {background: rgba(125, 147, 181, 0.62); min-width: 36px; border-radius: 5px;} '
+        'QScrollBar::handle:horizontal:hover {background: rgba(125, 147, 181, 0.82);} '
+        'QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {width: 0px; background: transparent; border: none;} '
+        'QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {background: transparent;}'
+    )
+
+
+def build_music_scroll_area_style() -> str:
+    return (
+        'QScrollArea {border: none; background: transparent;} '
+        'QScrollArea > QWidget > QWidget {background: transparent;} '
+        + build_global_scrollbar_style()
+    )
+
+
 if QWidget is not None:
     def make_card(title: str, subtitle: str = ''):
         frame = QFrame()
@@ -1383,6 +1459,18 @@ if QWidget is not None:
         return animation
 
 
+    def resolve_theme_name(widget) -> str:
+        current = widget
+        visited = set()
+        while current is not None and id(current) not in visited:
+            visited.add(id(current))
+            theme_name = getattr(current, 'current_theme', None)
+            if theme_name in {'dark', 'light'}:
+                return theme_name
+            current = current.parentWidget() if hasattr(current, 'parentWidget') else None
+        return 'light'
+
+
     class ThemedMessageDialog(QDialog):
         def __init__(self, parent, title: str, lines: list[str], button_text: str = '完成'):
             super().__init__(parent)
@@ -1391,7 +1479,7 @@ if QWidget is not None:
             self.setAttribute(Qt.WA_StyledBackground, False)
             self.setAttribute(Qt.WA_TranslucentBackground, True)
             self._closed_with_fade = False
-            theme_name = getattr(parent, 'current_theme', 'light') if parent is not None else 'light'
+            theme_name = resolve_theme_name(parent)
             if theme_name == 'dark':
                 surface = '#232933'
                 title_color = '#f4f7fb'
@@ -1453,6 +1541,11 @@ if QWidget is not None:
 
 
     def show_themed_message(parent, title: str, lines: list[str], button_text: str = '完成'):
+        theme_owner = parent
+        while theme_owner is not None and not hasattr(theme_owner, 'current_theme'):
+            theme_owner = theme_owner.parentWidget() if hasattr(theme_owner, 'parentWidget') else None
+        if theme_owner is not None:
+            theme_owner.setStyleSheet(get_theme_stylesheet(theme_owner.current_theme))
         dialog = ThemedMessageDialog(parent, title, lines, button_text)
         if QEventLoop is None or QTimer is None:
             dialog.exec()
@@ -1527,6 +1620,8 @@ if QWidget is not None:
 
 
     class DropZoneCard(QFrame):
+        _icon_provider = None
+
         def __init__(self, body_text: str, on_files_dropped=None):
             super().__init__()
             self.on_files_dropped = on_files_dropped
@@ -1542,34 +1637,95 @@ if QWidget is not None:
             self.preview_label.setAlignment(Qt.AlignCenter)
             self.preview_label.setMinimumHeight(120)
             self.preview_label.hide()
-            layout.addStretch(1)
-            layout.addWidget(self.preview_label)
-            self.body_label = QLabel(body_text)
-            self.body_label.setProperty('dropBody', True)
+            self.header_label = QLabel(body_text)
+            self.header_label.setProperty('dropBody', True)
+            self.header_label.setAlignment(Qt.AlignCenter)
+            self.header_label.setWordWrap(True)
+            self.body_label = QLabel('')
+            self.body_label.setProperty('cardSub', True)
             self.body_label.setAlignment(Qt.AlignCenter)
             self.body_label.setWordWrap(True)
+            self.body_label.hide()
+            self.content_widget = None
+            self.top_spacer = QSpacerItem(20, 0, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
+            self.bottom_spacer = QSpacerItem(20, 0, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
+            layout.addItem(self.top_spacer)
+            layout.addWidget(self.preview_label)
+            layout.addWidget(self.header_label)
             layout.addWidget(self.body_label)
-            layout.addStretch(1)
+            layout.addItem(self.bottom_spacer)
+            self._layout = layout
+
+        @classmethod
+        def _get_icon_provider(cls):
+            if QFileIconProvider is None:
+                return None
+            if cls._icon_provider is None:
+                cls._icon_provider = QFileIconProvider()
+            return cls._icon_provider
+
+        def _show_preview_pixmap(self, pixmap, header_text: str = '', body_text: str = ''):
+            if pixmap is None or pixmap.isNull():
+                self.set_body_text('\n\n'.join(part for part in [header_text, body_text] if part))
+                return
+            self.preview_label.setPixmap(pixmap)
+            self.preview_label.show()
+            self.header_label.setText(header_text or self.empty_text)
+            self.header_label.show()
+            self.body_label.setText(body_text)
+            self.body_label.setVisible(bool(body_text))
 
         def set_body_text(self, text: str):
-            self.body_label.setText(text)
-            self.body_label.setVisible(bool(text))
+            header, _, body = text.partition('\n\n')
+            header = header.strip() or self.empty_text
+            body = body.strip()
+            self.header_label.setText(header)
+            self.header_label.show()
+            self.body_label.setText(body)
+            self.body_label.setVisible(bool(body))
             if text:
                 self.preview_label.hide()
                 self.preview_label.clear()
 
-        def set_preview_image(self, path: str):
+        def set_preview_image(self, path: str, header_text: str = '', body_text: str = ''):
             if QPixmap is None:
-                self.set_body_text(Path(path).name)
+                self.set_body_text('\n\n'.join(part for part in [header_text or Path(path).name, body_text] if part))
                 return
             pixmap = QPixmap(path)
             if pixmap.isNull():
-                self.set_body_text(Path(path).name)
+                self.set_body_text('\n\n'.join(part for part in [header_text or Path(path).name, body_text] if part))
                 return
             scaled = pixmap.scaled(220, 140, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            self.preview_label.setPixmap(scaled)
-            self.preview_label.show()
-            self.body_label.hide()
+            self._show_preview_pixmap(scaled, header_text, body_text)
+
+        def set_preview_file_icon(self, path: str, header_text: str = '', body_text: str = ''):
+            icon_provider = self._get_icon_provider()
+            if icon_provider is None or QFileInfo is None or QPixmap is None:
+                self.set_body_text('\n\n'.join(part for part in [header_text or Path(path).name, body_text] if part))
+                return
+            icon = icon_provider.icon(QFileInfo(path))
+            pixmap = icon.pixmap(QSize(72, 72)) if not icon.isNull() else QPixmap()
+            self._show_preview_pixmap(pixmap, header_text, body_text)
+
+        def set_content_widget(self, widget):
+            if self.content_widget is widget:
+                return
+            if self.content_widget is not None:
+                self._layout.removeWidget(self.content_widget)
+                self.content_widget.setParent(None)
+            self.content_widget = widget
+            if widget is not None:
+                self._layout.insertWidget(4, widget)
+
+        def set_content_mode(self, has_content: bool):
+            self.top_spacer.changeSize(20, 0, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum if has_content else QSizePolicy.Policy.Expanding)
+            self.bottom_spacer.changeSize(20, 0, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum if has_content else QSizePolicy.Policy.Expanding)
+            self.header_label.setVisible(not has_content)
+            self.body_label.setVisible(False if has_content else bool(self.body_label.text().strip()))
+            self.preview_label.setVisible(False if has_content else not self.preview_label.pixmap().isNull() if self.preview_label.pixmap() is not None else False)
+            if self.content_widget is not None:
+                self.content_widget.setVisible(has_content)
+            self._layout.invalidate()
 
         def dragEnterEvent(self, event):
             if event.mimeData().hasUrls():
@@ -1686,22 +1842,21 @@ if QWidget is not None:
             self.file_items: list[dict[str, str]] = []
             root = QVBoxLayout(self)
             card, layout = make_card('NCM转换MP3')
-            self.drop_zone = DropZoneCard('拖入 .ncm 文件或文件夹', self.add_paths)
-            layout.addWidget(self.drop_zone)
-            self.song_list_hint = QLabel('已添加歌曲')
-            self.song_list_hint.setProperty('cardSub', True)
-            layout.addWidget(self.song_list_hint)
+            self.drop_zone = DropZoneCard('拖入.ncm文件', self.add_paths)
             self.song_list_scroll = QScrollArea()
             self.song_list_scroll.setWidgetResizable(True)
-            self.song_list_scroll.setMinimumHeight(220)
+            self.song_list_scroll.setMinimumHeight(260)
             self.song_list_scroll.setFrameShape(QFrame.NoFrame)
-            self.song_list_scroll.setStyleSheet('QScrollArea {border: none; background: transparent;}')
+            self.song_list_scroll.setStyleSheet(build_music_scroll_area_style())
             self.song_list_container = QWidget()
+            self.song_list_container.setStyleSheet('background: transparent;')
             self.song_list_layout = QVBoxLayout(self.song_list_container)
             self.song_list_layout.setContentsMargins(0, 0, 0, 0)
-            self.song_list_layout.setSpacing(10)
+            self.song_list_layout.setSpacing(8)
+            self.song_list_layout.setAlignment(Qt.AlignTop)
             self.song_list_scroll.setWidget(self.song_list_container)
-            layout.addWidget(self.song_list_scroll)
+            self.drop_zone.set_content_widget(self.song_list_scroll)
+            layout.addWidget(self.drop_zone)
             row = QHBoxLayout()
             self.output_edit = QLineEdit(load_setting(settings, 'music/output_dir'))
             self.output_edit.setPlaceholderText('选择输出目录')
@@ -1716,6 +1871,9 @@ if QWidget is not None:
             self.delete_source_checkbox = QCheckBox('删除原 NCM')
             action_row.addWidget(self.delete_source_checkbox)
             action_row.addStretch(1)
+            self.clear_files_button = QPushButton('清空文件')
+            self.clear_files_button.clicked.connect(self.clear_selected_files)
+            action_row.addWidget(self.clear_files_button)
             self.convert_button = QPushButton('开始转换')
             self.convert_button.clicked.connect(self.convert_files)
             action_row.addWidget(self.convert_button)
@@ -1725,6 +1883,7 @@ if QWidget is not None:
             self.log = QPlainTextEdit()
             self.log.setReadOnly(True)
             self.log.setMinimumHeight(140)
+            self.log.setStyleSheet(build_global_scrollbar_style())
             layout.addWidget(self.log)
             root.addWidget(card)
             self.refresh_song_list()
@@ -1742,41 +1901,53 @@ if QWidget is not None:
                     self.file_items.append(normalized)
                     existing.add(file_path)
                     new_items.append(normalized)
-            self.drop_zone.set_body_text(format_music_drop_summary(self.files))
             self.refresh_song_list()
-            if new_items:
-                self.log.appendPlainText('\n'.join(str(item.get('display_name', '')) for item in new_items))
-            else:
-                self.log.appendPlainText('没有新增歌曲')
+            self.log.appendPlainText(format_music_log_added(new_items))
 
         def choose_output_dir(self):
             path = QFileDialog.getExistingDirectory(self, '选择输出目录', self.output_edit.text() or str(ROOT))
             if path:
                 self.output_edit.setText(path)
                 save_setting(self.settings, 'music/output_dir', path)
+                self.log.appendPlainText(format_music_log_output_dir(path))
 
         def refresh_song_list(self):
+            has_items = bool(self.file_items)
+            self.drop_zone.set_body_text(format_music_drop_summary(self.files))
+            self.drop_zone.set_content_mode(has_items)
+            self.clear_files_button.setEnabled(has_items)
             while self.song_list_layout.count():
                 item = self.song_list_layout.takeAt(0)
                 widget = item.widget()
                 if widget is not None:
                     widget.deleteLater()
-            if not self.file_items:
-                empty = QLabel('暂时还没有歌曲喵，拖一点 .ncm 进来吧~')
-                empty.setProperty('cardSub', True)
-                empty.setAlignment(Qt.AlignCenter)
-                empty.setMinimumHeight(80)
-                self.song_list_layout.addWidget(empty)
-                self.song_list_layout.addStretch(1)
+            if not has_items:
                 return
             for index, item in enumerate(self.file_items, start=1):
                 self.song_list_layout.addWidget(self.build_song_item_widget(index, item))
             self.song_list_layout.addStretch(1)
 
+        def clear_selected_files(self):
+            if not self.file_items:
+                return
+            cleared_count = len(self.file_items)
+            self.files = []
+            self.file_items = []
+            self.refresh_song_list()
+            self.log.appendPlainText(f'已清空 {cleared_count} 个待转换文件')
+
+        def remove_song_item(self, file_path: str):
+            target = Path(file_path).resolve()
+            original_count = len(self.file_items)
+            self.file_items = [item for item in self.file_items if Path(str(item.get('file_path', ''))).resolve() != target]
+            self.files = [path for path in self.files if path.resolve() != target]
+            if len(self.file_items) != original_count:
+                self.refresh_song_list()
+                self.log.appendPlainText(f'已移除: {target.stem}')
+
         def build_song_item_widget(self, index: int, item: dict[str, str]):
             row = QFrame()
-            row.setProperty('card', True)
-            row.setStyleSheet('QFrame[card="true"] {border-radius: 18px; padding: 0px;}')
+            row.setStyleSheet('background: transparent; border: none;')
             layout = QHBoxLayout(row)
             layout.setContentsMargins(14, 12, 14, 12)
             layout.setSpacing(12)
@@ -1806,6 +1977,16 @@ if QWidget is not None:
             index_label = QLabel(f'{index:02d}')
             index_label.setStyleSheet('font-size: 12px; color: #9aa6b5; font-weight: 600;')
             layout.addWidget(index_label, 0, Qt.AlignRight | Qt.AlignVCenter)
+            remove_button = QPushButton('✕')
+            remove_button.setCursor(Qt.PointingHandCursor)
+            remove_button.setFixedWidth(18)
+            remove_button.setFlat(True)
+            remove_button.setStyleSheet(
+                'QPushButton {border: none; background: transparent; color: #aeb8c6; font-size: 14px; font-weight: 700; padding: 0px;} '
+                'QPushButton:hover {background: transparent; color: #f3c1c1;}'
+            )
+            remove_button.clicked.connect(lambda _checked=False, path=str(item.get('file_path', '')): self.remove_song_item(path))
+            layout.addWidget(remove_button, 0, Qt.AlignRight | Qt.AlignVCenter)
             return row
 
         def convert_files(self):
@@ -1819,27 +2000,33 @@ if QWidget is not None:
             available, message = get_music_backend_status()
             if not available:
                 show_themed_warning(self, '缺少依赖', message)
-                self.log.appendPlainText(f'ERROR {message}')
+                self.log.appendPlainText(format_music_log_missing_dependency(message))
                 return
             save_setting(self.settings, 'music/output_dir', output_dir)
-            self.log.appendPlainText(f'已保存输出目录: {output_dir}')
+            self.log.appendPlainText(format_music_log_output_dir(output_dir))
             self.progress.setMaximum(max(1, len(self.files)))
             self.progress.setValue(0)
             delete_source = self.delete_source_checkbox.isChecked()
             ncm_module = _load_ncm_module()
             success_count = 0
             deleted_count = 0
+            info_by_src = {Path(str(item.get('file_path', ''))).resolve(): item for item in self.file_items}
             try:
                 for idx, (src, out) in enumerate(ncm_module.convert_many(self.files, Path(output_dir), self.overwrite_checkbox.isChecked()), start=1):
-                    self.log.appendPlainText(f'OK {src} -> {out}')
+                    src_path = Path(src).resolve()
+                    out_path = Path(out).resolve()
+                    if src_path in info_by_src:
+                        enriched = ncm_module.enrich_song_info_from_mp3(info_by_src[src_path], out_path)
+                        info_by_src[src_path].update(enriched)
+                    self.log.appendPlainText(format_music_log_success(src_path, out_path))
                     success_count += 1
-                    if delete_source and Path(out).exists():
+                    if delete_source and out_path.exists():
                         try:
-                            Path(src).unlink()
+                            src_path.unlink()
                             deleted_count += 1
-                            self.log.appendPlainText(f'DELETED {src}')
+                            self.log.appendPlainText(format_music_log_delete(src_path))
                         except Exception as exc:
-                            self.log.appendPlainText(f'DELETE FAILED {src}: {exc}')
+                            self.log.appendPlainText(format_music_log_delete_failed(src_path, exc))
                     self.progress.setValue(idx)
                 fail_count = max(0, len(self.files) - success_count)
                 lines = [
@@ -1848,17 +2035,14 @@ if QWidget is not None:
                 ]
                 if deleted_count:
                     lines.append(f'🗑 删除：{deleted_count}个')
+                self.refresh_song_list()
                 self.files = []
                 self.file_items = []
-                self.drop_zone.set_body_text(format_music_drop_summary(self.files))
                 self.refresh_song_list()
-                summary = f'转换完成: 成功{success_count} 个文件'
-                if delete_source:
-                    summary += f'，删除NCM {deleted_count} 个'
                 show_themed_success(self, '完成', lines)
-                self.log.appendPlainText(summary)
+                self.log.appendPlainText(format_music_log_summary(success_count, fail_count, deleted_count))
             except Exception as exc:
-                self.log.appendPlainText(f'ERROR {exc}')
+                self.log.appendPlainText(format_music_log_error(exc))
                 show_themed_error(self, '转换失败', str(exc))
 
 
@@ -1881,6 +2065,9 @@ if QWidget is not None:
             layout.addLayout(row)
             action_row = QHBoxLayout()
             action_row.addStretch(1)
+            self.clear_files_button = QPushButton('清空文件')
+            self.clear_files_button.clicked.connect(self.clear_form)
+            action_row.addWidget(self.clear_files_button)
             self.convert_button = QPushButton('开始转换')
             self.convert_button.clicked.connect(self.convert_files)
             action_row.addWidget(self.convert_button)
@@ -1890,6 +2077,7 @@ if QWidget is not None:
             self.log = QPlainTextEdit()
             self.log.setReadOnly(True)
             self.log.setMinimumHeight(140)
+            self.log.setStyleSheet(build_global_scrollbar_style())
             layout.addWidget(self.log)
             root.addWidget(card)
 
@@ -1903,7 +2091,14 @@ if QWidget is not None:
                     self.files.append(resolved)
                     existing.add(resolved)
                     new_files.append(resolved)
-            self.drop_zone.set_body_text(format_mp4_drop_summary(self.files))
+            if self.files:
+                self.drop_zone.set_preview_file_icon(
+                    str(self.files[0]),
+                    header_text=f'已添加 {len(self.files)} 个视频',
+                    body_text='\n'.join(p.stem for p in self.files[:3]) + (f'\n... 另有 {len(self.files) - 3} 个视频' if len(self.files) > 3 else ''),
+                )
+            else:
+                self.drop_zone.set_body_text(format_mp4_drop_summary(self.files))
             if new_files:
                 self.log.appendPlainText('\n'.join(p.stem for p in new_files))
             else:
@@ -1916,8 +2111,11 @@ if QWidget is not None:
                 save_setting(self.settings, 'mp4mp3/output_dir', path)
 
         def clear_form(self):
+            had_files = bool(self.files)
             self.files = []
             self.drop_zone.set_body_text(format_mp4_drop_summary(self.files))
+            if had_files:
+                self.log.appendPlainText('已清空待转换视频')
 
         def convert_files(self):
             output_dir = self.output_edit.text().strip()
@@ -1972,6 +2170,9 @@ if QWidget is not None:
             layout.addLayout(row)
             action_row = QHBoxLayout()
             action_row.addStretch(1)
+            self.clear_files_button = QPushButton('清空文件')
+            self.clear_files_button.clicked.connect(self.clear_form)
+            action_row.addWidget(self.clear_files_button)
             self.start_button = QPushButton('开始伪装')
             self.start_button.clicked.connect(self.run_disguise)
             action_row.addWidget(self.start_button)
@@ -1979,6 +2180,7 @@ if QWidget is not None:
             self.log = QPlainTextEdit()
             self.log.setReadOnly(True)
             self.log.setMinimumHeight(140)
+            self.log.setStyleSheet(build_global_scrollbar_style())
             layout.addWidget(self.log)
             root.addWidget(card)
 
@@ -1986,12 +2188,20 @@ if QWidget is not None:
             result = split_dropped_files(paths)
             if result['payload']:
                 self.payload_path = result['payload']
-                self.payload_drop.set_body_text(format_drop_card_text(self.payload_path, '拖入 zip / exe / pdf / mp4 等任意文件'))
+                self.payload_drop.set_preview_file_icon(
+                    self.payload_path,
+                    header_text='已添加载荷文件',
+                    body_text=Path(self.payload_path).name,
+                )
                 if not self.output_name_edit.text().strip():
                     self.output_name_edit.setText(Path(self.payload_path).stem)
             if result['cover_png'] and not self.cover_path:
                 self.cover_path = result['cover_png']
-                self.cover_drop.set_preview_image(self.cover_path)
+                self.cover_drop.set_preview_image(
+                    self.cover_path,
+                    header_text='已添加封面图',
+                    body_text=Path(self.cover_path).name,
+                )
 
         def handle_cover_drop(self, paths: list[str]):
             allowed = {'.png', '.jpg', '.jpeg', '.gif', '.webp'}
@@ -1999,7 +2209,11 @@ if QWidget is not None:
                 path = Path(raw)
                 if path.suffix.lower() in allowed:
                     self.cover_path = str(path.resolve())
-                    self.cover_drop.set_preview_image(self.cover_path)
+                    self.cover_drop.set_preview_image(
+                        self.cover_path,
+                        header_text='已添加封面图',
+                        body_text=Path(self.cover_path).name,
+                    )
                     break
 
         def choose_output_dir(self):
@@ -2009,11 +2223,15 @@ if QWidget is not None:
                 save_setting(self.settings, 'zipandpng/output_dir', path)
 
         def clear_form(self):
+            had_payload = bool(self.payload_path)
+            had_cover = bool(self.cover_path)
             self.payload_path = ''
             self.cover_path = ''
             self.payload_drop.set_body_text('拖入 zip / exe / pdf / mp4 等任意文件')
             self.cover_drop.set_body_text('拖入 PNG / JPG / GIF / WEBP 封面')
             self.output_name_edit.clear()
+            if had_payload or had_cover:
+                self.log.appendPlainText('已清空伪装文件与封面')
 
         def run_disguise(self):
             errors = validate_zipandpng_form(
@@ -2086,6 +2304,9 @@ if QWidget is not None:
             layout.addLayout(output_row)
             action_row = QHBoxLayout()
             action_row.addStretch(1)
+            self.clear_files_button = QPushButton('清空文件')
+            self.clear_files_button.clicked.connect(self.clear_form)
+            action_row.addWidget(self.clear_files_button)
             self.convert_button = QPushButton('开始转换')
             self.convert_button.clicked.connect(self.convert_files)
             action_row.addWidget(self.convert_button)
@@ -2095,24 +2316,23 @@ if QWidget is not None:
             self.log = QPlainTextEdit()
             self.log.setReadOnly(True)
             self.log.setMinimumHeight(140)
+            self.log.setStyleSheet(build_global_scrollbar_style())
             layout.addWidget(self.log)
             root.addWidget(card)
 
         def add_paths(self, paths: list[str]):
             files = collect_image_convert_inputs(paths)
-            existing = {p.resolve() for p in self.files}
-            new_files: list[Path] = []
-            for file in files:
-                resolved = file.resolve()
-                if resolved not in existing:
-                    self.files.append(resolved)
-                    existing.add(resolved)
-                    new_files.append(resolved)
-            self.drop_zone.set_body_text(format_image_convert_drop_summary(self.files))
-            if new_files:
-                self.log.appendPlainText('\n'.join(p.name for p in new_files))
-            else:
+            if not files:
                 self.log.appendPlainText('没有新增图片')
+                return
+            picked = files[0].resolve()
+            self.files = [picked]
+            self.drop_zone.set_preview_image(
+                str(picked),
+                header_text='',
+                body_text=picked.name,
+            )
+            self.log.appendPlainText(picked.name)
 
         def choose_output_dir(self):
             path = QFileDialog.getExistingDirectory(self, '选择输出目录', self.output_edit.text() or str(ROOT))
@@ -2121,8 +2341,11 @@ if QWidget is not None:
                 save_setting(self.settings, 'imageconvert/output_dir', path)
 
         def clear_form(self):
+            had_files = bool(self.files)
             self.files = []
             self.drop_zone.set_body_text(format_image_convert_drop_summary(self.files))
+            if had_files:
+                self.log.appendPlainText('已清空待转换图片')
 
         def convert_files(self):
             target_format = self.format_combo.currentText()
@@ -2185,6 +2408,7 @@ if QWidget is not None:
             self.action_combo.setMinimumWidth(132)
             self.action_combo.currentTextChanged.connect(self.update_action_ui)
             action_row.addWidget(self.action_combo)
+            style_combo_popup(self.action_combo, load_setting(settings, 'ui/theme', 'dark'))
             action_row.addWidget(QLabel('页码范围'))
             self.page_ranges_edit = QLineEdit('')
             self.page_ranges_edit.setPlaceholderText('例如 1-3,5')
@@ -2194,20 +2418,22 @@ if QWidget is not None:
             self.image_format_combo.addItems(['png', 'jpg', 'webp'])
             self.image_format_combo.setMinimumWidth(132)
             action_row.addWidget(self.image_format_combo)
+            style_combo_popup(self.image_format_combo, load_setting(settings, 'ui/theme', 'dark'))
             action_row.addWidget(QLabel('DPI'))
             self.dpi_edit = QLineEdit('150')
             action_row.addWidget(self.dpi_edit)
             layout.addLayout(action_row)
-            text_row = QHBoxLayout()
+            text_row_widget, text_row = make_transparent_row()
             self.text_format_label = QLabel('文本格式')
             text_row.addWidget(self.text_format_label)
             self.text_format_combo = QComboBox()
             self.text_format_combo.addItems(['txt', 'docx'])
             text_row.addWidget(self.text_format_combo)
+            style_combo_popup(self.text_format_combo, load_setting(settings, 'ui/theme', 'dark'))
             self.ocr_checkbox = QCheckBox('文字层为空时启用 OCR')
             text_row.addWidget(self.ocr_checkbox)
             text_row.addStretch(1)
-            layout.addLayout(text_row)
+            layout.addWidget(text_row_widget)
             output_row = QHBoxLayout()
             self.output_edit = QLineEdit(load_setting(settings, 'pdftools/output_dir'))
             self.output_edit.setPlaceholderText('选择输出目录')
@@ -2218,6 +2444,9 @@ if QWidget is not None:
             layout.addLayout(output_row)
             button_row = QHBoxLayout()
             button_row.addStretch(1)
+            self.clear_files_button = QPushButton('清空文件')
+            self.clear_files_button.clicked.connect(self.clear_form)
+            button_row.addWidget(self.clear_files_button)
             self.run_button = QPushButton('开始处理')
             self.run_button.clicked.connect(self.run_action)
             button_row.addWidget(self.run_button)
@@ -2227,6 +2456,7 @@ if QWidget is not None:
             self.log = QPlainTextEdit()
             self.log.setReadOnly(True)
             self.log.setMinimumHeight(140)
+            self.log.setStyleSheet(build_global_scrollbar_style())
             layout.addWidget(self.log)
             root.addWidget(card)
             self.update_action_ui(self.action_combo.currentText())
@@ -2241,7 +2471,14 @@ if QWidget is not None:
                     self.files.append(resolved)
                     existing.add(resolved)
                     new_files.append(resolved)
-            self.drop_zone.set_body_text(format_pdf_drop_summary(self.files))
+            if self.files:
+                self.drop_zone.set_preview_file_icon(
+                    str(self.files[0]),
+                    header_text=f'已添加 {len(self.files)} 个PDF',
+                    body_text='\n'.join(p.stem for p in self.files[:3]) + (f'\n... 另有 {len(self.files) - 3} 个PDF' if len(self.files) > 3 else ''),
+                )
+            else:
+                self.drop_zone.set_body_text(format_pdf_drop_summary(self.files))
             if new_files:
                 self.log.appendPlainText('\n'.join(p.name for p in new_files))
             else:
@@ -2254,8 +2491,11 @@ if QWidget is not None:
                 save_setting(self.settings, 'pdftools/output_dir', path)
 
         def clear_form(self):
+            had_files = bool(self.files)
             self.files = []
             self.drop_zone.set_body_text(format_pdf_drop_summary(self.files))
+            if had_files:
+                self.log.appendPlainText('已清空待处理 PDF')
 
         def update_action_ui(self, action: str):
             action_value = get_pdf_action_value(action)
@@ -2337,6 +2577,7 @@ if QWidget is not None:
             self.base64_edit = QPlainTextEdit()
             self.base64_edit.setPlaceholderText('可直接粘贴 Base64 或 data:image/...;base64,...')
             self.base64_edit.setMinimumHeight(150)
+            self.base64_edit.setStyleSheet(build_global_scrollbar_style())
             layout.addWidget(self.base64_edit)
             name_row = QHBoxLayout()
             name_row.addWidget(QLabel('输出文件名'))
@@ -2353,6 +2594,9 @@ if QWidget is not None:
             layout.addLayout(output_row)
             action_row = QHBoxLayout()
             action_row.addStretch(1)
+            self.clear_files_button = QPushButton('清空文件')
+            self.clear_files_button.clicked.connect(self.clear_form)
+            action_row.addWidget(self.clear_files_button)
             self.run_button = QPushButton('开始处理')
             self.run_button.clicked.connect(self.run_action)
             action_row.addWidget(self.run_button)
@@ -2360,28 +2604,26 @@ if QWidget is not None:
             self.log = QPlainTextEdit()
             self.log.setReadOnly(True)
             self.log.setMinimumHeight(140)
+            self.log.setStyleSheet(build_global_scrollbar_style())
             layout.addWidget(self.log)
             root.addWidget(card)
             self.update_mode_ui(self.mode_combo.currentText())
 
         def add_paths(self, paths: list[str]):
             files = collect_base64_image_inputs(paths)
-            existing = {p.resolve() for p in self.files}
-            new_files: list[Path] = []
-            for file in files:
-                resolved = file.resolve()
-                if resolved not in existing:
-                    self.files.append(resolved)
-                    existing.add(resolved)
-                    new_files.append(resolved)
-            self.drop_zone.set_body_text(format_base64_drop_summary(self.files))
-            if new_files:
-                picked = new_files[0]
-                if not self.output_name_edit.text().strip() or self.output_name_edit.text().strip() == 'output':
-                    self.output_name_edit.setText(picked.stem)
-                self.log.appendPlainText('\n'.join(p.name for p in new_files))
-            else:
+            if not files:
                 self.log.appendPlainText('没有新增图片')
+                return
+            picked = files[0].resolve()
+            self.files = [picked]
+            if not self.output_name_edit.text().strip() or self.output_name_edit.text().strip() == 'output':
+                self.output_name_edit.setText(picked.stem)
+            self.drop_zone.set_preview_image(
+                str(picked),
+                header_text='',
+                body_text=picked.name,
+            )
+            self.log.appendPlainText(picked.name)
 
         def choose_output_dir(self):
             path = QFileDialog.getExistingDirectory(self, '选择输出目录', self.output_edit.text() or str(ROOT))
@@ -2390,10 +2632,13 @@ if QWidget is not None:
                 save_setting(self.settings, 'base64/output_dir', path)
 
         def clear_form(self):
+            had_files = bool(self.files)
             self.files = []
             self.drop_zone.set_body_text(format_base64_drop_summary(self.files))
             if self.mode_combo.currentText() == '图片转Base64':
                 self.base64_edit.clear()
+            if had_files:
+                self.log.appendPlainText('已清空待编码图片')
 
         def update_mode_ui(self, label: str):
             mode = get_base64_mode_value(label)
@@ -2745,6 +2990,7 @@ if QWidget is not None:
             self.sidebar = QListWidget()
             self.sidebar.setProperty('navList', True)
             self.sidebar.setFixedWidth(196)
+            self.sidebar.setStyleSheet(build_global_scrollbar_style())
             self.sidebar.addItem('NCM转换MP3')
             self.sidebar.addItem('图片伪装')
             self.sidebar.addItem('MP4转MP3')
@@ -2973,9 +3219,17 @@ if QWidget is not None:
             self.theme_button.setText('☀️' if self.current_theme == 'dark' else '🌙')
             style_combo_popup(self.image_convert_tab.jpg_background_combo, self.current_theme)
             style_combo_popup(self.base64_tab.mode_combo, self.current_theme)
+            style_combo_popup(self.pdf_tools_tab.action_combo, self.current_theme)
+            style_combo_popup(self.pdf_tools_tab.image_format_combo, self.current_theme)
+            style_combo_popup(self.pdf_tools_tab.text_format_combo, self.current_theme)
             self.setStyleSheet(get_theme_stylesheet(self.current_theme))
             self.content_surface.setGraphicsEffect(None)
             self.update_window_controls()
+            self.update_user_menu_ui()
+            if hasattr(self, 'user_menu') and self.user_menu.isVisible():
+                self.user_menu.hide()
+            if hasattr(self, 'help_popup') and self.help_popup.isVisible():
+                self.hide_help_popup()
 
 
     def build_main_window_for_test(settings_dir: str):
