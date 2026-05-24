@@ -1,17 +1,41 @@
+# Python 缓存
 __pycache__/
 *.pyc
-.pytest_cache/
-.venv/
-build/
-dist/
-mp4-mp3/mp4mp3_config.json
-__pycache__/
-*.pyc
+*.pyo
+*.pyd
+
+# 测试 / 虚拟环境
 .pytest_cache/
 .venv/
 */.venv/
 .venv-pytest/
 */.venv-pytest/
+
+# 打包编译输出
 build/
 dist/
+*.spec
+*.exe
+
+# 配置文件（不提交）
 mp4-mp3/mp4mp3_config.json
+hyl_toolbox.ini
+users.json
+
+# 日志 / 临时文件
+*.log
+archive_*.txt
+*.tmp
+*.temp
+
+# ==============================================
+# 只忽略 音乐、图片、视频、压缩包（不影响代码）
+# ==============================================
+*.mp3
+*.mp4
+*.wav
+*.flac
+*.ogg
+*.zip
+*.rar
+*.7z
