@@ -1,21 +1,26 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 
+from PyInstaller.utils.hooks import collect_data_files
+
+music_datas = collect_data_files('music', includes=['weixin.png'])
+
 a = Analysis(
     ['hyl_toolbox.py'],
     pathex=[],
     binaries=[],
     datas=[
-        ('music/ncm_to_mp3.py', 'music'),
+        ('music\\ncm_to_mp3.py', 'music'),
         ('mp4-mp3/converter.py', 'mp4-mp3'),
         ('mp4-mp3/config_store.py', 'mp4-mp3'),
         ('zipandpng/zipandpng.py', 'zipandpng'),
         ('image-convert/converter.py', 'image-convert'),
         ('pdf-tools/converter.py', 'pdf-tools'),
+        ('same/converter.py', 'same'),
         ('logo.png', '.'),
         ('users.json', '.'),
         ('hyl_toolbox.ini', '.'),
-    ],
+    ] + music_datas,
     hiddenimports=['ncmdump'],
     hookspath=[],
     hooksconfig={},

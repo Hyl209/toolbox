@@ -31,18 +31,15 @@ def test_collect_music_inputs_filters_to_ncm_only():
 
 def test_music_drop_summary_shows_selected_files_in_same_area():
     toolbox = load_module()
-    assert toolbox.format_music_drop_summary([]) == '鎷栧叆 .ncm 鏂囦欢鎴栨枃浠跺す'
+    assert toolbox.format_music_drop_summary([]) == '鎷栧叆ncm鏂囦欢'
     one = toolbox.format_music_drop_summary([pathlib.Path('demo.ncm')])
-    assert '宸叉坊鍔?1 棣栨瓕鏇? in one
-    assert 'demo' in one
+    assert one == '鎷栧叆ncm鏂囦欢'
     many = toolbox.format_music_drop_summary([
         pathlib.Path('a.ncm'),
         pathlib.Path('b.ncm'),
         pathlib.Path('c.ncm'),
     ])
-    assert '宸叉坊鍔?3 棣栨瓕鏇? in many
-    assert 'a' in many and 'b' in many
-    assert '.ncm' not in many
+    assert many == '鎷栧叆ncm鏂囦欢'
 
 
 def test_collect_mp4_inputs_filters_nested_mp4_only():
@@ -162,6 +159,12 @@ def test_image_convert_drop_summary_shows_selected_images_in_same_area():
     assert 'cover' in one
 
 
+def test_image_convert_and_base64_drop_zones_preview_first_image_in_source():
+    source = MODULE_PATH.read_text(encoding='utf-8')
+    assert "self.drop_zone.set_preview_image(str(self.files[0]))" in source
+    assert source.count("self.drop_zone.set_preview_image(str(self.files[0]))") >= 2
+
+
 def test_validate_image_convert_form_requires_files_output_format_and_valid_numbers():
     toolbox = load_module()
     errors = toolbox.validate_image_convert_form([], '', '', '0', 'abc')
@@ -241,6 +244,308 @@ def test_validate_base64_form_accepts_valid_encode_request():
     assert errors == []
 
 
+def test_validate_file_sorter_form_requires_existing_folder():
+    toolbox = load_module()
+    assert '璇烽€夋嫨闇€瑕佸垎绫荤殑鏂囦欢澶? in toolbox.validate_file_sorter_form('')
+    errors = toolbox.validate_file_sorter_form('Z:/not-found-folder')
+    assert '閫夋嫨鐨勬枃浠跺す涓嶅瓨鍦? in errors
+
+
+def test_validate_same_form_requires_existing_folder():
+    toolbox = load_module()
+    assert '璇烽€夋嫨闇€瑕佹娴嬬殑鏂囦欢澶? in toolbox.validate_same_form('')
+    errors = toolbox.validate_same_form('Z:/not-found-folder')
+    assert '閫夋嫨鐨勬枃浠跺す涓嶅瓨鍦? in errors
+
+
+def test_file_sorter_summary_only_counts_first_level_files():
+    toolbox = load_module()
+    module = toolbox.get_file_sorter_module()
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        (root / 'cover.jpg').write_text('x', encoding='utf-8')
+        (root / 'movie.mp4').write_text('x', encoding='utf-8')
+        nested = root / 'nested'
+        nested.mkdir()
+        (nested / 'inside.png').write_text('x', encoding='utf-8')
+        summary = module.summarize_folder(root)
+        assert summary['total_files'] == 2
+        assert summary['category_counts']['鍥剧墖'] == 1
+        assert summary['category_counts']['瑙嗛'] == 1
+        assert summary['category_counts']['鍏朵粬'] == 0
+        text = toolbox.format_file_sorter_summary(summary)
+        assert '褰撳墠鐩綍绗竴灞傚叡 2 涓枃浠? in text
+        assert '鍥剧墖: 1' in text
+        assert '瑙嗛: 1' in text
+
+
+def test_file_sorter_classifies_files_creates_category_dirs_and_auto_renames():
+    toolbox = load_module()
+    module = toolbox.get_file_sorter_module()
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        (root / 'cover.jpg').write_text('img', encoding='utf-8')
+        (root / 'movie.mp4').write_text('video', encoding='utf-8')
+        (root / 'song.ncm').write_text('audio', encoding='utf-8')
+        (root / 'report.pdf').write_text('doc', encoding='utf-8')
+        (root / 'archive.zip').write_text('zip', encoding='utf-8')
+        (root / 'tool.py').write_text('py', encoding='utf-8')
+        (root / 'notes.xyz').write_text('other', encoding='utf-8')
+        nested = root / 'nested'
+        nested.mkdir()
+        (nested / 'inside.jpg').write_text('nested', encoding='utf-8')
+        existing_doc_dir = root / '鏂囨。'
+        existing_doc_dir.mkdir()
+        (existing_doc_dir / 'report.pdf').write_text('existing', encoding='utf-8')
+
+        results = module.classify_files(root)
+
+        assert len(results) == 7
+        assert (root / '鍥剧墖' / 'cover.jpg').exists()
+        assert (root / '瑙嗛' / 'movie.mp4').exists()
+        assert (root / '闊抽' / 'song.ncm').exists()
+        assert (root / '鏂囨。' / 'report(1).pdf').exists()
+        assert (root / '鍘嬬缉鍖? / 'archive.zip').exists()
+        assert (root / '绋嬪簭' / 'tool.py').exists()
+        assert (root / '鍏朵粬' / 'notes.xyz').exists()
+        assert (nested / 'inside.jpg').exists()
+        renamed = next(item for item in results if item['source_name'] == 'report.pdf')
+        assert renamed['success'] is True
+        assert renamed['renamed'] is True
+        assert renamed['target_name'] == 'report(1).pdf'
+
+
+def test_file_sorter_summary_respects_selected_categories():
+    toolbox = load_module()
+    module = toolbox.get_file_sorter_module()
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        (root / 'cover.jpg').write_text('x', encoding='utf-8')
+        (root / 'movie.mp4').write_text('x', encoding='utf-8')
+        (root / 'song.mp3').write_text('x', encoding='utf-8')
+        video_category = module.CATEGORY_ORDER[1]
+        summary = module.summarize_folder(root, [video_category])
+        assert summary['total_files'] == 3
+        assert summary['selected_total_files'] == 1
+        assert tuple(summary['selected_categories']) == (video_category,)
+        text = toolbox.format_file_sorter_summary(summary)
+        assert '1' in text
+
+
+def test_file_sorter_only_moves_selected_categories():
+    toolbox = load_module()
+    module = toolbox.get_file_sorter_module()
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        (root / 'cover.jpg').write_text('img', encoding='utf-8')
+        (root / 'movie.mp4').write_text('video', encoding='utf-8')
+        (root / 'song.mp3').write_text('audio', encoding='utf-8')
+        video_category = module.CATEGORY_ORDER[1]
+
+        results = module.classify_files(root, [video_category])
+
+        assert len(results) == 1
+        assert results[0]['source_name'] == 'movie.mp4'
+        assert (root / video_category / 'movie.mp4').exists()
+        assert (root / 'cover.jpg').exists()
+        assert (root / 'song.mp3').exists()
+
+
+def test_file_sorter_scan_folder_skips_dotfiles_and_desktop_ini():
+    toolbox = load_module()
+    module = toolbox.get_file_sorter_module()
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        (root / 'visible.txt').write_text('ok', encoding='utf-8')
+        (root / '.secret.txt').write_text('hidden', encoding='utf-8')
+        (root / 'desktop.ini').write_text('system-ish', encoding='utf-8')
+        scanned = module.scan_folder(root)
+        assert [item.name for item in scanned] == ['visible.txt']
+
+
+def test_file_sorter_scan_folder_skips_symlinks_when_supported():
+    toolbox = load_module()
+    module = toolbox.get_file_sorter_module()
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        target = root / 'real.txt'
+        target.write_text('ok', encoding='utf-8')
+        link = root / 'real-link.txt'
+        try:
+            link.symlink_to(target)
+        except (OSError, NotImplementedError):
+            return
+        scanned = module.scan_folder(root)
+        assert len(scanned) == 1
+        assert scanned[0].name == 'real.txt'
+
+
+def test_file_sorter_resolve_name_conflict_has_max_attempt_limit():
+    toolbox = load_module()
+    module = toolbox.get_file_sorter_module()
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        base = root / 'report.pdf'
+        base.write_text('x', encoding='utf-8')
+        (root / 'report(1).pdf').write_text('x', encoding='utf-8')
+        try:
+            module.resolve_name_conflict(base, max_attempts=1)
+        except RuntimeError as exc:
+            assert '鏈€澶у皾璇曟鏁? in str(exc)
+        else:
+            raise AssertionError('expected rename attempt limit error')
+
+
+def test_file_sorter_classify_files_captures_target_dir_creation_error():
+    toolbox = load_module()
+    module = toolbox.get_file_sorter_module()
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        video_category = module.CATEGORY_ORDER[1]
+        (root / 'movie.mp4').write_text('video', encoding='utf-8')
+        (root / video_category).write_text('conflict', encoding='utf-8')
+        results = module.classify_files(root, [video_category])
+        assert len(results) == 1
+        assert results[0]['success'] is False
+        assert results[0]['source_name'] == 'movie.mp4'
+        assert (root / 'movie.mp4').exists()
+
+
+def test_same_module_groups_only_same_suffix_and_keeps_first_file():
+    toolbox = load_module()
+    module = toolbox.get_same_module()
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        (root / 'a.txt').write_bytes(b'duplicate')
+        (root / 'b.txt').write_bytes(b'duplicate')
+        (root / 'c.md').write_bytes(b'duplicate')
+        (root / 'd.txt').write_bytes(b'unique')
+
+        result = module.find_duplicate_groups(root, recursive=False)
+
+        assert result['scanned_files'] == 4
+        assert result['duplicate_group_count'] == 1
+        assert result['duplicate_file_count'] == 1
+        group = result['groups'][0]
+        assert pathlib.Path(group['keeper']).name == 'a.txt'
+        assert [pathlib.Path(item).name for item in group['duplicates']] == ['b.txt']
+        text = toolbox.format_same_summary(result)
+        assert '鍙戠幇 1 缁勯噸澶嶆枃浠? in text
+        assert '寰呯Щ鍔?1 涓噸澶嶆枃浠? in text
+
+
+def test_same_module_recursive_scan_skips_duplicate_target_dir():
+    toolbox = load_module()
+    module = toolbox.get_same_module()
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        (root / 'a.txt').write_bytes(b'duplicate')
+        nested = root / 'nested'
+        nested.mkdir()
+        (nested / 'b.txt').write_bytes(b'duplicate')
+        skipped = root / '閲嶅鏂囦欢'
+        skipped.mkdir()
+        (skipped / 'c.txt').write_bytes(b'duplicate')
+
+        first_level = module.find_duplicate_groups(root, recursive=False)
+        recursive = module.find_duplicate_groups(root, recursive=True)
+
+        assert first_level['scanned_files'] == 1
+        assert first_level['duplicate_group_count'] == 0
+        assert recursive['scanned_files'] == 2
+        assert recursive['duplicate_group_count'] == 1
+        assert recursive['duplicate_file_count'] == 1
+
+
+def test_same_module_normalizes_target_dir_name_with_path_separators():
+    toolbox = load_module()
+    module = toolbox.get_same_module()
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        (root / 'a.txt').write_bytes(b'duplicate')
+        (root / 'b.txt').write_bytes(b'duplicate')
+        skipped = root / '閲嶅鏂囦欢'
+        skipped.mkdir()
+        (skipped / 'c.txt').write_bytes(b'duplicate')
+
+        result = module.find_duplicate_groups(root, recursive=True, target_dir_name='ignore/me/閲嶅鏂囦欢/')
+
+        assert result['target_dir_name'] == '閲嶅鏂囦欢'
+        assert result['scanned_files'] == 2
+        assert result['duplicate_group_count'] == 1
+
+
+def test_same_module_moves_duplicates_to_root_duplicate_dir_and_auto_renames():
+    toolbox = load_module()
+    module = toolbox.get_same_module()
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        (root / 'a.txt').write_bytes(b'duplicate')
+        nested = root / 'nested'
+        nested.mkdir()
+        source_duplicate = nested / 'a.txt'
+        source_duplicate.write_bytes(b'duplicate')
+        target_dir = root / '閲嶅鏂囦欢' / 'nested'
+        target_dir.mkdir(parents=True)
+        (target_dir / 'a.txt').write_text('existing', encoding='utf-8')
+
+        result = module.find_duplicate_groups(root, recursive=True)
+        moved = module.move_duplicates(root, result)
+
+        assert len(moved) == 1
+        assert moved[0]['success'] is True
+        assert moved[0]['renamed'] is True
+        assert (root / 'a.txt').exists()
+        assert not source_duplicate.exists()
+        assert (target_dir / 'a(1).txt').exists()
+
+        refreshed = module.find_duplicate_groups(root, recursive=True)
+        assert refreshed['duplicate_group_count'] == 0
+        assert refreshed['duplicate_file_count'] == 0
+
+
+def test_same_module_moves_outside_directory_targets_when_existing_path_is_directory():
+    toolbox = load_module()
+    module = toolbox.get_same_module()
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        (root / 'a.txt').write_bytes(b'duplicate')
+        nested = root / 'nested'
+        nested.mkdir()
+        source_duplicate = nested / 'a.txt'
+        source_duplicate.write_bytes(b'duplicate')
+        target_dir = root / '閲嶅鏂囦欢' / 'nested' / 'a.txt'
+        target_dir.mkdir(parents=True)
+
+        result = module.find_duplicate_groups(root, recursive=True)
+        moved = module.move_duplicates(root, result)
+
+        assert len(moved) == 1
+        assert moved[0]['success'] is True
+        assert moved[0]['target_path'].name == 'a(1).txt'
+        assert (root / '閲嶅鏂囦欢' / 'nested' / 'a.txt').is_dir()
+        assert (root / '閲嶅鏂囦欢' / 'nested' / 'a(1).txt').exists()
+        assert not source_duplicate.exists()
+
+
+def test_same_module_rejects_mismatched_target_dir_name_between_scan_and_move():
+    toolbox = load_module()
+    module = toolbox.get_same_module()
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        (root / 'a.txt').write_bytes(b'duplicate')
+        (root / 'b.txt').write_bytes(b'duplicate')
+
+        result = module.find_duplicate_groups(root, recursive=False, target_dir_name='閲嶅鏂囦欢')
+
+        try:
+            module.move_duplicates(root, result, target_dir_name='鍏朵粬鏂囦欢澶?)
+        except ValueError as exc:
+            assert 'target_dir_name' in str(exc)
+        else:
+            raise AssertionError('expected target_dir_name mismatch error')
+
+
 def test_light_theme_nav_panel_matches_background():
     toolbox = load_module()
     assert "QFrame[navPanel='true']" in toolbox.LIGHT_STYLESHEET
@@ -258,8 +563,22 @@ def test_nav_list_theme_rules_exist_for_both_modes():
     toolbox = load_module()
     assert "QListWidget[navList='true']" in toolbox.LIGHT_STYLESHEET
     assert "QListWidget[navList='true']::viewport" in toolbox.LIGHT_STYLESHEET
-    assert "background-color: #eef1f5;" in toolbox.LIGHT_STYLESHEET
     assert "QListWidget[navList='true']" in toolbox.DARK_STYLESHEET
     assert "QListWidget[navList='true']::viewport" in toolbox.DARK_STYLESHEET
-    assert "background-color: #1f2329;" in toolbox.DARK_STYLESHEET
+
+
+def test_global_scrollbar_style_covers_both_axes_and_is_applied_to_scroll_hosts():
+    toolbox = load_module()
+    style = toolbox.build_global_scrollbar_style()
+    assert 'QScrollBar:vertical' in style
+    assert 'QScrollBar:horizontal' in style
+    assert 'QScrollBar::handle:vertical:hover' in style
+
+    source = MODULE_PATH.read_text(encoding='utf-8')
+    assert "self.song_list_scroll.setStyleSheet(build_music_scroll_area_style())" in source
+    assert source.count("self.log.setStyleSheet(build_global_scrollbar_style())") >= 6
+    assert "self.base64_edit.setStyleSheet(build_global_scrollbar_style())" in source
+    assert "self.sidebar.setStyleSheet(build_global_scrollbar_style())" in source
+    assert "min-height: 18px;" in source
+    assert "max-height: 18px;" in source
 

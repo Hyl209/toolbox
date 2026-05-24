@@ -72,3 +72,34 @@ def test_extract_song_info_reads_embedded_metadata_and_sidecar_cover(tmp_path):
     assert info['cover_data_url'].startswith('data:image/png;base64,')
 
 
+def test_extract_song_info_uses_common_folder_cover_names(tmp_path):
+    sample = tmp_path / 'demo_song.ncm'
+    sample.write_bytes(b'plain-bytes-without-metadata')
+    cover = tmp_path / 'AlbumArtSmall.jpg'
+    cover.write_bytes(b'\xff\xd8\xfffolder-cover')
+    spec = importlib.util.spec_from_file_location('ncm_to_mp3', SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    info = module.extract_song_info(sample)
+    assert info['title'] == 'demo_song'
+    assert info['cover_data_url'].startswith('data:image/jpeg;base64,')
+
+
+def test_enrich_song_info_from_mp3_reads_real_tags_and_cover():
+    spec = importlib.util.spec_from_file_location('ncm_to_mp3', SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    mp3_path = pathlib.Path('PROJECT_ROOT/娴嬭瘯/鐜嬭壋钖?- 绂诲紑鎴戠殑渚濊禆锛堟倓鎮勫仛涓ⅵ缁欎綘锛?mp3')
+    base_item = {
+        'file_path': '/tmp/demo.ncm',
+        'title': '鏃ф爣棰?,
+        'artist': '',
+        'cover_data_url': '',
+    }
+    enriched = module.enrich_song_info_from_mp3(base_item, mp3_path)
+    assert enriched['title'] == '绂诲紑鎴戠殑渚濊禆锛堟倓鎮勫仛涓ⅵ缁欎綘锛?
+    assert enriched['artist'] == '鐜嬭壋钖?
+    assert enriched['display_name'] == '绂诲紑鎴戠殑渚濊禆锛堟倓鎮勫仛涓ⅵ缁欎綘锛?- 鐜嬭壋钖?
+    assert enriched['cover_data_url'].startswith('data:image/jpeg;base64,')
+
+
