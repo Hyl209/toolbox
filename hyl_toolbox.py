@@ -1381,40 +1381,11 @@ def validate_video_downloader_form(
 
 
 def format_file_sorter_summary(summary: dict[str, object]) -> str:
-    module = _load_file_sorter_tab_module()
-    return module.format_file_sorter_summary(summary)
-    total_files = int(summary.get('total_files', 0) or 0)
-    if total_files <= 0:
-        return '当前目录第一层没有可分类文件'
-    counts = summary.get('category_counts', {})
-    selected_total = int(summary.get('selected_total_files', 0) or 0)
-    selected_categories = summary.get('selected_categories', ())
-    lines = [f'当前目录第一层共 {total_files} 个文件']
-    for category in ('图片', '视频', '音频', '文档', '压缩包', '程序', '其他'):
-        count = 0
-        if isinstance(counts, dict):
-            count = int(counts.get(category, 0) or 0)
-        if count:
-            lines.append(f'{category}: {count}')
-    if selected_categories is not None:
-        lines.append(f'本次分类: {selected_total} 个文件')
-    return '\n'.join(lines)
+    return _load_file_sorter_tab_module().format_file_sorter_summary(summary)
 
 
 def validate_file_sorter_form(folder_path: str) -> list[str]:
-    module = _load_file_sorter_tab_module()
-    return module.validate_file_sorter_form(folder_path)
-    errors: list[str] = []
-    cleaned = folder_path.strip()
-    if not cleaned:
-        errors.append('请选择需要分类的文件夹')
-        return errors
-    path = Path(cleaned)
-    if not path.exists():
-        errors.append('选择的文件夹不存在')
-    elif not path.is_dir():
-        errors.append('选择的路径不是文件夹')
-    return errors
+    return _load_file_sorter_tab_module().validate_file_sorter_form(folder_path)
 
 
 def format_batch_rename_summary(summary: dict[str, object]) -> str:
@@ -2734,142 +2705,6 @@ if QWidget is not None:
             except Exception as exc:
                 self.log.appendPlainText(f'ERROR {exc}')
                 show_themed_error(self, '处理失败', str(exc))
-
-
-    class FileSorterTab(QWidget):
-        def __init__(self, settings):
-            super().__init__()
-            self.settings = settings
-            self.current_summary: dict[str, object] | None = None
-            self.category_checkboxes: dict[str, QCheckBox] = {}
-            root = QVBoxLayout(self)
-            card, layout = make_card('文件分类', '选择一个文件夹，按大类自动创建中文目录并移动第一层文件')
-            path_row = QHBoxLayout()
-            self.folder_edit = QLineEdit(load_setting(settings, 'filesorter/input_dir'))
-            self.folder_edit.setPlaceholderText('选择需要分类的文件夹')
-            self.folder_edit.editingFinished.connect(self.refresh_summary)
-            choose_btn = QPushButton('选择路径')
-            choose_btn.clicked.connect(self.choose_folder)
-            path_row.addWidget(self.folder_edit)
-            path_row.addWidget(choose_btn)
-            layout.addLayout(path_row)
-            tip_label = QLabel('仅勾选的分类会被移动，未勾选的文件保持原位')
-            tip_label.setProperty('cardSub', True)
-            tip_label.setWordWrap(True)
-            layout.addWidget(tip_label)
-            category_row_widget, category_row = make_transparent_row()
-            for category in get_file_sorter_module().CATEGORY_ORDER:
-                checkbox = QCheckBox(category)
-                checkbox.setChecked(load_setting(settings, f'filesorter/category_{category}', '1') != '0')
-                checkbox.stateChanged.connect(self.handle_category_selection_changed)
-                self.category_checkboxes[category] = checkbox
-                category_row.addWidget(checkbox)
-            category_row.addStretch(1)
-            layout.addWidget(category_row_widget)
-            self.summary_label = QLabel('请选择文件夹')
-            self.summary_label.setProperty('cardSub', True)
-            self.summary_label.setWordWrap(True)
-            layout.addWidget(self.summary_label)
-            button_row = QHBoxLayout()
-            button_row.addStretch(1)
-            self.run_button = QPushButton('开始分类')
-            self.run_button.clicked.connect(self.run_sorting)
-            button_row.addWidget(self.run_button)
-            layout.addLayout(button_row)
-            self.log = QPlainTextEdit()
-            self.log.setReadOnly(True)
-            self.log.setMinimumHeight(160)
-            self.log.setStyleSheet(build_global_scrollbar_style())
-            layout.addWidget(self.log)
-            root.addWidget(card)
-            self.refresh_summary()
-
-        def get_selected_categories(self) -> list[str]:
-            return [category for category, checkbox in self.category_checkboxes.items() if checkbox.isChecked()]
-
-        def handle_category_selection_changed(self):
-            for category, checkbox in self.category_checkboxes.items():
-                save_setting(self.settings, f'filesorter/category_{category}', '1' if checkbox.isChecked() else '0')
-            self.refresh_summary()
-
-        def choose_folder(self):
-            path = QFileDialog.getExistingDirectory(self, '选择需要分类的文件夹', self.folder_edit.text() or str(ROOT))
-            if not path:
-                return
-            self.folder_edit.setText(path)
-            save_setting(self.settings, 'filesorter/input_dir', path)
-            self.refresh_summary()
-
-        def refresh_summary(self):
-            folder_path = self.folder_edit.text().strip()
-            errors = validate_file_sorter_form(folder_path)
-            if errors:
-                self.current_summary = None
-                self.summary_label.setText(errors[0])
-                return
-            sorter_module = get_file_sorter_module()
-            try:
-                summary = sorter_module.summarize_folder(folder_path, self.get_selected_categories())
-            except Exception as exc:
-                self.current_summary = None
-                self.summary_label.setText(f'无法读取文件夹: {exc}')
-                return
-            self.current_summary = summary
-            self.summary_label.setText(format_file_sorter_summary(summary))
-
-        def run_sorting(self):
-            folder_path = self.folder_edit.text().strip()
-            errors = validate_file_sorter_form(folder_path)
-            if errors:
-                show_themed_warning(self, '提示', '\n'.join(errors))
-                return
-            sorter_module = get_file_sorter_module()
-            try:
-                summary = sorter_module.summarize_folder(folder_path, self.get_selected_categories())
-            except Exception as exc:
-                self.log.appendPlainText(f'ERROR {exc}')
-                show_themed_error(self, '分类失败', str(exc))
-                return
-            selected_total = int(summary.get('selected_total_files', 0) or 0)
-            if selected_total <= 0:
-                show_themed_warning(self, '提示', '当前勾选分类没有可分类文件')
-                self.refresh_summary()
-                return
-            save_setting(self.settings, 'filesorter/input_dir', folder_path)
-            self.log.appendPlainText(f'分类目录: {folder_path}')
-            self.log.appendPlainText(format_file_sorter_summary(summary))
-            results = sorter_module.classify_files(folder_path, self.get_selected_categories())
-            moved_count = 0
-            renamed_count = 0
-            failed_count = 0
-            for item in results:
-                if item.get('success'):
-                    moved_count += 1
-                    if item.get('renamed'):
-                        renamed_count += 1
-                        self.log.appendPlainText(
-                            f'RENAME {item["source_name"]} -> {item["category"]}\\{item["target_name"]}'
-                        )
-                    else:
-                        self.log.appendPlainText(
-                            f'OK {item["source_name"]} -> {item["category"]}\\{item["target_name"]}'
-                        )
-                else:
-                    failed_count += 1
-                    self.log.appendPlainText(
-                        f'ERROR {item["source_name"]} -> {item["category"]}\\{item["target_name"]}: {item["error"]}'
-                    )
-            self.refresh_summary()
-            show_themed_success(
-                self,
-                '完成',
-                [
-                    f'已移动 {moved_count} 个文件',
-                    f'已重命名 {renamed_count} 个文件',
-                    f'失败 {failed_count} 个文件',
-                    f'未处理 {max(0, int(summary.get("total_files", 0) or 0) - selected_total)} 个文件',
-                ],
-            )
 
 
     class Base64Tab(QWidget):

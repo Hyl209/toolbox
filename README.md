@@ -10,6 +10,10 @@
 - **图片格式互转**：批量处理 JPG / PNG / WebP / HEIC
 - **PDF 工具**：支持合并、拆分、转图片、提取文字、导出 TXT / DOCX
 - **图片 Base64**：支持图片转 Base64 / Data URL，以及 Base64 还原图片
+- **文件分类**：按文件类型（图片/视频/音频/文档等）或按分辨率（480p~8K）自动创建目录并归类
+- **批量重命名**：按类型分组后批量重命名，支持前缀/排序规则
+- **重复文件检测**：基于哈希和视频相似度检测重复文件
+- **视频下载**：支持 Telegram 频道视频/图片下载
 - 统一 GUI 工具箱：通过一个桌面界面集中使用以上能力
 - 统一主题弹层：完成/提示/失败消息采用无边框主题自适应弹窗
 - **Windows 打包分发**：可用 PyInstaller 打包为 `格式转换工具.exe`
@@ -24,6 +28,17 @@ hyl tools/
 ├─ README.md
 ├─ tests_toolbox.py
 ├─ tests_tool_pages.py
+├─ 分类/
+│  ├─ converter.py
+│  └─ tab.py
+├─ name/
+│  ├─ converter.py
+│  └─ tab.py
+├─ same/
+│  └─ converter.py
+├─ video-downloader/
+│  ├─ converter.py
+│  └─ tab.py
 ├─ image-convert/
 │  ├─ converter.py
 │  ├─ README.md
@@ -32,6 +47,9 @@ hyl tools/
 │  ├─ converter.py
 │  ├─ README.md
 │  └─ tests_pdf_tools.py
+├─ base64/
+│  ├─ converter.py
+│  └─ tests_base64_tools.py
 ├─ music/
 ├─ mp4-mp3/
 ├─ zipandpng/
@@ -81,6 +99,13 @@ PDF 子模块当前已支持：
 - OCR 兜底策略
 - 导出 `.txt` / `.docx`
 - GUI 页面接入与参数校验
+
+### 7. `分类/`
+文件分类模块，支持两种模式：
+- **按大类分类**：根据文件后缀自动归类到图片/视频/音频/文档/压缩包/程序/其他目录
+- **按分辨率分类**：对图片和视频读取分辨率，自动归类到 480p及以下/720p/1080p/2K/4K/8K及以上 目录
+- 图片分辨率通过 PIL 读取，视频分辨率通过 ffprobe 读取
+- 支持重名自动重命名、隐藏文件跳过
 
 ## 运行方式
 
