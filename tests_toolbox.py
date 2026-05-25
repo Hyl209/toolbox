@@ -780,6 +780,16 @@ def test_build_main_window_sidebar_includes_image_convert_pdf_split_video_downlo
         assert window.web_video_downloader_tab.backend_status_label is None
         assert window.file_sorter_tab.folder_edit.placeholderText() == '閫夋嫨闇€瑕佸垎绫荤殑鏂囦欢澶?
         assert window.file_sorter_tab.run_button.text() == '寮€濮嬪垎绫?
+        assert window.file_sorter_tab.mode_combo.minimumWidth() == 144
+        assert window.file_sorter_tab.mode_combo.itemText(0) == '鎸夊ぇ绫诲垎绫?
+        assert window.file_sorter_tab.mode_combo.itemText(1) == '鎸夊垎杈ㄧ巼鍒嗙被'
+        assert window.file_sorter_tab.mode_combo.view().objectName() == 'comboPopupView'
+        assert window.file_sorter_tab.mode_combo.view().frameShape() == toolbox.QFrame.NoFrame
+        assert window.file_sorter_tab.mode_combo.view().property('comboPopupTheme') == window.current_theme
+        assert window.file_sorter_tab.mode_combo.view().spacing() == 2
+        assert window.file_sorter_tab.mode_combo.view().sizeHintForRow(0) == 34
+        assert 'comboPopupTheme' in window.file_sorter_tab.mode_combo.view().styleSheet()
+        assert not window.file_sorter_tab.mode_combo.isEditable()
         assert window.same_tab.folder_edit.placeholderText() == '閫夋嫨闇€瑕佹娴嬬殑鏂囦欢澶?
         assert window.same_tab.detect_button.text() == '寮€濮嬫娴?
         assert window.same_tab.move_button.text() == '绉诲姩閲嶅浠?
@@ -817,8 +827,19 @@ def test_file_sorter_tab_exposes_choose_button_and_idle_state_when_pyside_availa
     with tempfile.TemporaryDirectory() as tmp:
         window, app = toolbox.build_main_window_for_test(tmp)
         assert hasattr(window.file_sorter_tab, 'choose_button')
+        assert hasattr(window.file_sorter_tab, 'mode_combo')
         assert window.file_sorter_tab.is_running is False
         assert window.file_sorter_tab.choose_button.isEnabled() is True
+        window.file_sorter_tab.mode_combo.setCurrentIndex(1)
+        app.processEvents()
+        assert window.file_sorter_tab.get_mode() == 'resolution'
+        module = toolbox.get_file_sorter_module()
+        assert window.file_sorter_tab.category_checkboxes[module.CATEGORY_ORDER[0]].isHidden() is False
+        assert window.file_sorter_tab.category_checkboxes[module.CATEGORY_ORDER[1]].isHidden() is False
+        assert window.file_sorter_tab.category_checkboxes[module.CATEGORY_ORDER[2]].isHidden() is True
+        window.toggle_theme()
+        app.processEvents()
+        assert window.file_sorter_tab.mode_combo.view().property('comboPopupTheme') == window.current_theme
         window.close()
         app.quit()
 

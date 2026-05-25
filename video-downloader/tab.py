@@ -18,8 +18,8 @@ RUNNING_BUTTON_TEXT = '下载中...'
 SEND_CODE_BUTTON_TEXT = '发送验证码'
 LOGIN_BUTTON_TEXT = '完成登录'
 STATUS_BUTTON_TEXT = '检查状态'
-TELEGRAM_ONLY_ERROR = '当前页面只支持 Telegram 链接'
-WEB_ONLY_ERROR = '当前页面只支持网页链接'
+TELEGRAM_ONLY_ERROR = '\u5f53\u524d\u9875\u4ec5\u652f\u6301 Telegram \u94fe\u63a5\uff0c\u8bf7\u79fb\u5230\u201c\u7f51\u9875\u89c6\u9891\u4e0b\u8f7d\u201d\u9875\u7b7e\u5904\u7406\u7f51\u9875\u94fe\u63a5'
+WEB_ONLY_ERROR = '\u5f53\u524d\u9875\u4ec5\u652f\u6301\u7f51\u9875\u89c6\u9891\u94fe\u63a5\uff0c\u8bf7\u79fb\u5230\u201cTG\u4e0b\u8f7d\u201d\u9875\u7b7e\u5904\u7406 Telegram \u94fe\u63a5'
 
 MODE_META = {
     'mixed': {
@@ -262,10 +262,10 @@ def summarize_download_results(results: list[dict[str, object]]) -> list[str]:
     failed_count = sum(1 for item in results if not item.get('success'))
     downloaded_count = sum(int(item.get('downloaded_count', 0) or 0) for item in results)
     return [
-        f'任务总数',
-        f'成功任务',
-        f'失败任务',
-        f'下载文件',
+        f'任务总数: {len(results)}',
+        f'成功任务: {success_count}',
+        f'失败任务: {failed_count}',
+        f'下载文件: {downloaded_count}',
     ]
 
 
@@ -882,6 +882,19 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                         self.progress_label.setText(f'{prefix}: 当前文件 {name}')
                 elif kind == 'web_percent':
                     self.update_progress_percent(float(payload.get('percent', '0') or 0))
+                elif kind in {'web_status', 'tg_media'}:
+                    percent = float(payload.get('percent', '0') or 0)
+                    self.update_progress_percent(percent)
+                    name = payload.get('name', '')
+                    speed = payload.get('speed', '')
+                    eta = payload.get('eta', '')
+                    details = [f'{percent:.1f}%']
+                    if speed:
+                        details.append(speed)
+                    if eta:
+                        details.append(f'ETA {eta}')
+                    prefix = f'处理中 {self.current_task_index + 1}/{self.total_tasks}' if self.total_tasks > 0 and self.current_task_index >= 0 else '处理中'
+                    self.progress_label.setText(f'{prefix}: {name} {" | ".join(details)}')
                 return
             self.append_log(message)
             if '网页下载中' in message:

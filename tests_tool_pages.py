@@ -3,6 +3,8 @@ import pathlib
 import tempfile
 import sys
 
+from PIL import Image
+
 ROOT = pathlib.Path('PROJECT_ROOT')
 MODULE_PATH = ROOT / 'hyl_toolbox.py'
 
@@ -455,6 +457,121 @@ def test_file_sorter_only_moves_selected_categories():
         assert (root / video_category / 'movie.mp4').exists()
         assert (root / 'cover.jpg').exists()
         assert (root / 'song.mp3').exists()
+
+
+def test_file_sorter_resolution_summary_groups_by_common_buckets():
+    toolbox = load_module()
+    module = toolbox.get_file_sorter_module()
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        Image.new('RGB', (1280, 720), '#224466').save(root / 'landscape.jpg')
+        Image.new('RGB', (1080, 1920), '#446688').save(root / 'portrait.png')
+        Image.new('RGB', (3840, 2160), '#6688aa').save(root / 'uhd.webp')
+        (root / 'clip.mp4').write_text('video', encoding='utf-8')
+        original_video_reader = module._read_video_resolution
+        module._read_video_resolution = lambda path: (1920, 1080)
+        try:
+            summary = module.summarize_folder(root, mode='resolution')
+        finally:
+            module._read_video_resolution = original_video_reader
+
+        assert summary['media_total_files'] == 4
+        assert summary['detected_media_files'] == 4
+        assert summary['selected_total_files'] == 4
+        assert summary['resolution_bucket_counts']['720p'] == 1
+        assert summary['resolution_bucket_counts']['1080p'] == 2
+        assert summary['resolution_bucket_counts']['4K'] == 1
+        text = toolbox.format_file_sorter_summary(summary)
+        assert '鍙瘑鍒垎杈ㄧ巼: 4 涓枃浠? in text
+        assert '720p: 1' in text
+        assert '1080p: 2' in text
+        assert '4K: 1' in text
+
+
+def test_file_sorter_resolution_mode_moves_images_and_videos_into_bucket_dirs():
+    toolbox = load_module()
+    module = toolbox.get_file_sorter_module()
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        Image.new('RGB', (1280, 720), '#335577').save(root / 'cover.jpg')
+        (root / 'clip.mp4').write_text('video', encoding='utf-8')
+        original_video_reader = module._read_video_resolution
+        module._read_video_resolution = lambda path: (1920, 1080)
+        try:
+            results = module.classify_files(root, mode='resolution')
+        finally:
+            module._read_video_resolution = original_video_reader
+
+        assert len(results) == 2
+        assert (root / '720p' / 'cover.jpg').exists()
+        assert (root / '1080p' / 'clip.mp4').exists()
+        assert next(item for item in results if item['source_name'] == 'cover.jpg')['group_label'] == '720p'
+        assert next(item for item in results if item['source_name'] == 'clip.mp4')['group_label'] == '1080p'
+
+
+def test_file_sorter_resolution_mode_only_moves_selected_media_types():
+    toolbox = load_module()
+    module = toolbox.get_file_sorter_module()
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        image_category = module.RESOLUTION_CATEGORY_ORDER[0]
+        Image.new('RGB', (1280, 720), '#557799').save(root / 'cover.jpg')
+        (root / 'clip.mp4').write_text('video', encoding='utf-8')
+        original_video_reader = module._read_video_resolution
+        module._read_video_resolution = lambda path: (1920, 1080)
+        try:
+            summary = module.summarize_folder(root, [image_category], mode='resolution')
+            results = module.classify_files(root, [image_category], mode='resolution')
+        finally:
+            module._read_video_resolution = original_video_reader
+
+        assert summary['selected_total_files'] == 1
+        assert summary['resolution_bucket_counts']['720p'] == 1
+        assert len(results) == 1
+        assert results[0]['source_name'] == 'cover.jpg'
+        assert (root / '720p' / 'cover.jpg').exists()
+        assert (root / 'clip.mp4').exists()
+
+
+def test_file_sorter_resolution_mode_keeps_non_media_files_in_place():
+    toolbox = load_module()
+    module = toolbox.get_file_sorter_module()
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        (root / 'report.pdf').write_text('doc', encoding='utf-8')
+        (root / 'song.mp3').write_text('audio', encoding='utf-8')
+
+        summary = module.summarize_folder(root, mode='resolution')
+        results = module.classify_files(root, mode='resolution')
+
+        assert summary['media_total_files'] == 0
+        assert summary['selected_total_files'] == 0
+        assert results == []
+        assert (root / 'report.pdf').exists()
+        assert (root / 'song.mp3').exists()
+
+
+def test_file_sorter_resolution_mode_skips_unreadable_media_and_reports_it():
+    toolbox = load_module()
+    module = toolbox.get_file_sorter_module()
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        (root / 'broken.mp4').write_text('video', encoding='utf-8')
+        original_video_reader = module._read_video_resolution
+        module._read_video_resolution = lambda path: None
+        try:
+            summary = module.summarize_folder(root, mode='resolution')
+            results = module.classify_files(root, mode='resolution')
+        finally:
+            module._read_video_resolution = original_video_reader
+
+        assert summary['media_total_files'] == 1
+        assert summary['detected_media_files'] == 0
+        assert summary['unresolved_media_files'] == 1
+        assert len(results) == 1
+        assert results[0]['success'] is False
+        assert results[0]['skip_reason'] == '鏃犳硶璇诲彇鍒嗚鲸鐜?
+        assert (root / 'broken.mp4').exists()
 
 
 def test_video_downloader_tab_source_contains_log_recent_limit_and_status_controls():

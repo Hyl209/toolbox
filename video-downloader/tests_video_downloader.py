@@ -297,6 +297,54 @@ def test_emit_scan_progress_uses_structured_marker():
     assert captured == ['__HYL_PROGRESS__|tg_scan|matched=3|scanned=25']
 
 
+def test_make_web_progress_hook_emits_speed_and_eta():
+    module = load_module()
+    captured: list[str] = []
+    hook = module._make_web_progress_hook(captured.append)
+    hook({
+        'status': 'downloading',
+        'filename': 'demo.mp4',
+        '_percent_str': '12.3%',
+        '_speed_str': '1.2 MiB/s',
+        '_eta_str': '00:05',
+    })
+    assert any(item.startswith('__HYL_PROGRESS__|web_percent|percent=12.3') for item in captured)
+    assert any(item.startswith('__HYL_PROGRESS__|web_status|') and 'speed=1.2 MiB/s' in item and 'eta=00:05' in item for item in captured)
+    assert '正在下载 "demo.mp4" "1.2 MiB/s" "12.3%"' in captured
+
+
+def test_make_web_progress_hook_can_compute_percent_from_bytes():
+    module = load_module()
+    captured: list[str] = []
+    hook = module._make_web_progress_hook(captured.append)
+    hook({
+        'status': 'downloading',
+        'filename': 'demo.mp4',
+        'downloaded_bytes': 25,
+        'total_bytes': 100,
+        'speed': 2048,
+    })
+    assert any(item.startswith('__HYL_PROGRESS__|web_percent|percent=25.0') for item in captured)
+    assert '正在下载 "demo.mp4" "2.0 KiB/s" "25%"' in captured
+
+
+def test_make_telegram_progress_callback_emits_speed_and_eta():
+    module = load_module()
+    captured: list[str] = []
+    original_monotonic = module.monotonic
+    times = iter([0.0, 1.0, 2.0])
+    try:
+        module.monotonic = lambda: next(times)
+        callback = module._make_telegram_progress_callback(captured.append, 'demo.mp4')
+        callback(50, 100)
+        callback(100, 100)
+    finally:
+        module.monotonic = original_monotonic
+    assert any(item.startswith('__HYL_PROGRESS__|tg_media|') and 'speed=' in item for item in captured)
+    assert any(item.startswith('__HYL_PROGRESS__|tg_media|') and 'eta=' in item for item in captured)
+    assert any(item.startswith('正在下载 "demo.mp4" "') and '"50%"' in item for item in captured)
+
+
 def test_normalize_positive_index_accepts_blank_and_rejects_non_positive_values():
     module = load_module()
     assert module.normalize_positive_index('', '网页候选序号') is None
@@ -410,3 +458,18 @@ def test_format_web_task_summary_can_show_scan_results():
         {'https://example.com/a': {'success': True, 'candidate_count': 2}},
     )
     assert '2 个候选' in summary
+
+
+def test_summarize_download_results_includes_counts():
+    tab_module = load_tab_module()
+    results = [
+        {'success': True, 'downloaded_count': 2},
+        {'success': False, 'downloaded_count': 0},
+        {'success': True, 'downloaded_count': 3},
+    ]
+    assert tab_module.summarize_download_results(results) == [
+        '任务总数: 3',
+        '成功任务: 2',
+        '失败任务: 1',
+        '下载文件: 5',
+    ]

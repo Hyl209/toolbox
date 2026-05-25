@@ -10,6 +10,7 @@ import subprocess
 from dataclasses import dataclass
 from collections.abc import Iterable
 from pathlib import Path
+from time import monotonic
 from typing import Callable, Literal
 from urllib.parse import urljoin, urlparse
 from urllib.request import Request, urlopen
@@ -21,6 +22,7 @@ ProgressCallback = Callable[[str], None]
 TELEGRAM_HOSTS = {'t.me', 'telegram.me', 'telegram.dog', 'www.t.me', 'www.telegram.me'}
 INVALID_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]+')
 WHITESPACE_RE = re.compile(r'\s+')
+ANSI_ESCAPE_RE = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
 MEDIA_URL_RE = re.compile(r"""(?P<url>(?:https?:)?//[^"'\\\s<>]+?\.(?:mp4|m3u8|webm|mov|m4v)(?:\?[^"'\\\s<>]*)?)""", re.IGNORECASE)
 RELATIVE_MEDIA_RE = re.compile(r"""(?P<url>/[^"'\\\s<>]+?\.(?:mp4|m3u8|webm|mov|m4v)(?:\?[^"'\\\s<>]*)?)""", re.IGNORECASE)
 SESSION_FILE_NAME = 'telegram.session'
@@ -520,6 +522,7 @@ async def _download_single_telegram_task(client, task: DownloadTask, output_root
             output_folder,
             fallback_prefix=task.target_title or 'telegram_video',
             options=options,
+            progress_cb=progress_cb,
         )
         _emit(progress_cb, f'Telegram OK -> {file_path.name}')
         return _make_result(task, True, [file_path], '')
@@ -557,6 +560,7 @@ async def _download_single_telegram_task(client, task: DownloadTask, output_root
             output_folder,
             fallback_prefix=f'{task.target_title or "telegram_video"}_{message.id}',
             options=options,
+            progress_cb=progress_cb,
         )
         files.append(file_path)
         _emit(progress_cb, f'Telegram OK -> {file_path.name}')
@@ -598,7 +602,14 @@ async def _resolve_telegram_entity(client, parts: TelegramUrlParts):
         raise DownloadError(f'无法解析 Telegram 聊天: {exc}') from exc
 
 
-async def _download_telegram_message_media(client, message, output_dir: Path, fallback_prefix: str, options: DownloadOptions) -> Path:
+async def _download_telegram_message_media(
+    client,
+    message,
+    output_dir: Path,
+    fallback_prefix: str,
+    options: DownloadOptions,
+    progress_cb: ProgressCallback | None = None,
+) -> Path:
     file_info = getattr(message, 'file', None)
     original_name = ''
     suffix = ''
@@ -613,7 +624,11 @@ async def _download_telegram_message_media(client, message, output_dir: Path, fa
     else:
         target_name = sanitize_filename_component(fallback_prefix) + (suffix or '.mp4')
     target_path = ensure_unique_path(output_dir / target_name)
-    downloaded = await client.download_media(message, file=str(target_path))
+    downloaded = await client.download_media(
+        message,
+        file=str(target_path),
+        progress_callback=_make_telegram_progress_callback(progress_cb, target_path.name),
+    )
     if not downloaded:
         raise DownloadError('Telegram 视频下载失败')
     return Path(downloaded)
@@ -1093,18 +1108,148 @@ def _make_web_progress_hook(progress_cb: ProgressCallback | None):
         state = str(status.get('status') or '')
         if state == 'downloading':
             filename = Path(str(status.get('filename') or '')).name
-            percent = status.get('_percent_str', '')
-            text = f'网页下载中 {filename} {percent}'.strip()
-            normalized_percent = str(percent).replace('%', '').strip()
+            percent = _resolve_web_percent_text(status)
+            speed = _resolve_web_speed_text(status)
+            eta = _normalize_progress_text(status.get('_eta_str', ''))
+            text = _build_download_log_message(filename, speed, percent)
+            normalized_percent = percent.replace('%', '').strip()
             try:
                 _emit(progress_cb, f'__HYL_PROGRESS__|web_percent|percent={float(normalized_percent)}')
             except ValueError:
                 pass
+            _emit_web_transfer_progress(progress_cb, filename, normalized_percent, speed, eta)
             _emit(progress_cb, text)
         elif state == 'finished':
             filename = Path(str(status.get('filename') or '')).name
             _emit(progress_cb, f'网页处理完成 {filename}')
     return hook
+
+
+def _make_telegram_progress_callback(progress_cb: ProgressCallback | None, file_name: str):
+    clean_name = sanitize_filename_component(Path(str(file_name or 'telegram_media')).name, fallback='telegram_media')
+    started_at = monotonic()
+    last_emitted_at = started_at
+    last_percent = -1.0
+
+    def callback(received: int, total: int) -> None:
+        nonlocal last_emitted_at, last_percent
+        current = max(0, int(received or 0))
+        total_bytes = max(0, int(total or 0))
+        percent = (current * 100.0 / total_bytes) if total_bytes else 0.0
+        now = monotonic()
+        if current < total_bytes and now - last_emitted_at < 0.35 and percent - last_percent < 1.0:
+            return
+        elapsed = max(now - started_at, 1e-6)
+        speed_value = current / elapsed if current > 0 else 0.0
+        speed_text = _format_byte_rate(speed_value)
+        eta_text = ''
+        if speed_value > 0 and total_bytes > current:
+            eta_text = _format_eta_seconds(int((total_bytes - current) / speed_value))
+        parts = [f'name={clean_name}', f'percent={percent:.2f}']
+        if speed_text:
+            parts.append(f'speed={speed_text}')
+        if eta_text:
+            parts.append(f'eta={eta_text}')
+        _emit(progress_cb, '__HYL_PROGRESS__|tg_media|' + '|'.join(parts))
+        _emit(progress_cb, _build_download_log_message(clean_name, speed_text, _format_progress_percent(percent)))
+        last_emitted_at = now
+        last_percent = percent
+
+    return callback
+
+
+def _emit_web_transfer_progress(
+    progress_cb: ProgressCallback | None,
+    file_name: str,
+    percent_text: str,
+    speed_text: str,
+    eta_text: str,
+) -> None:
+    parts = [f'name={sanitize_filename_component(Path(str(file_name or "video")).name, fallback="video")}']
+    try:
+        parts.append(f'percent={float(percent_text)}')
+    except ValueError:
+        pass
+    if speed_text:
+        parts.append(f'speed={speed_text}')
+    if eta_text:
+        parts.append(f'eta={eta_text}')
+    _emit(progress_cb, '__HYL_PROGRESS__|web_status|' + '|'.join(parts))
+
+
+def _normalize_progress_text(value: object) -> str:
+    text = ANSI_ESCAPE_RE.sub('', str(value or ''))
+    return WHITESPACE_RE.sub(' ', text).strip()
+
+
+def _resolve_web_percent_text(status: dict[str, object]) -> str:
+    percent = _normalize_progress_text(status.get('_percent_str', ''))
+    if percent:
+        return percent
+    numeric_percent = _coerce_float(status.get('_percent'))
+    if numeric_percent is not None:
+        return _format_progress_percent(numeric_percent)
+    downloaded = _coerce_float(status.get('downloaded_bytes'))
+    total = _coerce_float(status.get('total_bytes'))
+    estimate = _coerce_float(status.get('total_bytes_estimate'))
+    denominator = total or estimate or 0.0
+    if downloaded is not None and denominator > 0:
+        return _format_progress_percent(downloaded * 100.0 / denominator)
+    return ''
+
+
+def _resolve_web_speed_text(status: dict[str, object]) -> str:
+    speed = _normalize_progress_text(status.get('_speed_str', ''))
+    if speed:
+        return speed
+    speed_value = _coerce_float(status.get('speed'))
+    if speed_value is not None:
+        return _format_byte_rate(speed_value)
+    return ''
+
+
+def _coerce_float(value: object) -> float | None:
+    try:
+        if value is None or value == '':
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _build_download_log_message(file_name: str, speed_text: str, percent_text: str) -> str:
+    clean_name = str(file_name or 'video').strip() or 'video'
+    clean_speed = _normalize_progress_text(speed_text) or '--'
+    clean_percent = _normalize_progress_text(percent_text) or '--'
+    return f'正在下载 "{clean_name}" "{clean_speed}" "{clean_percent}"'
+
+
+def _format_progress_percent(percent: float) -> str:
+    value = max(0.0, min(100.0, float(percent or 0.0)))
+    text = f'{value:.1f}'.rstrip('0').rstrip('.')
+    return f'{text}%'
+
+
+def _format_byte_rate(bytes_per_second: float) -> str:
+    rate = max(0.0, float(bytes_per_second or 0.0))
+    if rate <= 0:
+        return ''
+    units = ['B/s', 'KiB/s', 'MiB/s', 'GiB/s']
+    unit_index = 0
+    while rate >= 1024.0 and unit_index < len(units) - 1:
+        rate /= 1024.0
+        unit_index += 1
+    precision = 0 if unit_index == 0 else 1
+    return f'{rate:.{precision}f} {units[unit_index]}'
+
+
+def _format_eta_seconds(seconds: int) -> str:
+    remaining = max(0, int(seconds or 0))
+    hours, remainder = divmod(remaining, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours:
+        return f'{hours:d}:{minutes:02d}:{secs:02d}'
+    return f'{minutes:02d}:{secs:02d}'
 
 
 def _make_result(task: DownloadTask, success: bool, files: Iterable[Path], error: str) -> dict[str, object]:

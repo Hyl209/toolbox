@@ -3511,6 +3511,7 @@ if QWidget is not None:
             'QPlainTextEdit': QPlainTextEdit,
             'QFileDialog': QFileDialog,
             'QApplication': QApplication,
+            'QComboBox': QComboBox,
             'load_setting': load_setting,
             'save_setting': save_setting,
             'make_card': make_card,
@@ -3519,6 +3520,7 @@ if QWidget is not None:
             'show_themed_warning': show_themed_warning,
             'show_themed_error': show_themed_error,
             'show_themed_success': show_themed_success,
+            'style_combo_popup': style_combo_popup,
             'get_file_sorter_module': get_file_sorter_module,
             'ROOT': ROOT,
         }
@@ -3891,6 +3893,8 @@ if QWidget is not None:
             style_combo_popup(self.pdf_tools_tab.text_format_combo, self.current_theme)
             self.setStyleSheet(get_theme_stylesheet(self.current_theme))
             self.content_surface.setGraphicsEffect(None)
+            if hasattr(self.file_sorter_tab, 'apply_theme'):
+                self.file_sorter_tab.apply_theme(self.current_theme)
             if hasattr(self.tg_downloader_tab, 'apply_theme'):
                 self.tg_downloader_tab.apply_theme(self.current_theme)
             if hasattr(self.web_video_downloader_tab, 'apply_theme'):
