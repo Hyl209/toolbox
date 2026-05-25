@@ -4,22 +4,22 @@ from pathlib import Path
 
 
 SETTINGS_PREFIX = 'video_downloader'
-TITLE = 'Video Downloader'
-SUBTITLE = 'Batch download Telegram and web videos'
-TASK_PLACEHOLDER = 'One link per line'
-OUTPUT_PLACEHOLDER = 'Choose output folder'
+TITLE = '视频下载'
+SUBTITLE = '批量下载 Telegram 和网页视频'
+TASK_PLACEHOLDER = '每行一个链接'
+OUTPUT_PLACEHOLDER = '选择输出文件夹'
 DEFAULT_RECENT_LIMIT = '500'
-DATE_FROM_PLACEHOLDER = 'Start date YYYY-MM-DD'
-DATE_TO_PLACEHOLDER = 'End date YYYY-MM-DD'
-WEB_INDEX_PLACEHOLDER = 'Web candidate index, blank for auto'
-SUMMARY_EMPTY_TEXT = 'Enter download links first'
-RUN_BUTTON_TEXT = 'Start'
-RUNNING_BUTTON_TEXT = 'Running...'
-SEND_CODE_BUTTON_TEXT = 'Send code'
-LOGIN_BUTTON_TEXT = 'Complete login'
-STATUS_BUTTON_TEXT = 'Check status'
-TELEGRAM_ONLY_ERROR = 'Current page only supports Telegram links'
-WEB_ONLY_ERROR = 'Current page only supports web links'
+DATE_FROM_PLACEHOLDER = '开始日期 YYYY-MM-DD'
+DATE_TO_PLACEHOLDER = '结束日期 YYYY-MM-DD'
+WEB_INDEX_PLACEHOLDER = '网页候选序号，留空则自动选择'
+SUMMARY_EMPTY_TEXT = '请先输入下载链接'
+RUN_BUTTON_TEXT = '开始下载'
+RUNNING_BUTTON_TEXT = '下载中...'
+SEND_CODE_BUTTON_TEXT = '发送验证码'
+LOGIN_BUTTON_TEXT = '完成登录'
+STATUS_BUTTON_TEXT = '检查状态'
+TELEGRAM_ONLY_ERROR = '当前页面只支持 Telegram 链接'
+WEB_ONLY_ERROR = '当前页面只支持网页链接'
 
 MODE_META = {
     'mixed': {
@@ -28,14 +28,14 @@ MODE_META = {
         'task_placeholder': TASK_PLACEHOLDER,
     },
     'telegram': {
-        'title': 'Telegram Download',
-        'subtitle': 'Batch download Telegram message/chat/channel media',
-        'task_placeholder': 'One Telegram link per line',
+        'title': 'Telegram 下载',
+        'subtitle': '批量下载 Telegram 消息、群组和频道中的媒体',
+        'task_placeholder': '每行一个 Telegram 链接',
     },
     'web': {
-        'title': 'Web Video Download',
+        'title': '网页视频下载',
         'subtitle': '',
-        'task_placeholder': 'One web video link per line',
+        'task_placeholder': '每行一个网页视频链接',
     },
 }
 
@@ -169,7 +169,7 @@ def format_web_task_summary(urls: list[str], web_scan_results: dict[str, dict[st
         lines.append('（未扫描候选）')
     preview = urls[:3]
     if preview:
-        lines.append('??:')
+        lines.append('预览:')
         lines.extend(preview)
     return '\n'.join(lines)
 
@@ -188,14 +188,14 @@ def format_video_task_summary(urls: list[str]) -> str:
         else:
             web += 1
     lines = [
-        f'Count: {len(urls)}',
-        f'Telegram messages: {telegram_message}',
-        f'Telegram chats: {telegram_chat}',
-        f'Web videos: {web}',
+        f'任务总数: {len(urls)}',
+        f'Telegram 消息: {telegram_message}',
+        f'Telegram 群/频道: {telegram_chat}',
+        f'网页视频任务: {web}',
     ]
     preview = urls[:3]
     if preview:
-        lines.append('Preview:')
+        lines.append('预览:')
         lines.extend(preview)
     return '\n'.join(lines)
 
@@ -203,23 +203,23 @@ def format_video_task_summary(urls: list[str]) -> str:
 def format_web_task_summary(urls: list[str], web_scan_results: dict[str, dict[str, object]] | None = None) -> str:
     if not urls:
         return SUMMARY_EMPTY_TEXT
-    lines = [f'Count: {len(urls)} web links (candidate count is scanned at runtime)']
+    lines = [f'网页链接: {len(urls)}']
     if web_scan_results:
-        lines.append('Scan results:')
+        lines.append('扫描结果:')
         for url in urls[:3]:
             result = web_scan_results.get(url)
             if not result:
                 continue
             if result.get('success'):
                 count = int(result.get('candidate_count', 0) or 0)
-                lines.append(f'{count} candidates: {url}')
+                lines.append(f'{count} 个候选: {url}')
             else:
-                lines.append(f'scan failed: {url}')
+                lines.append(f'扫描失败: {url}')
     else:
-        lines.append('Click Scan Candidates to inspect each page')
+        lines.append('点击“扫描候选”可查看每个页面的候选视频')
     preview = urls[:3]
     if preview:
-        lines.append('Preview:')
+        lines.append('预览:')
         lines.extend(preview)
     return '\n'.join(lines)
 
@@ -230,7 +230,7 @@ def format_backend_status(status: dict[str, dict[str, object]]) -> str:
         available = bool(item.get('available'))
         label = str(item.get('label') or key)
         message = str(item.get('message') or '')
-        prefix = 'OK' if available else 'ȱʧ'
+        prefix = '可用' if available else '缺失'
         lines.append(f'{prefix} {label}: {message}')
     return '\n'.join(lines)
 
@@ -563,11 +563,11 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
 
                 row2 = QHBoxLayout()
                 row2.setSpacing(10)
-                row2.addWidget(QLabel('?'))
+                row2.addWidget(QLabel('手机号'))
                 self.phone_edit = QLineEdit(load_setting(settings, self._shared_setting_key('phone')))
                 self.phone_edit.setPlaceholderText('+8613800000000')
                 row2.addWidget(self.phone_edit)
-                row2.addWidget(QLabel('楠岃瘉鐮?'))
+                row2.addWidget(QLabel('验证码'))
                 self.code_edit = QLineEdit('')
                 self.code_edit.setPlaceholderText('发送验证码后输入')
                 row2.addWidget(self.code_edit)
@@ -675,7 +675,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                 self.date_from_edit.setPlaceholderText(DATE_FROM_PLACEHOLDER)
                 self.date_from_edit.editingFinished.connect(self.save_form_settings)
                 date_row.addWidget(self.date_from_edit)
-                date_row.addWidget(QLabel('鍒?'))
+                date_row.addWidget(QLabel('至'))
                 self.date_to_edit = QLineEdit(load_setting(settings, self._mode_setting_key('date_to')))
                 self.date_to_edit.setPlaceholderText(DATE_TO_PLACEHOLDER)
                 self.date_to_edit.editingFinished.connect(self.save_form_settings)
@@ -689,7 +689,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                 self.include_video_checkbox.setChecked(load_setting(settings, self._mode_setting_key('include_videos'), '1') != '0')
                 self.include_video_checkbox.clicked.connect(self.save_form_settings)
                 media_row.addWidget(self.include_video_checkbox)
-                self.include_photo_checkbox = QCheckBox('ͼƬ')
+                self.include_photo_checkbox = QCheckBox('图片')
                 self.include_photo_checkbox.setChecked(load_setting(settings, self._mode_setting_key('include_photos'), '0') == '1')
                 self.include_photo_checkbox.clicked.connect(self.save_form_settings)
                 media_row.addWidget(self.include_photo_checkbox)
@@ -860,7 +860,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                     self.current_task_index = int(payload.get('index', '0') or 0)
                     self.total_tasks = int(payload.get('total', str(self.total_tasks)) or self.total_tasks or 0)
                     url = payload.get('url', '')
-                    self.progress_label.setText(f'?{self.current_task_index + 1}/{self.total_tasks}: {url}')
+                    self.progress_label.setText(f'处理中 {self.current_task_index + 1}/{self.total_tasks}: {url}')
                 elif kind == 'task_done':
                     self.completed_tasks = int(payload.get('completed', str(self.completed_tasks)) or self.completed_tasks)
                     self.total_tasks = int(payload.get('total', str(self.total_tasks)) or self.total_tasks or 0)
@@ -907,7 +907,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             self.set_busy(False)
 
         def handle_worker_error(self, message: str):
-            self.append_log(f'ERROR {message}')
+            self.append_log(f'错误：{message}')
             self.progress_label.setText('下载失败')
             self.cleanup_worker()
             self.set_busy(False)
@@ -1006,7 +1006,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             self.set_busy(False)
 
         def handle_scan_error(self, message: str):
-            self.append_log(f'ERROR {message}')
+            self.append_log(f'错误：{message}')
             self.progress_label.setText('候选扫描失败')
             self.cleanup_scan_worker()
             self.set_busy(False)
@@ -1049,7 +1049,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                 self.login_status_label.setText(message)
                 self.append_log(message)
             except Exception as exc:
-                self.append_log(f'ERROR {exc}')
+                self.append_log(f'错误：{exc}')
                 show_themed_error(self, '发送验证码失败', str(exc))
 
         def complete_login(self):
@@ -1065,7 +1065,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                 self.save_form_settings()
                 show_themed_success(self, '完成', ['Telegram 登录成功'])
             except Exception as exc:
-                self.append_log(f'ERROR {exc}')
+                self.append_log(f'错误：{exc}')
                 show_themed_error(self, '登录失败', str(exc))
 
         def check_login_status(self):
@@ -1078,7 +1078,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                 self.login_status_label.setText(message)
                 self.append_log(message)
             except Exception as exc:
-                self.append_log(f'ERROR {exc}')
+                self.append_log(f'错误：{exc}')
                 show_themed_error(self, '状态检查失败', str(exc))
 
         def run_download(self):
