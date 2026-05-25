@@ -12,6 +12,7 @@ SUMMARY_EMPTY_TEXT = '请选择文件夹'
 RUN_BUTTON_TEXT = '开始分类'
 RUNNING_BUTTON_TEXT = '分类中...'
 CHOOSE_BUTTON_TEXT = '选择路径'
+SUMMARY_CATEGORY_ORDER = ('图片', '视频', '音频', '文档', '压缩包', '程序', '其他')
 
 
 def format_file_sorter_summary(summary: dict[str, object]) -> str:
@@ -20,16 +21,14 @@ def format_file_sorter_summary(summary: dict[str, object]) -> str:
         return '当前目录第一层没有可分类文件'
     counts = summary.get('category_counts', {})
     selected_total = int(summary.get('selected_total_files', 0) or 0)
-    selected_categories = summary.get('selected_categories', ())
     lines = [f'当前目录第一层共 {total_files} 个文件']
-    for category in ('图片', '视频', '音频', '文档', '压缩包', '程序', '其他'):
+    for category in SUMMARY_CATEGORY_ORDER:
         count = 0
         if isinstance(counts, dict):
             count = int(counts.get(category, 0) or 0)
         if count:
             lines.append(f'{category}: {count}')
-    if selected_categories is not None:
-        lines.append(f'本次分类: {selected_total} 个文件')
+    lines.append(f'本次分类: {selected_total} 个文件')
     return '\n'.join(lines)
 
 
@@ -73,6 +72,7 @@ def build_file_sorter_tab_class(deps: dict[str, object]):
         def __init__(self, settings):
             super().__init__()
             self.settings = settings
+            self.sorter_module = get_file_sorter_module()
             self.current_summary: dict[str, object] | None = None
             self.category_checkboxes: dict[str, object] = {}
             self.is_running = False
@@ -96,7 +96,7 @@ def build_file_sorter_tab_class(deps: dict[str, object]):
             layout.addWidget(tip_label)
 
             category_row_widget, category_row = make_transparent_row()
-            for category in get_file_sorter_module().CATEGORY_ORDER:
+            for category in self.sorter_module.CATEGORY_ORDER:
                 checkbox = QCheckBox(category)
                 checkbox.setChecked(load_setting(settings, f'{SETTINGS_PREFIX}/category_{category}', '1') != '0')
                 checkbox.stateChanged.connect(self.handle_category_selection_changed)
@@ -137,14 +137,32 @@ def build_file_sorter_tab_class(deps: dict[str, object]):
             if QApplication is not None:
                 QApplication.processEvents()
 
-        def get_selected_categories(self) -> list[str]:
-            return [category for category, checkbox in self.category_checkboxes.items() if checkbox.isChecked()]
+        def get_selected_categories(self) -> tuple[str, ...]:
+            return tuple(category for category, checkbox in self.category_checkboxes.items() if checkbox.isChecked())
+
+        def save_selected_categories(self) -> None:
+            for category, checkbox in self.category_checkboxes.items():
+                save_setting(self.settings, f'{SETTINGS_PREFIX}/category_{category}', '1' if checkbox.isChecked() else '0')
+
+        def summarize_folder(self, folder_path: str, selected_categories: tuple[str, ...] | None = None) -> dict[str, object]:
+            categories = self.get_selected_categories() if selected_categories is None else selected_categories
+            return self.sorter_module.summarize_folder(folder_path, categories)
+
+        def append_result_log(self, item: dict[str, object]) -> tuple[int, int, int]:
+            target_label = f'{item["category"]}\\{item["target_name"]}'
+            if item.get('success'):
+                if item.get('renamed'):
+                    self.log.appendPlainText(f'RENAME {item["source_name"]} -> {target_label}')
+                    return 1, 1, 0
+                self.log.appendPlainText(f'OK {item["source_name"]} -> {target_label}')
+                return 1, 0, 0
+            self.log.appendPlainText(f'ERROR {item["source_name"]} -> {target_label}: {item["error"]}')
+            return 0, 0, 1
 
         def handle_category_selection_changed(self):
             if self.is_running:
                 return
-            for category, checkbox in self.category_checkboxes.items():
-                save_setting(self.settings, f'{SETTINGS_PREFIX}/category_{category}', '1' if checkbox.isChecked() else '0')
+            self.save_selected_categories()
             self.refresh_summary()
 
         def choose_folder(self):
@@ -164,9 +182,8 @@ def build_file_sorter_tab_class(deps: dict[str, object]):
                 self.current_summary = None
                 self.summary_label.setText(errors[0])
                 return
-            sorter_module = get_file_sorter_module()
             try:
-                summary = sorter_module.summarize_folder(folder_path, self.get_selected_categories())
+                summary = self.summarize_folder(folder_path)
             except Exception as exc:
                 self.current_summary = None
                 self.summary_label.setText(f'无法读取文件夹: {exc}')
@@ -185,9 +202,10 @@ def build_file_sorter_tab_class(deps: dict[str, object]):
 
             self.set_busy(True)
             self.log.clear()
+            selected_categories = self.get_selected_categories()
             try:
-                sorter_module = get_file_sorter_module()
-                summary = sorter_module.summarize_folder(folder_path, self.get_selected_categories())
+                summary = self.summarize_folder(folder_path, selected_categories)
+                self.current_summary = summary
                 selected_total = int(summary.get('selected_total_files', 0) or 0)
                 if selected_total <= 0:
                     show_themed_warning(self, '提示', '当前勾选分类没有可分类文件')
@@ -197,23 +215,20 @@ def build_file_sorter_tab_class(deps: dict[str, object]):
                 self.log.appendPlainText(f'分类目录: {folder_path}')
                 self.log.appendPlainText(format_file_sorter_summary(summary))
 
-                results = sorter_module.classify_files(folder_path, self.get_selected_categories())
+                files = summary.get('files')
+                results = self.sorter_module.classify_files(
+                    folder_path,
+                    selected_categories,
+                    files if isinstance(files, list) else None,
+                )
                 moved_count = 0
                 renamed_count = 0
                 failed_count = 0
                 for item in results:
-                    if item.get('success'):
-                        moved_count += 1
-                        if item.get('renamed'):
-                            renamed_count += 1
-                            self.log.appendPlainText(f'RENAME {item["source_name"]} -> {item["category"]}\\{item["target_name"]}')
-                        else:
-                            self.log.appendPlainText(f'OK {item["source_name"]} -> {item["category"]}\\{item["target_name"]}')
-                    else:
-                        failed_count += 1
-                        self.log.appendPlainText(
-                            f'ERROR {item["source_name"]} -> {item["category"]}\\{item["target_name"]}: {item["error"]}'
-                        )
+                    moved_delta, renamed_delta, failed_delta = self.append_result_log(item)
+                    moved_count += moved_delta
+                    renamed_count += renamed_delta
+                    failed_count += failed_delta
 
                 show_themed_success(
                     self,

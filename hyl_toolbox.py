@@ -36,7 +36,7 @@ def build_help_popup_state(image_path: Path | None):
     }
 
 try:
-    from PySide6.QtCore import QSettings, Qt, QPoint, QSize, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, QEventLoop, QTimer, QFileInfo
+    from PySide6.QtCore import QSettings, Qt, QPoint, QSize, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, QEventLoop, QTimer, QFileInfo, QObject, QThread, Signal
     from PySide6.QtGui import QIcon, QPixmap, QPainter, QPen, QColor
     from PySide6.QtWidgets import (
         QApplication,
@@ -78,6 +78,7 @@ except ModuleNotFoundError:
     QTimer = None
     QIcon = QPixmap = QPainter = QPen = QColor = None
     QFileInfo = None
+    QObject = QThread = Signal = None
     QCheckBox = QFileDialog = QFileIconProvider = QFrame = QGraphicsOpacityEffect = QHBoxLayout = QLabel = QLineEdit = QListWidget = QListView = None
     QMainWindow = QMessageBox = QPushButton = QPlainTextEdit = QProgressBar = QStackedWidget = QDialog = None
     QVBoxLayout = QWidget = QComboBox = QSizePolicy = QStyledItemDelegate = QScrollArea = QSpacerItem = None
@@ -90,7 +91,9 @@ ZIP_DIR = ROOT / 'zipandpng'
 MP4_DIR = ROOT / 'mp4-mp3'
 IMAGE_CONVERT_DIR = ROOT / 'image-convert'
 PDF_TOOLS_DIR = ROOT / 'pdf-tools'
+VIDEO_DOWNLOADER_DIR = ROOT / 'video-downloader'
 BASE64_DIR = ROOT / 'base64'
+NAME_DIR = ROOT / 'name'
 FILE_SORTER_DIR = ROOT / '分类'
 SAME_DIR = ROOT / 'same'
 LOGO_PATH = ROOT / 'logo.png'
@@ -689,12 +692,28 @@ def _load_pdf_tools_module():
     return _load_module('pdf_tools_module', PDF_TOOLS_DIR / 'converter.py')
 
 
+def _load_video_downloader_module():
+    return _load_module('video_downloader_module', VIDEO_DOWNLOADER_DIR / 'converter.py')
+
+
+def _load_video_downloader_tab_module():
+    return _load_module('video_downloader_tab_module', VIDEO_DOWNLOADER_DIR / 'tab.py')
+
+
 def _load_file_sorter_module():
     return _load_module('file_sorter_module', FILE_SORTER_DIR / 'converter.py')
 
 
 def _load_file_sorter_tab_module():
     return _load_module('file_sorter_tab_module', FILE_SORTER_DIR / 'tab.py')
+
+
+def _load_name_module():
+    return _load_module('batch_rename_module', NAME_DIR / 'converter.py')
+
+
+def _load_name_tab_module():
+    return _load_module('batch_rename_tab_module', NAME_DIR / 'tab.py')
 
 
 def _load_same_module():
@@ -1009,6 +1028,9 @@ def get_tool_definitions() -> list[dict]:
         {'key': 'mp4mp3', 'title': 'MP4转MP3'},
         {'key': 'imageconvert', 'title': '图片格式互转'},
         {'key': 'pdftools', 'title': 'PDF工具'},
+        {'key': 'tgdownloader', 'title': 'TG下载'},
+        {'key': 'webvideodownloader', 'title': '网页视频下载'},
+        {'key': 'batchrename', 'title': '批量命名'},
         {'key': 'filesorter', 'title': '文件分类'},
         {'key': 'same', 'title': '重复文件'},
         {'key': 'base64', 'title': '图片Base64'},
@@ -1041,8 +1063,16 @@ def get_pdf_tools_module():
     return _load_pdf_tools_module()
 
 
+def get_video_downloader_module():
+    return _load_video_downloader_module()
+
+
 def get_file_sorter_module():
     return _load_file_sorter_module()
+
+
+def get_name_module():
+    return _load_name_module()
 
 
 def get_same_module():
@@ -1310,6 +1340,46 @@ def validate_base64_form(mode: str, image_files: list[Path], base64_text: str, o
     return errors
 
 
+def format_video_download_task_summary(task_text: str) -> str:
+    module = _load_video_downloader_tab_module()
+    downloader = get_video_downloader_module()
+    return module.format_video_task_summary(downloader.parse_task_lines(task_text))
+
+
+def validate_video_downloader_form(
+    task_text: str,
+    output_dir: str,
+    api_id: str,
+    api_hash: str,
+    phone: str,
+    recent_limit: str,
+    download_all_messages: bool = False,
+    date_from: str = '',
+    date_to: str = '',
+    telegram_include_videos: bool = True,
+    telegram_include_photos: bool = False,
+    web_candidate_index: str = '',
+    web_download_all_candidates: bool = False,
+) -> list[str]:
+    module = _load_video_downloader_tab_module()
+    return module.validate_video_downloader_form(
+        task_text,
+        output_dir,
+        api_id,
+        api_hash,
+        phone,
+        recent_limit,
+        download_all_messages,
+        date_from,
+        date_to,
+        telegram_include_videos,
+        telegram_include_photos,
+        web_candidate_index,
+        web_download_all_candidates,
+        get_video_downloader_module=get_video_downloader_module,
+    )
+
+
 def format_file_sorter_summary(summary: dict[str, object]) -> str:
     module = _load_file_sorter_tab_module()
     return module.format_file_sorter_summary(summary)
@@ -1345,6 +1415,16 @@ def validate_file_sorter_form(folder_path: str) -> list[str]:
     elif not path.is_dir():
         errors.append('选择的路径不是文件夹')
     return errors
+
+
+def format_batch_rename_summary(summary: dict[str, object]) -> str:
+    module = _load_name_tab_module()
+    return module.format_batch_rename_summary(summary)
+
+
+def validate_batch_rename_form(folder_path: str, prefix: str) -> list[str]:
+    module = _load_name_tab_module()
+    return module.validate_batch_rename_form(folder_path, prefix)
 
 
 def format_same_summary(result: dict[str, object]) -> str:
@@ -2922,22 +3002,68 @@ if QWidget is not None:
                 self.log.appendPlainText(f'ERROR {exc}')
                 show_themed_error(self, '处理失败', str(exc))
 
+    class _FallbackSignal:
+        def __init__(self):
+            self._callbacks: list[object] = []
+
+        def connect(self, callback):
+            self._callbacks.append(callback)
+
+        def emit(self, *args):
+            for callback in list(self._callbacks):
+                callback(*args)
+
+
+    if QObject is not None and Signal is not None:
+        class SameDetectionWorker(QObject):
+            finished = Signal(object)
+            failed = Signal(str)
+
+            def __init__(self, module, folder_path: str, recursive: bool):
+                super().__init__()
+                self.module = module
+                self.folder_path = folder_path
+                self.recursive = recursive
+
+            def run(self):
+                try:
+                    self.finished.emit(self.module.find_duplicate_groups(self.folder_path, self.recursive))
+                except Exception as exc:
+                    self.failed.emit(str(exc))
+    else:
+        class SameDetectionWorker:
+            def __init__(self, module, folder_path: str, recursive: bool):
+                self.module = module
+                self.folder_path = folder_path
+                self.recursive = recursive
+                self.finished = _FallbackSignal()
+                self.failed = _FallbackSignal()
+
+            def run(self):
+                try:
+                    self.finished.emit(self.module.find_duplicate_groups(self.folder_path, self.recursive))
+                except Exception as exc:
+                    self.failed.emit(str(exc))
+
 
     class SameTab(QWidget):
         def __init__(self, settings):
             super().__init__()
             self.settings = settings
             self.current_result: dict[str, object] | None = None
+            self.is_detecting = False
+            self.worker_thread = None
+            self.worker = None
             root = QVBoxLayout(self)
-            card, layout = make_card('重复文件', '检测同后缀且内容完全一致的重复文件，保留首个文件并移动其余重复件')
+            card, layout = make_card('重复文件', '普通文件按字节完全一致判重，视频按 95% 内容相似度判重，保留首个文件并移动其余重复件')
             path_row = QHBoxLayout()
             self.folder_edit = QLineEdit(load_setting(settings, 'same/input_dir'))
             self.folder_edit.setPlaceholderText('选择需要检测的文件夹')
             self.folder_edit.editingFinished.connect(self.handle_input_changed)
-            choose_btn = QPushButton('选择路径')
-            choose_btn.clicked.connect(self.choose_folder)
+            self.choose_button = QPushButton('选择路径')
+            self.choose_button.clicked.connect(self.choose_folder)
             path_row.addWidget(self.folder_edit)
-            path_row.addWidget(choose_btn)
+            path_row.addWidget(self.choose_button)
             layout.addLayout(path_row)
             option_row_widget, option_row = make_transparent_row()
             self.recursive_checkbox = QCheckBox('递归扫描子目录')
@@ -2946,7 +3072,7 @@ if QWidget is not None:
             option_row.addWidget(self.recursive_checkbox)
             option_row.addStretch(1)
             layout.addWidget(option_row_widget)
-            tip_label = QLabel('仅在同后缀文件内按内容判重，移动目标固定为根目录下的“重复文件”')
+            tip_label = QLabel('普通文件仍是精确判重；视频会抽取多帧做 95% 平均相似度比较，移动目标固定为根目录下的“重复文件”')
             tip_label.setProperty('cardSub', True)
             tip_label.setWordWrap(True)
             layout.addWidget(tip_label)
@@ -3004,22 +3130,28 @@ if QWidget is not None:
             self.summary_label.setText(format_same_summary(result))
             self.move_button.setEnabled(int(result.get('duplicate_file_count', 0) or 0) > 0)
 
-        def run_detection(self):
-            folder_path = self.folder_edit.text().strip()
-            errors = validate_same_form(folder_path)
-            if errors:
-                show_themed_warning(self, '提示', '\n'.join(errors))
-                return
-            recursive = self.recursive_checkbox.isChecked()
-            save_setting(self.settings, 'same/input_dir', folder_path)
-            save_setting(self.settings, 'same/recursive', '1' if recursive else '0')
-            same_module = get_same_module()
-            try:
-                result = same_module.find_duplicate_groups(folder_path, recursive)
-            except Exception as exc:
-                self.log.appendPlainText(f'ERROR {exc}')
-                show_themed_error(self, '检测失败', str(exc))
-                return
+        def set_detection_busy(self, busy: bool):
+            self.is_detecting = busy
+            self.folder_edit.setEnabled(not busy)
+            self.choose_button.setEnabled(not busy)
+            self.recursive_checkbox.setEnabled(not busy)
+            self.detect_button.setEnabled(not busy)
+            self.detect_button.setText('检测中...' if busy else '开始检测')
+            if busy:
+                self.move_button.setEnabled(False)
+            elif self.current_result is not None:
+                self.move_button.setEnabled(int(self.current_result.get('duplicate_file_count', 0) or 0) > 0)
+
+        def cleanup_detection_worker(self):
+            if self.worker_thread is not None:
+                self.worker_thread.quit()
+                self.worker_thread.wait()
+            self.worker_thread = None
+            self.worker = None
+
+        def handle_detection_finished(self, result: dict[str, object]):
+            self.cleanup_detection_worker()
+            self.set_detection_busy(False)
             self.set_result(result)
             self.log.appendPlainText(f'检测目录: {result["root"]}')
             self.log.appendPlainText(format_same_summary(result))
@@ -3034,6 +3166,39 @@ if QWidget is not None:
             else:
                 self.log.appendPlainText('未发现可移动的重复文件')
             show_themed_success(self, '完成', ['重复文件检测完成'])
+
+        def handle_detection_error(self, message: str):
+            self.cleanup_detection_worker()
+            self.set_detection_busy(False)
+            self.log.appendPlainText(f'ERROR {message}')
+            self.summary_label.setText('检测失败，请查看日志')
+            show_themed_error(self, '检测失败', message)
+
+        def run_detection(self):
+            if self.is_detecting:
+                return
+            folder_path = self.folder_edit.text().strip()
+            errors = validate_same_form(folder_path)
+            if errors:
+                show_themed_warning(self, '提示', '\n'.join(errors))
+                return
+            recursive = self.recursive_checkbox.isChecked()
+            save_setting(self.settings, 'same/input_dir', folder_path)
+            save_setting(self.settings, 'same/recursive', '1' if recursive else '0')
+            same_module = get_same_module()
+            self.log.appendPlainText(f'开始检测: {folder_path}')
+            self.summary_label.setText('正在检测，请稍候...')
+            self.set_detection_busy(True)
+            self.worker = SameDetectionWorker(same_module, folder_path, recursive)
+            self.worker.finished.connect(self.handle_detection_finished)
+            self.worker.failed.connect(self.handle_detection_error)
+            if QThread is None:
+                self.worker.run()
+                return
+            self.worker_thread = QThread(self)
+            self.worker.moveToThread(self.worker_thread)
+            self.worker_thread.started.connect(self.worker.run)
+            self.worker_thread.start()
 
         def run_move(self):
             if not self.current_result or int(self.current_result.get('duplicate_file_count', 0) or 0) <= 0:
@@ -3338,6 +3503,7 @@ if QWidget is not None:
             'QWidget': QWidget,
             'QVBoxLayout': QVBoxLayout,
             'QHBoxLayout': QHBoxLayout,
+            'QScrollArea': QScrollArea,
             'QLineEdit': QLineEdit,
             'QPushButton': QPushButton,
             'QLabel': QLabel,
@@ -3355,6 +3521,64 @@ if QWidget is not None:
             'show_themed_success': show_themed_success,
             'get_file_sorter_module': get_file_sorter_module,
             'ROOT': ROOT,
+        }
+    )
+
+    BatchRenameTab = _load_name_tab_module().build_batch_rename_tab_class(
+        {
+            'QWidget': QWidget,
+            'QVBoxLayout': QVBoxLayout,
+            'QHBoxLayout': QHBoxLayout,
+            'QScrollArea': QScrollArea,
+            'QLineEdit': QLineEdit,
+            'QPushButton': QPushButton,
+            'QLabel': QLabel,
+            'QPlainTextEdit': QPlainTextEdit,
+            'QFileDialog': QFileDialog,
+            'QApplication': QApplication,
+            'QComboBox': QComboBox,
+            'load_setting': load_setting,
+            'save_setting': save_setting,
+            'make_card': make_card,
+            'make_transparent_row': make_transparent_row,
+            'build_global_scrollbar_style': build_global_scrollbar_style,
+            'show_themed_warning': show_themed_warning,
+            'show_themed_error': show_themed_error,
+            'show_themed_success': show_themed_success,
+            'style_combo_popup': style_combo_popup,
+            'get_name_module': get_name_module,
+            'ROOT': ROOT,
+        }
+    )
+
+    VideoDownloaderTab = _load_video_downloader_tab_module().build_video_downloader_tab_class(
+        {
+            'QWidget': QWidget,
+            'QVBoxLayout': QVBoxLayout,
+            'QHBoxLayout': QHBoxLayout,
+            'QScrollArea': QScrollArea,
+            'QLineEdit': QLineEdit,
+            'QPushButton': QPushButton,
+            'QLabel': QLabel,
+            'QCheckBox': QCheckBox,
+            'QPlainTextEdit': QPlainTextEdit,
+            'QProgressBar': QProgressBar,
+            'QFileDialog': QFileDialog,
+            'QApplication': QApplication,
+            'QObject': QObject,
+            'QThread': QThread,
+            'Signal': Signal,
+            'load_setting': load_setting,
+            'save_setting': save_setting,
+            'make_card': make_card,
+            'make_transparent_row': make_transparent_row,
+            'build_global_scrollbar_style': build_global_scrollbar_style,
+            'show_themed_warning': show_themed_warning,
+            'show_themed_error': show_themed_error,
+            'show_themed_success': show_themed_success,
+            'get_video_downloader_module': get_video_downloader_module,
+            'ROOT': ROOT,
+            'VIDEO_DOWNLOADER_DIR': VIDEO_DOWNLOADER_DIR,
         }
     )
 
@@ -3417,6 +3641,9 @@ if QWidget is not None:
             self.sidebar.addItem('MP4转MP3')
             self.sidebar.addItem('图片格式互转')
             self.sidebar.addItem('PDF工具')
+            self.sidebar.addItem('TG下载')
+            self.sidebar.addItem('网页视频下载')
+            self.sidebar.addItem('批量命名')
             self.sidebar.addItem('文件分类')
             self.sidebar.addItem('清理重复文件')
             self.sidebar.addItem('图片Base64互转')
@@ -3449,6 +3676,10 @@ if QWidget is not None:
             self.mp4_tab = Mp4ToMp3Tab(settings)
             self.image_convert_tab = ImageConvertTab(settings)
             self.pdf_tools_tab = PdfToolsTab(settings)
+            self.tg_downloader_tab = VideoDownloaderTab(settings, 'telegram')
+            self.web_video_downloader_tab = VideoDownloaderTab(settings, 'web')
+            self.video_downloader_tab = self.tg_downloader_tab
+            self.batch_rename_tab = BatchRenameTab(settings)
             self.file_sorter_tab = FileSorterTab(settings)
             self.same_tab = SameTab(settings)
             self.base64_tab = Base64Tab(settings)
@@ -3457,6 +3688,9 @@ if QWidget is not None:
             self.stack.addWidget(self.mp4_tab)
             self.stack.addWidget(self.image_convert_tab)
             self.stack.addWidget(self.pdf_tools_tab)
+            self.stack.addWidget(self.tg_downloader_tab)
+            self.stack.addWidget(self.web_video_downloader_tab)
+            self.stack.addWidget(self.batch_rename_tab)
             self.stack.addWidget(self.file_sorter_tab)
             self.stack.addWidget(self.same_tab)
             self.stack.addWidget(self.base64_tab)
@@ -3657,6 +3891,10 @@ if QWidget is not None:
             style_combo_popup(self.pdf_tools_tab.text_format_combo, self.current_theme)
             self.setStyleSheet(get_theme_stylesheet(self.current_theme))
             self.content_surface.setGraphicsEffect(None)
+            if hasattr(self.tg_downloader_tab, 'apply_theme'):
+                self.tg_downloader_tab.apply_theme(self.current_theme)
+            if hasattr(self.web_video_downloader_tab, 'apply_theme'):
+                self.web_video_downloader_tab.apply_theme(self.current_theme)
             self.update_window_controls()
             self.update_user_menu_ui()
             if hasattr(self, 'user_menu') and self.user_menu.isVisible():

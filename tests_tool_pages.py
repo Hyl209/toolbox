@@ -63,7 +63,7 @@ def test_get_mp4_module_loads_converter_with_local_config_dependency():
 
 def test_app_dir_uses_source_dir_when_not_frozen():
     toolbox = load_module()
-    assert toolbox.APP_DIR == pathlib.Path('PROJECT_ROOT')
+    assert toolbox.APP_DIR == pathlib.Path(toolbox.__file__).resolve().parent
 
 
 def test_mp4_drop_summary_shows_selected_videos_in_same_area():
@@ -161,8 +161,9 @@ def test_image_convert_drop_summary_shows_selected_images_in_same_area():
 
 def test_image_convert_and_base64_drop_zones_preview_first_image_in_source():
     source = MODULE_PATH.read_text(encoding='utf-8')
-    assert "self.drop_zone.set_preview_image(str(self.files[0]))" in source
-    assert source.count("self.drop_zone.set_preview_image(str(self.files[0]))") >= 2
+    assert "self.drop_zone.set_preview_image(" in source
+    assert "body_text=picked.name" in source
+    assert source.count("body_text=picked.name") >= 2
 
 
 def test_validate_image_convert_form_requires_files_output_format_and_valid_numbers():
@@ -244,11 +245,116 @@ def test_validate_base64_form_accepts_valid_encode_request():
     assert errors == []
 
 
+def test_format_video_download_task_summary_counts_mixed_links():
+    toolbox = load_module()
+    text = '\n'.join([
+        'https://t.me/demo/123',
+        'https://t.me/demo',
+        'https://example.com/watch?v=1',
+    ])
+    summary = toolbox.format_video_download_task_summary(text)
+    assert '鍏?3 涓换鍔? in summary
+    assert 'Telegram 娑堟伅: 1' in summary
+    assert 'Telegram 缇?棰戦亾: 1' in summary
+    assert '缃戦〉瑙嗛: 1' in summary
+
+
+def test_validate_video_downloader_form_requires_output_and_telegram_credentials():
+    toolbox = load_module()
+    errors = toolbox.validate_video_downloader_form(
+        'https://t.me/demo/1',
+        '',
+        '',
+        '',
+        '',
+        '500',
+        False,
+        '',
+        '',
+        True,
+        False,
+    )
+    assert '璇烽€夋嫨杈撳嚭鐩綍' in errors
+    assert '璇疯緭鍏?Telegram API ID' in errors
+    assert '璇疯緭鍏?Telegram API Hash' in errors
+    assert '璇疯緭鍏?Telegram 鎵嬫満鍙? in errors
+
+
+def test_validate_video_downloader_form_accepts_web_only_task_without_telegram_credentials():
+    toolbox = load_module()
+    with tempfile.TemporaryDirectory() as tmp:
+        errors = toolbox.validate_video_downloader_form(
+            'https://example.com/video',
+            tmp,
+            '',
+            '',
+            '',
+            '500',
+            False,
+            '',
+            '',
+            True,
+            False,
+        )
+    assert errors == []
+
+
+def test_validate_video_downloader_form_rejects_invalid_date_and_empty_media_selection():
+    toolbox = load_module()
+    with tempfile.TemporaryDirectory() as tmp:
+        errors = toolbox.validate_video_downloader_form(
+            'https://t.me/demo',
+            tmp,
+            '1',
+            'hash',
+            '+123',
+            '500',
+            False,
+            '2026/01/01',
+            '',
+            False,
+            False,
+            '',
+            False,
+        )
+    assert '寮€濮嬫棩鏈熷繀椤绘槸 YYYY-MM-DD 鏍煎紡' in errors
+    assert 'Telegram 浠诲姟鑷冲皯瑕佸嬀閫変竴绉嶄笅杞界被鍨? in errors
+
+
+def test_validate_video_downloader_form_rejects_invalid_web_candidate_index():
+    toolbox = load_module()
+    with tempfile.TemporaryDirectory() as tmp:
+        errors = toolbox.validate_video_downloader_form(
+            'https://example.com/post/1',
+            tmp,
+            '',
+            '',
+            '',
+            '500',
+            False,
+            '',
+            '',
+            True,
+            False,
+            '0',
+            False,
+        )
+    assert '缃戦〉鍊欓€夊簭鍙峰繀椤诲ぇ浜?0' in errors
+
+
 def test_validate_file_sorter_form_requires_existing_folder():
     toolbox = load_module()
     assert '璇烽€夋嫨闇€瑕佸垎绫荤殑鏂囦欢澶? in toolbox.validate_file_sorter_form('')
     errors = toolbox.validate_file_sorter_form('Z:/not-found-folder')
     assert '閫夋嫨鐨勬枃浠跺す涓嶅瓨鍦? in errors
+
+
+def test_validate_batch_rename_form_requires_existing_folder_and_prefix():
+    toolbox = load_module()
+    assert '璇烽€夋嫨闇€瑕佹壒閲忓懡鍚嶇殑鏂囦欢澶? in toolbox.validate_batch_rename_form('', '')
+    errors = toolbox.validate_batch_rename_form('Z:/not-found-folder', '')
+    assert '閫夋嫨鐨勬枃浠跺す涓嶅瓨鍦? in errors
+    assert '璇疯緭鍏ュ懡鍚嶅墠缂€' in errors
 
 
 def test_validate_same_form_requires_existing_folder():
@@ -351,6 +457,29 @@ def test_file_sorter_only_moves_selected_categories():
         assert (root / 'song.mp3').exists()
 
 
+def test_video_downloader_tab_source_contains_log_recent_limit_and_status_controls():
+    source = (ROOT / 'video-downloader' / 'tab.py').read_text(encoding='utf-8')
+    assert "make_card('涓嬭浇浠诲姟')" in source
+    assert "make_card('TG 涓嬭浇')" in source
+    assert "make_card('缃戦〉瑙嗛涓嬭浇')" in source
+    assert 'self.backend_status_label' in source
+    assert 'self.recent_count_edit' in source
+    assert 'self.all_messages_checkbox' in source
+    assert 'self.date_from_edit' in source
+    assert 'self.date_to_edit' in source
+    assert 'self.include_video_checkbox' in source
+    assert 'self.include_photo_checkbox' in source
+    assert 'self.log = QPlainTextEdit()' in source
+    assert 'self.progress_bar = QProgressBar()' in source
+    assert 'class DownloadWorker' in source
+    assert "elif kind == 'tg_scan':" in source
+    assert "elif kind == 'file':" in source
+    assert 'self.web_candidate_index_edit' in source
+    assert 'self.web_all_candidates_checkbox' in source
+    assert 'self.send_code_button' in source
+    assert 'self.check_status_button' in source
+
+
 def test_file_sorter_scan_folder_skips_dotfiles_and_desktop_ini():
     toolbox = load_module()
     module = toolbox.get_file_sorter_module()
@@ -409,6 +538,79 @@ def test_file_sorter_classify_files_captures_target_dir_creation_error():
         assert results[0]['success'] is False
         assert results[0]['source_name'] == 'movie.mp4'
         assert (root / 'movie.mp4').exists()
+
+
+def test_batch_rename_plan_supports_group_sort_and_order_choices():
+    toolbox = load_module()
+    module = toolbox.get_name_module()
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        small = root / 'alpha.mp4'
+        medium = root / 'beta.mkv'
+        large = root / 'gamma.mp4'
+        small.write_bytes(b'a')
+        medium.write_bytes(b'bb')
+        large.write_bytes(b'ccc')
+
+        plan = module.build_rename_plan(root, '瑙嗛', 'suffix', 'size', 'desc')
+
+        plan_by_source = {item['source_name']: item for item in plan}
+        assert plan_by_source['gamma.mp4']['target_name'] == '瑙嗛_001.mp4'
+        assert plan_by_source['alpha.mp4']['target_name'] == '瑙嗛_002.mp4'
+        assert plan_by_source['beta.mkv']['target_name'] == '瑙嗛_001.mkv'
+
+
+def test_batch_rename_plan_supports_type_grouping_and_name_sort():
+    toolbox = load_module()
+    module = toolbox.get_name_module()
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        (root / 'b.png').write_text('img', encoding='utf-8')
+        (root / 'a.jpg').write_text('img', encoding='utf-8')
+        (root / 'c.mp3').write_text('audio', encoding='utf-8')
+
+        plan = module.build_rename_plan(root, '璧勬簮', 'type', 'name', 'asc')
+
+        assert [item['group_key'] for item in plan] == ['鍥剧墖', '鍥剧墖', '闊抽']
+        assert [item['target_name'] for item in plan] == ['璧勬簮_001.jpg', '璧勬簮_002.png', '璧勬簮_001.mp3']
+
+
+def test_batch_rename_files_renames_first_level_files_only_and_keeps_continuous_numbers():
+    toolbox = load_module()
+    module = toolbox.get_name_module()
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        nested = root / 'nested'
+        nested.mkdir()
+        (root / 'c.txt').write_text('1', encoding='utf-8')
+        (root / 'a.txt').write_text('2', encoding='utf-8')
+        (nested / 'inside.txt').write_text('3', encoding='utf-8')
+
+        results = module.rename_files(root, '鏂囨。', 'all', 'name', 'asc')
+
+        assert [item['target_name'] for item in results] == ['鏂囨。_001.txt', '鏂囨。_002.txt']
+        assert (root / '鏂囨。_001.txt').exists()
+        assert (root / '鏂囨。_002.txt').exists()
+        assert (nested / 'inside.txt').exists()
+
+
+def test_batch_rename_detects_external_target_conflict_before_changing_files():
+    toolbox = load_module()
+    module = toolbox.get_name_module()
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        (root / 'b.txt').write_text('one', encoding='utf-8')
+        (root / 'a.txt').write_text('two', encoding='utf-8')
+        (root / '鎵归噺_001.txt').mkdir()
+
+        try:
+            module.rename_files(root, '鎵归噺', 'all', 'name', 'asc')
+        except FileExistsError as exc:
+            assert '鐩爣鏂囦欢宸插瓨鍦? in str(exc)
+        else:
+            raise AssertionError('expected external conflict error')
+        assert (root / 'a.txt').exists()
+        assert (root / 'b.txt').exists()
 
 
 def test_same_module_groups_only_same_suffix_and_keeps_first_file():

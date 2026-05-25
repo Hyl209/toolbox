@@ -16,11 +16,14 @@ def load_module():
     return module
 
 
-def test_tool_definitions_include_image_convert_pdf_base64_file_sorter_and_same_tools():
+def test_tool_definitions_include_image_convert_pdf_split_video_downloaders_base64_file_sorter_same_and_batch_rename_tools():
     toolbox = load_module()
     titles = [item['title'] for item in toolbox.get_tool_definitions()]
     assert '鍥剧墖鏍煎紡浜掕浆' in titles
     assert 'PDF宸ュ叿' in titles
+    assert 'TG涓嬭浇' in titles
+    assert '缃戦〉瑙嗛涓嬭浇' in titles
+    assert '鎵归噺鍛藉悕' in titles
     assert '鏂囦欢鍒嗙被' in titles
     assert '閲嶅鏂囦欢' in titles
     assert '鍥剧墖Base64' in titles
@@ -41,6 +44,14 @@ def test_get_pdf_tools_module_loads_converter_helpers():
     assert hasattr(module, 'export_pdf_text')
 
 
+def test_get_video_downloader_module_loads_converter_helpers():
+    toolbox = load_module()
+    module = toolbox.get_video_downloader_module()
+    assert hasattr(module, 'parse_task_lines')
+    assert hasattr(module, 'classify_source')
+    assert hasattr(module, 'download_batch')
+
+
 def test_get_base64_module_loads_converter_helpers():
     toolbox = load_module()
     module = toolbox.get_base64_module()
@@ -56,11 +67,33 @@ def test_get_file_sorter_module_loads_converter_helpers():
     assert hasattr(module, 'resolve_name_conflict')
 
 
+def test_get_name_module_loads_batch_rename_helpers():
+    toolbox = load_module()
+    module = toolbox.get_name_module()
+    assert hasattr(module, 'scan_folder')
+    assert hasattr(module, 'build_rename_plan')
+    assert hasattr(module, 'rename_files')
+
+
 def test_file_sorter_modules_live_under_classify_directory():
     toolbox = load_module()
     assert toolbox.FILE_SORTER_DIR.name == '鍒嗙被'
     assert (ROOT / '鍒嗙被' / 'converter.py').exists()
     assert (ROOT / '鍒嗙被' / 'tab.py').exists()
+
+
+def test_name_modules_live_under_name_directory():
+    toolbox = load_module()
+    assert toolbox.NAME_DIR.name == 'name'
+    assert (ROOT / 'name' / 'converter.py').exists()
+    assert (ROOT / 'name' / 'tab.py').exists()
+
+
+def test_video_downloader_modules_live_under_video_downloader_directory():
+    toolbox = load_module()
+    assert toolbox.VIDEO_DOWNLOADER_DIR.name == 'video-downloader'
+    assert (ROOT / 'video-downloader' / 'converter.py').exists()
+    assert (ROOT / 'video-downloader' / 'tab.py').exists()
 
 
 def test_get_same_module_loads_duplicate_helpers():
@@ -537,16 +570,15 @@ def test_help_popup_state_uses_weixin_png_and_hides_on_main_area_click():
     assert state['caption_font_weight'] == 700
 
 
-def test_help_popup_state_rejects_missing_image_path():
+def test_help_popup_state_falls_back_to_embedded_image_when_file_is_missing():
     toolbox = load_module()
     with tempfile.TemporaryDirectory() as tmp:
         missing = pathlib.Path(tmp) / 'missing.png'
-        try:
-            toolbox.build_help_popup_state(missing)
-        except FileNotFoundError as exc:
-            assert 'missing.png' in str(exc)
-        else:
-            raise AssertionError('expected FileNotFoundError for missing help image')
+        state = toolbox.build_help_popup_state(missing)
+        assert state['image_path'] is None
+        assert state['has_image'] is True
+        assert state['image_bytes']
+        assert state['caption'] == '鎰熻阿鎵撹祻'
 
 
 def test_toolbox_window_help_popup_toggles_and_hides_on_main_area_click_when_pyside_available():
@@ -644,7 +676,7 @@ def test_build_user_menu_state_exposes_avatar_button_and_roomier_popup_style():
     assert state['menu_spacing'] >= 12
 
 
-def test_build_main_window_sidebar_includes_image_convert_pdf_base64_file_sorter_and_same_tab_when_pyside_available():
+def test_build_main_window_sidebar_includes_image_convert_pdf_split_video_downloaders_batch_rename_base64_file_sorter_and_same_tab_when_pyside_available():
     toolbox = load_module()
     if toolbox.QWidget is None:
         return
@@ -653,10 +685,13 @@ def test_build_main_window_sidebar_includes_image_convert_pdf_base64_file_sorter
         sidebar_titles = [window.sidebar.item(i).text() for i in range(window.sidebar.count())]
         assert '鍥剧墖鏍煎紡浜掕浆' in sidebar_titles
         assert 'PDF宸ュ叿' in sidebar_titles
+        assert 'TG涓嬭浇' in sidebar_titles
+        assert '缃戦〉瑙嗛涓嬭浇' in sidebar_titles
+        assert '鎵归噺鍛藉悕' in sidebar_titles
         assert '鏂囦欢鍒嗙被' in sidebar_titles
         assert '閲嶅鏂囦欢' in sidebar_titles
         assert '鍥剧墖Base64' in sidebar_titles
-        assert window.stack.count() == 8
+        assert window.stack.count() == 11
         assert bool(window.windowFlags() & toolbox.Qt.FramelessWindowHint)
         assert window.drag_bar.minimumHeight() == 34
         assert window.drag_bar.maximumHeight() == 34
@@ -724,6 +759,25 @@ def test_build_main_window_sidebar_includes_image_convert_pdf_base64_file_sorter
         assert window.pdf_tools_tab.action_combo.itemText(2) == '杞浘鐗?
         assert not window.pdf_tools_tab.action_combo.isEditable()
         assert not window.pdf_tools_tab.image_format_combo.isEditable()
+        assert window.tg_downloader_tab.output_edit.placeholderText() == '閫夋嫨瑙嗛杈撳嚭鐩綍'
+        assert window.tg_downloader_tab.run_button.text() == '寮€濮嬩笅杞?
+        assert window.tg_downloader_tab.send_code_button.text() == '鍙戦€侀獙璇佺爜'
+        assert window.tg_downloader_tab.check_status_button.text() == '妫€鏌ョ姸鎬?
+        assert window.tg_downloader_tab.progress_bar.value() == 0
+        assert window.tg_downloader_tab.task_edit.minimumHeight() == 150
+        assert window.tg_downloader_tab.log.minimumHeight() == 150
+        assert window.tg_downloader_tab.progress_label.text() == '绛夊緟寮€濮?
+        assert window.tg_downloader_tab.overwrite_checkbox.parentWidget().styleSheet() == 'background: transparent;'
+        assert window.web_video_downloader_tab.output_edit.placeholderText() == '閫夋嫨瑙嗛杈撳嚭鐩綍'
+        assert window.web_video_downloader_tab.run_button.text() == '寮€濮嬩笅杞?
+        assert window.web_video_downloader_tab.progress_bar.value() == 0
+        assert window.web_video_downloader_tab.task_edit.minimumHeight() == 110
+        assert window.web_video_downloader_tab.log.minimumHeight() == 110
+        assert window.web_video_downloader_tab.progress_label.text() == '绛夊緟寮€濮?
+        assert window.web_video_downloader_tab.web_candidate_index_edit is not None
+        assert window.web_video_downloader_tab.send_code_button is None
+        assert window.web_video_downloader_tab.refresh_status_button is None
+        assert window.web_video_downloader_tab.backend_status_label is None
         assert window.file_sorter_tab.folder_edit.placeholderText() == '閫夋嫨闇€瑕佸垎绫荤殑鏂囦欢澶?
         assert window.file_sorter_tab.run_button.text() == '寮€濮嬪垎绫?
         assert window.same_tab.folder_edit.placeholderText() == '閫夋嫨闇€瑕佹娴嬬殑鏂囦欢澶?
