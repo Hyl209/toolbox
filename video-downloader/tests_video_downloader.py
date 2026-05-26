@@ -376,6 +376,28 @@ def test_download_web_concurrent_reraises_cancelled_error():
         module._run_web_task = original_run
 
 
+def test_download_web_concurrent_passes_current_token_to_workers():
+    module = load_module()
+    original_run = module._run_web_task
+    token = module.Token()
+    seen = []
+    try:
+        module._set_current_token(token)
+
+        def fake_run(task, output_root, options, progress_cb, passed_token):
+            seen.append(passed_token)
+            return module._make_result(task, True, [], '')
+
+        module._run_web_task = fake_run
+        tasks = [(0, module.DownloadTask('https://example.com/a', 'web', 'a'))]
+        with tempfile.TemporaryDirectory() as tmp:
+            module._download_web_concurrent(tasks, pathlib.Path(tmp), module.DownloadOptions(), None, 1, 0, 1)
+        assert seen == [token]
+    finally:
+        module._set_current_token(None)
+        module._run_web_task = original_run
+
+
 def test_select_candidates_rejects_multiple_before_after_indices():
     module = load_module()
     for mode in ('before', 'after'):
@@ -438,6 +460,140 @@ def test_validate_video_downloader_form_accepts_preloaded_module():
             get_video_downloader_module=lambda: (_ for _ in ()).throw(AssertionError('should not reload module')),
         )
     assert errors == []
+
+
+def test_run_download_ignores_stale_web_candidate_text_when_all_candidates_checked():
+    tab_module = load_tab_module()
+    module = load_module()
+    captured = {}
+    original_download_batch = module.download_batch
+    original_expand = module._expand_web_all_candidates
+    try:
+        def fake_download_batch(tasks, output_dir, telegram_config, options, progress_cb=None, token=None):
+            captured['options'] = options
+            return []
+
+        module.download_batch = fake_download_batch
+        module._expand_web_all_candidates = lambda tasks, append_log: tasks
+        tab_class = tab_module.build_video_downloader_tab_class({
+            'QWidget': object,
+            'QVBoxLayout': object,
+            'QHBoxLayout': object,
+            'QScrollArea': object,
+            'QFrame': object,
+            'QLabel': object,
+            'QLineEdit': object,
+            'QPlainTextEdit': object,
+            'QPushButton': object,
+            'QProgressBar': object,
+            'QFileDialog': object,
+            'QApplication': object,
+            'QCheckBox': object,
+            'QComboBox': object,
+            'QObject': None,
+            'QThread': None,
+            'Signal': None,
+            'load_setting': lambda *args, **kwargs: '',
+            'save_setting': lambda *args, **kwargs: None,
+            'make_card': lambda *args, **kwargs: object(),
+            'make_transparent_row': lambda *args, **kwargs: object(),
+            'build_global_scrollbar_style': lambda: '',
+            'show_themed_warning': lambda *args, **kwargs: None,
+            'show_themed_error': lambda *args, **kwargs: None,
+            'show_themed_success': lambda *args, **kwargs: None,
+            'style_combo_popup': lambda *args, **kwargs: None,
+            'get_video_downloader_module': lambda: module,
+            'ROOT': ROOT,
+            'VIDEO_DOWNLOADER_DIR': ROOT,
+        })
+
+        class DummyField:
+            def __init__(self, value=''):
+                self._value = value
+
+            def toPlainText(self):
+                return self._value
+
+            def text(self):
+                return self._value
+
+            def clear(self):
+                self._value = ''
+
+            def isChecked(self):
+                return bool(self._value)
+
+        class DummyTab:
+            def __init__(self):
+                self.module = module
+                self.source_mode = 'web'
+                self.task_edit = DummyField('https://example.com/post/1')
+                self.output_edit = DummyField('C:/tmp')
+                self.api_id_edit = DummyField('')
+                self.api_hash_edit = DummyField('')
+                self.phone_edit = DummyField('')
+                self.recent_count_edit = DummyField('500')
+                self.all_messages_checkbox = DummyField('')
+                self.date_from_edit = DummyField('')
+                self.date_to_edit = DummyField('')
+                self.include_video_checkbox = DummyField('')
+                self.include_photo_checkbox = DummyField('')
+                self.web_candidate_index_edit = DummyField('before1')
+                self.web_all_candidates_checkbox = DummyField(True)
+                self.overwrite_checkbox = DummyField('')
+                self.concurrent_combo = None
+                self.log = types.SimpleNamespace(clear=lambda: None)
+                self.worker = None
+                self.worker_thread = None
+
+            def save_form_settings(self):
+                pass
+
+            def _is_checked(self, widget):
+                return widget.isChecked()
+
+            def _widget_text(self, widget):
+                if widget is self.web_candidate_index_edit:
+                    raise AssertionError('stale web candidate text was read')
+                return widget.text()
+
+            def _concurrent_value(self):
+                return '1'
+
+            def build_config(self):
+                return None
+
+            def set_busy(self, value):
+                pass
+
+            def append_log(self, message):
+                pass
+
+            def reset_progress_ui(self, total_tasks):
+                pass
+
+            def handle_worker_progress(self, *args):
+                pass
+
+            def finalize_download(self, *args):
+                pass
+
+            def handle_worker_error(self, *args):
+                pass
+
+            def handle_download_cancelled(self, *args):
+                pass
+
+            def _resolve_candidate_mode(self):
+                return 'pick'
+
+        tab = DummyTab()
+        tab_class.run_download(tab)
+        assert captured['options'].web_candidate_indices is None
+        assert captured['options'].web_download_all_candidates is True
+    finally:
+        module.download_batch = original_download_batch
+        module._expand_web_all_candidates = original_expand
 
 
 def test_validate_video_downloader_form_rejects_web_link_on_telegram_page():

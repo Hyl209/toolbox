@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError, as_completed
 from datetime import date, datetime, time, timezone
 from contextlib import contextmanager
 from random import uniform
@@ -476,13 +476,23 @@ def _download_web_concurrent(
     task_by_index = {index: task for index, task in web_entries}
     for index, task in web_entries:
         _emit_task_start(progress_cb, index, total_tasks, task)
-    token = _current_token()
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+    token = _require_token()
+    executor = ThreadPoolExecutor(max_workers=max_workers)
+    cancelled = False
+    future_map: dict[object, int] = {}
+    try:
         future_map = {
             executor.submit(_run_web_task, task, output_root, options, progress_cb, token): index
             for index, task in web_entries
         }
-        for future in as_completed(future_map):
+        pending = set(future_map)
+        while pending:
+            _check_cancel(token)
+            try:
+                future = next(as_completed(tuple(pending), timeout=0.2))
+            except FutureTimeoutError:
+                continue
+            pending.remove(future)
             index = future_map[future]
             try:
                 results[index] = future.result()
@@ -493,6 +503,14 @@ def _download_web_concurrent(
                 results[index] = _make_result(task_by_index[index], False, [], str(exc))
             completed_count += 1
             _emit_task_done(progress_cb, completed_count, total_tasks)
+    except CancelledError:
+        cancelled = True
+        for future in future_map:
+            if not future.done():
+                future.cancel()
+        raise
+    finally:
+        executor.shutdown(wait=not cancelled, cancel_futures=cancelled)
     return results
 
 
@@ -517,6 +535,9 @@ def _download_web_auto(
         _set_current_token(_require_token())
         try:
             results[index] = _download_web_task(task, output_root, options, tracker.emit)
+        except CancelledError:
+            results[index] = _make_result(task, False, [], '下载已取消')
+            raise
         except Exception as exc:
             results[index] = _make_result(task, False, [], str(exc))
         completed += 1
@@ -959,6 +980,9 @@ async def _download_telegram_entries(
             _emit_task_start(progress_cb, index, total_tasks, task)
             try:
                 results[index] = await _download_single_telegram_task(client, task, output_root, options, progress_cb)
+            except CancelledError:
+                results[index] = _make_result(task, False, [], '下载已取消')
+                raise
             except Exception as exc:
                 results[index] = _make_result(task, False, [], str(exc))
             _emit_task_done(progress_cb, len(results), total_tasks)
@@ -1217,6 +1241,8 @@ def _download_web_candidate(
                 title_hint=task.target_title,
                 referer_url=task.source_url,
             )
+        except CancelledError:
+            raise
         except Exception as exc:
             _emit(progress_cb, f'yt-dlp 下载 m3u8 失败，改用 ffmpeg 兜底: {exc}')
             return _download_m3u8_with_ffmpeg(
@@ -1266,6 +1292,8 @@ def _download_web_candidates(
             if not options.web_download_all_candidates and not download_all:
                 return files, None
             downloaded_files.extend(files)
+        except CancelledError:
+            raise
         except Exception as exc:
             last_error = exc
     return downloaded_files, last_error
@@ -1352,6 +1380,8 @@ def _download_web_task(task: DownloadTask, output_root: Path, options: DownloadO
                     )
                     if downloaded_files:
                         return _make_result(task, True, downloaded_files, '')
+            except CancelledError:
+                raise
             except Exception as exc:
                 first_error = exc
     try:
@@ -1364,6 +1394,8 @@ def _download_web_task(task: DownloadTask, output_root: Path, options: DownloadO
             referer_url=task.source_url,
         )
         return _make_result(task, True, downloaded['files'], '')
+    except CancelledError:
+        raise
     except Exception as exc:
         first_error = exc
     try:

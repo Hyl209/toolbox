@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -1007,7 +1008,10 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                     else:
                         self.progress_label.setText(f'{prefix}: 当前文件 {name}')
                 elif kind == 'web_percent':
-                    self.update_progress_percent(float(payload.get('percent', '0') or 0))
+                    try:
+                        self.update_progress_percent(float(payload.get('percent', '0') or 0))
+                    except (TypeError, ValueError):
+                        pass
                 elif kind == 'web_aria2':
                     name = payload.get('name', '')
                     percent = payload.get('percent', '')
@@ -1025,8 +1029,12 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                     prefix = f'处理中 {self.current_task_index + 1}/{self.total_tasks}' if self.total_tasks > 0 and self.current_task_index >= 0 else '处理中'
                     self.progress_label.setText(f'{prefix}: {name} {" | ".join(details)}')
                 elif kind in {'web_status', 'tg_media'}:
-                    percent = float(payload.get('percent', '0') or 0)
-                    self.update_progress_percent(percent)
+                    percent = 0.0
+                    try:
+                        percent = float(payload.get('percent', '0') or 0)
+                        self.update_progress_percent(percent)
+                    except (TypeError, ValueError):
+                        pass
                     name = payload.get('name', '')
                     speed = payload.get('speed', '')
                     eta = payload.get('eta', '')
@@ -1241,6 +1249,8 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
         def run_download(self):
             self.save_form_settings()
             module = self.module
+            web_all_candidates = self._is_checked(self.web_all_candidates_checkbox)
+            web_candidate_text = '' if web_all_candidates else self._widget_text(self.web_candidate_index_edit)
             errors = validate_video_downloader_form(
                 self.task_edit.toPlainText(),
                 self.output_edit.text().strip(),
@@ -1253,8 +1263,8 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                 date_to=self._widget_text(self.date_to_edit),
                 telegram_include_videos=self._is_checked(self.include_video_checkbox) or self.source_mode != 'telegram',
                 telegram_include_photos=self._is_checked(self.include_photo_checkbox),
-                web_candidate_index=self._widget_text(self.web_candidate_index_edit),
-                web_download_all_candidates=self._is_checked(self.web_all_candidates_checkbox),
+                web_candidate_index=web_candidate_text,
+                web_download_all_candidates=web_all_candidates,
                 source_mode=self.source_mode,
                 module=module,
             )
@@ -1278,10 +1288,12 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                 telegram_date_to=module.parse_iso_date(self._widget_text(self.date_to_edit), '结束日期'),
                 telegram_include_videos=self._is_checked(self.include_video_checkbox) or self.source_mode != 'telegram',
                 telegram_include_photos=self._is_checked(self.include_photo_checkbox),
-                web_candidate_indices=module.normalize_positive_indices(self._widget_text(self.web_candidate_index_edit), '网页候选序号'),
+                web_candidate_indices=module.normalize_positive_indices(web_candidate_text, '网页候选序号'),
                 web_candidate_mode=self._resolve_candidate_mode(),
-                web_download_all_candidates=self._is_checked(self.web_all_candidates_checkbox),
+                web_download_all_candidates=web_all_candidates,
             )
+            if web_all_candidates:
+                options = replace(options, web_candidate_indices=None)
             self.set_busy(True)
             self.log.clear()
             self._last_log_is_progress = False
