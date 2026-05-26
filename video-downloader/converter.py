@@ -1229,6 +1229,7 @@ def _download_m3u8_with_ffmpeg(
         raise DownloadError('未检测到 ffmpeg，无法直接下载 m3u8')
     base_stem = ensure_unique_stem(output_root, sanitize_filename_component(task.target_title or 'video'))
     output_path = ensure_unique_path(output_root / f'{base_stem}.mp4')
+    total_duration = _probe_stream_duration(media_url, ffmpeg)
     command = [
         ffmpeg,
         '-y' if options.overwrite else '-n',
@@ -1255,12 +1256,18 @@ def _download_m3u8_with_ffmpeg(
             continue
         last_emit = now
         seconds = _parse_ffmpeg_time(time_val)
-        speed_text = ''
-        if seconds > 0:
-            elapsed = max(now - started, 1e-6)
-            speed_text = _format_byte_rate(_estimate_download_rate(elapsed, seconds))
-        _emit(progress_cb, f'ffmpeg 下载中: {output_path.name} 已下载 {_format_duration(seconds)}')
-        _emit_web_transfer_progress(progress_cb, output_path.name, '', speed_text, '')
+        elapsed = max(now - started, 1e-6)
+        speed_text = _format_byte_rate(_estimate_download_rate(elapsed, seconds)) if seconds > 0 else ''
+        percent_text = ''
+        eta_text = ''
+        if total_duration and total_duration > 0 and seconds > 0:
+            percent_text = _format_progress_percent(min(seconds / total_duration * 100, 99.9))
+            remaining = max(0, total_duration - seconds)
+            if seconds > 0:
+                eta_sec = int(remaining * elapsed / seconds)
+                eta_text = _format_eta_seconds(eta_sec)
+        _emit(progress_cb, _build_download_log_message(output_path.name, speed_text, percent_text, eta_text))
+        _emit_web_transfer_progress(progress_cb, output_path.name, percent_text.replace('%', ''), speed_text, eta_text)
     proc.wait()
     if proc.returncode != 0:
         stderr = (proc.stderr.read() if proc.stderr else '').strip()
@@ -1272,6 +1279,23 @@ def _download_m3u8_with_ffmpeg(
     }
 
 
+def _probe_stream_duration(url: str, ffmpeg_path: str = '') -> float | None:
+    """Get stream duration via ffprobe. Returns seconds or None."""
+    ffprobe = Path(ffmpeg_path).with_name('ffprobe') if ffmpeg_path else 'ffprobe'
+    if ffmpeg_path:
+        ffprobe = str(ffprobe)
+    try:
+        result = subprocess.run(
+            [ffprobe, '-v', 'quiet', '-show_entries', 'format=duration', '-of', 'csv=p=0', url],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return float(result.stdout.strip().split('\n')[0])
+    except Exception:
+        pass
+    return None
+
+
 def _make_web_progress_hook(progress_cb: ProgressCallback | None):
     def hook(status: dict[str, object]) -> None:
         state = str(status.get('status') or '')
@@ -1280,7 +1304,7 @@ def _make_web_progress_hook(progress_cb: ProgressCallback | None):
             percent = _resolve_web_percent_text(status)
             speed = _resolve_web_speed_text(status)
             eta = _normalize_progress_text(status.get('_eta_str', ''))
-            text = _build_download_log_message(filename, speed, percent)
+            text = _build_download_log_message(filename, speed, percent, eta)
             normalized_percent = percent.replace('%', '').strip()
             try:
                 _emit(progress_cb, f'__HYL_PROGRESS__|web_percent|percent={float(normalized_percent)}')
@@ -1320,7 +1344,7 @@ def _make_telegram_progress_callback(progress_cb: ProgressCallback | None, file_
         if eta_text:
             parts.append(f'eta={eta_text}')
         _emit(progress_cb, '__HYL_PROGRESS__|tg_media|' + '|'.join(parts))
-        _emit(progress_cb, _build_download_log_message(clean_name, speed_text, _format_progress_percent(percent)))
+        _emit(progress_cb, _build_download_log_message(clean_name, speed_text, _format_progress_percent(percent), eta_text))
         last_emitted_at = now
         last_percent = percent
 
@@ -1386,11 +1410,16 @@ def _coerce_float(value: object) -> float | None:
         return None
 
 
-def _build_download_log_message(file_name: str, speed_text: str, percent_text: str) -> str:
+def _build_download_log_message(file_name: str, speed_text: str, percent_text: str, eta_text: str = '') -> str:
     clean_name = str(file_name or 'video').strip() or 'video'
     clean_speed = _normalize_progress_text(speed_text) or '--'
     clean_percent = _normalize_progress_text(percent_text) or '--'
-    return f'正在下载 "{clean_name}" "{clean_speed}" "{clean_percent}"'
+    parts = [f'正在下载 "{clean_name}" "{clean_speed}" "{clean_percent}"']
+    if eta_text and eta_text.strip():
+        clean_eta = _normalize_progress_text(eta_text)
+        if clean_eta:
+            parts.append(f'"{clean_eta}"')
+    return ' '.join(parts)
 
 
 def _format_progress_percent(percent: float) -> str:

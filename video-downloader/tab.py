@@ -810,10 +810,10 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
         def append_log(self, text: str):
             if not text:
                 return
-            if text.startswith('正在下载') or text.startswith('ffmpeg 下载中'):
+            if text.startswith('正在下载'):
                 plain = self.log.toPlainText()
                 lines = plain.rstrip('\n').split('\n')
-                if lines and (lines[-1].startswith('正在下载') or lines[-1].startswith('ffmpeg 下载中')):
+                if lines and lines[-1].startswith('正在下载'):
                     cursor = self.log.textCursor()
                     cursor.movePosition(cursor.MoveOperation.End)
                     cursor.movePosition(cursor.MoveOperation.StartOfBlock, cursor.MoveMode.KeepAnchor)
