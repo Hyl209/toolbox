@@ -8,6 +8,7 @@ from html import unescape
 import importlib.util
 import re
 import shutil
+import ssl
 import subprocess
 from dataclasses import dataclass
 from collections.abc import Iterable
@@ -1089,7 +1090,7 @@ def _download_url_with_ytdlp(
     from yt_dlp import YoutubeDL
 
     before = {item.resolve() for item in output_root.glob('*') if item.is_file()}
-    info = YoutubeDL({'quiet': True, 'skip_download': True, 'noplaylist': True}).extract_info(source_url, download=False)
+    info = YoutubeDL({'quiet': True, 'skip_download': True, 'noplaylist': True, 'nocheckcertificate': True}).extract_info(source_url, download=False)
     title = sanitize_filename_component(str(info.get('title') or title_hint or 'video'))
     media_id = sanitize_filename_component(str(info.get('id') or 'video'))
     base_stem = options.filename_template.replace('%(title)s', title).replace('%(id)s', media_id).replace('.%(ext)s', '')
@@ -1109,6 +1110,7 @@ def _download_url_with_ytdlp(
         'fragment_retries': 5,
         'retries': 5,
         'socket_timeout': 30,
+        'nocheckcertificate': True,
         'http_chunk_size': 10 * 1024 * 1024,
     }
     ffmpeg = shutil.which('ffmpeg')
@@ -1133,15 +1135,19 @@ def _download_url_with_ytdlp(
 
 
 def _fetch_webpage_html(url: str) -> str:
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
     request = Request(
         url,
         headers={
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
             'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             'Referer': url,
         },
     )
-    with urlopen(request, timeout=20) as response:
+    with urlopen(request, timeout=20, context=ctx) as response:
         charset = response.headers.get_content_charset() or 'utf-8'
         return response.read().decode(charset, errors='ignore')
 
@@ -1167,7 +1173,7 @@ def _extract_ytdlp_entry_candidates(page_url: str) -> list[str]:
     _require_web_backend()
     from yt_dlp import YoutubeDL
 
-    info = YoutubeDL({'quiet': True, 'skip_download': True}).extract_info(page_url, download=False)
+    info = YoutubeDL({'quiet': True, 'skip_download': True, 'nocheckcertificate': True}).extract_info(page_url, download=False)
     entries = info.get('entries')
     if not isinstance(entries, Iterable):
         return []
@@ -1196,7 +1202,7 @@ def _supports_ytdlp_direct_media(source_url: str) -> bool:
     _require_web_backend()
     from yt_dlp import YoutubeDL
 
-    info = YoutubeDL({'quiet': True, 'skip_download': True, 'noplaylist': True}).extract_info(source_url, download=False)
+    info = YoutubeDL({'quiet': True, 'skip_download': True, 'noplaylist': True, 'nocheckcertificate': True}).extract_info(source_url, download=False)
     if not isinstance(info, dict):
         return False
     return bool(info.get('url') or info.get('formats') or info.get('id') or info.get('title'))
