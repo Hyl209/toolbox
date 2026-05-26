@@ -345,6 +345,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
     QFileDialog = deps['QFileDialog']
     QApplication = deps['QApplication']
     QCheckBox = deps['QCheckBox']
+    QSpinBox = deps['QSpinBox']
     QObject = deps['QObject']
     QThread = deps['QThread']
     Signal = deps['Signal']
@@ -484,6 +485,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             self.include_photo_checkbox = None
             self.web_candidate_index_edit = None
             self.web_all_candidates_checkbox = None
+            self.concurrent_spin = None
             self.scan_button = None
             self.web_scan_results: dict[str, dict[str, object]] = {}
             self.phone_code_hash = load_setting(settings, self._shared_setting_key('phone_code_hash'))
@@ -630,6 +632,13 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             self.overwrite_checkbox.setChecked(load_setting(settings, self._mode_setting_key('overwrite'), '0') == '1')
             self.overwrite_checkbox.clicked.connect(self.save_form_settings)
             common_row.addWidget(self.overwrite_checkbox)
+            common_row.addWidget(QLabel('同时下载'))
+            self.concurrent_spin = QSpinBox()
+            self.concurrent_spin.setRange(1, 8)
+            self.concurrent_spin.setValue(int(load_setting(settings, self._mode_setting_key('concurrent'), '1') or '1'))
+            self.concurrent_spin.setMaximumWidth(58)
+            self.concurrent_spin.valueChanged.connect(self.save_form_settings)
+            common_row.addWidget(self.concurrent_spin)
             common_row.addStretch(1)
             task_layout.addWidget(common_row_widget)
 
@@ -780,6 +789,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                 save_setting(self.settings, self._mode_setting_key('web_candidate_index'), self._widget_text(self.web_candidate_index_edit))
                 save_setting(self.settings, self._mode_setting_key('web_all_candidates'), '1' if self._is_checked(self.web_all_candidates_checkbox) else '0')
             save_setting(self.settings, self._mode_setting_key('overwrite'), '1' if self._is_checked(self.overwrite_checkbox) else '0')
+            save_setting(self.settings, self._mode_setting_key('concurrent'), str(self.concurrent_spin.value()) if self.concurrent_spin is not None else '1')
             save_setting(self.settings, self._shared_setting_key('phone_code_hash'), self.phone_code_hash)
 
         def append_log(self, text: str):
@@ -807,6 +817,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                 self.web_all_candidates_checkbox,
                 self.output_edit,
                 self.overwrite_checkbox,
+                self.concurrent_spin,
                 self.choose_button,
                 self.scan_button,
                 self.send_code_button,
@@ -1124,6 +1135,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             )
             options = module.DownloadOptions(
                 overwrite=self.overwrite_checkbox.isChecked(),
+                max_concurrent_downloads=self.concurrent_spin.value() if self.concurrent_spin is not None else 1,
                 telegram_recent_limit=module.normalize_recent_limit(
                     self._widget_text(self.recent_count_edit),
                     default=int(DEFAULT_RECENT_LIMIT),

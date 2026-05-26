@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, time, timezone
 from html import unescape
 import importlib.util
@@ -52,6 +53,7 @@ class DownloadOptions:
     filename_template: str = DEFAULT_FILENAME_TEMPLATE
     web_candidate_index: int | None = None
     web_download_all_candidates: bool = False
+    max_concurrent_downloads: int = 1
     telegram_recent_limit: int | None = 500
     telegram_download_all_messages: bool = False
     telegram_date_from: date | None = None
@@ -329,15 +331,26 @@ def download_batch(
             )
         )
         results.update(telegram_results)
-    for index, task in enumerate(task_list):
-        if task.source_kind.startswith('telegram'):
-            continue
+    web_entries = [(index, task) for index, task in enumerate(task_list) if not task.source_kind.startswith('telegram')]
+    if not web_entries:
+        return [results[index] for index in range(len(task_list))]
+    max_workers = max(1, min(download_options.max_concurrent_downloads, len(web_entries)))
+    for index, task in web_entries:
         _emit_task_start(progress_cb, index, total_tasks, task)
-        try:
-            results[index] = _download_web_task(task, output_root, download_options, progress_cb)
-        except Exception as exc:
-            results[index] = _make_result(task, False, [], str(exc))
-        _emit_task_done(progress_cb, len(results), total_tasks)
+    completed_count = len(results)
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_map = {
+            executor.submit(_download_web_task, task, output_root, download_options, progress_cb): index
+            for index, task in web_entries
+        }
+        for future in as_completed(future_map):
+            index = future_map[future]
+            try:
+                results[index] = future.result()
+            except Exception as exc:
+                results[index] = _make_result(task_list[index], False, [], str(exc))
+            completed_count += 1
+            _emit_task_done(progress_cb, completed_count, total_tasks)
     return [results[index] for index in range(len(task_list))]
 
 
