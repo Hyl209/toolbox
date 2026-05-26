@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+from urllib.parse import urlparse
 
 
 SETTINGS_PREFIX = 'video_downloader'
+TELEGRAM_HOSTS = {'t.me', 'telegram.me', 'telegram.dog', 'www.t.me', 'www.telegram.me'}
 TITLE = '视频下载'
 SUBTITLE = '批量下载 Telegram 和网页视频'
 TASK_PLACEHOLDER = '每行一个链接'
@@ -1008,8 +1010,13 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                     self.update_progress_percent(float(payload.get('percent', '0') or 0))
                 elif kind == 'web_aria2':
                     name = payload.get('name', '')
+                    percent = payload.get('percent', '')
                     speed = payload.get('speed', '')
                     eta = payload.get('eta', '')
+                    try:
+                        self.update_progress_percent(float(percent))
+                    except (TypeError, ValueError):
+                        pass
                     details = []
                     if speed:
                         details.append(speed)
@@ -1300,9 +1307,10 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
 
 def _guess_source_kind(url: str) -> str:
     text = str(url or '').strip().lower()
-    if 't.me/' not in text and 'telegram.me/' not in text and 'telegram.dog/' not in text:
+    parsed = urlparse(text if '://' in text else f'https://{text}')
+    if parsed.netloc.lower() not in TELEGRAM_HOSTS:
         return 'web'
-    parts = [part for part in text.split('://', 1)[-1].split('/', 1)[-1].split('/') if part]
+    parts = [part for part in parsed.path.split('/') if part]
     if not parts:
         return 'telegram_chat'
     if parts[0] == 'c' and len(parts) >= 3 and parts[2].isdigit():

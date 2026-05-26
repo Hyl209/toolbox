@@ -439,7 +439,9 @@ def _download_web_sequential(
         token = _current_token()
         if token and token.pause.is_set():
             _emit(progress_cb, '下载已暂停')
-            token.pause.wait()
+            while token.pause.is_set():
+                _check_cancel(token)
+                sleep(0.2)
             _emit(progress_cb, '下载已恢复')
         _emit_task_start(progress_cb, index, total_tasks, task)
         _set_current_token(_require_token())
@@ -484,6 +486,9 @@ def _download_web_concurrent(
             index = future_map[future]
             try:
                 results[index] = future.result()
+            except CancelledError as exc:
+                results[index] = _make_result(task_by_index[index], False, [], str(exc))
+                raise
             except Exception as exc:
                 results[index] = _make_result(task_by_index[index], False, [], str(exc))
             completed_count += 1
@@ -673,6 +678,7 @@ def download_batch(
         for index in range(len(task_list)):
             if index not in results:
                 results[index] = _make_result(task_list[index], False, [], '下载已取消')
+        raise
     return [results[index] for index in range(len(task_list))]
 
 
@@ -809,6 +815,8 @@ def _emit_aria2_progress(progress_cb: ProgressCallback | None, file_name: str, r
     eta = _normalize_aria2_eta(match.group('eta') or '')
     clean_name = sanitize_filename_component(file_name or 'video', fallback='video')
     parts = [f'name={clean_name}', f'speed={speed}']
+    if percent:
+        parts.append(f'percent={percent}')
     if eta:
         parts.append(f'eta={eta}')
     _emit(progress_cb, '__HYL_PROGRESS__|web_aria2|' + '|'.join(parts))
@@ -1420,6 +1428,8 @@ def _pick_candidates(candidates: list[str], indices: list[int]) -> list[str]:
 
 def _select_candidates(candidates: list[str], mode: str, raw_indices: list[int] | None) -> list[str]:
     """Apply mode + indices to a candidate list. Returns the selected candidates."""
+    if mode in {'before', 'after'} and raw_indices and len(raw_indices) != 1:
+        raise DownloadError('before/after 只需填写一个序号，如 before3 或 after5')
     total = len(candidates)
     resolved = _resolve_candidate_indices(mode, raw_indices, total)
     if resolved is None:

@@ -178,6 +178,31 @@ def test_download_batch_returns_failure_result_for_failed_web_task():
         module._require_web_backend = original_require
 
 
+def test_download_batch_reraises_cancelled_error():
+    module = load_module()
+    original_download = module._download_web_task
+    original_require = module._require_web_backend
+    module._INTER_TASK_DELAY_RANGE = (0, 0)
+    try:
+        module._require_web_backend = lambda: None
+
+        def fake_download(task, output_root, options, progress_cb):
+            raise module.CancelledError('cancelled')
+
+        module._download_web_task = fake_download
+        tasks = [module.DownloadTask('https://example.com/a', 'web', 'a')]
+        with tempfile.TemporaryDirectory() as tmp:
+            try:
+                module.download_batch(tasks, tmp, None, module.DownloadOptions())
+            except module.CancelledError:
+                pass
+            else:
+                raise AssertionError('download_batch should reraise CancelledError')
+    finally:
+        module._download_web_task = original_download
+        module._require_web_backend = original_require
+
+
 def test_extract_media_candidates_finds_absolute_and_relative_urls():
     module = load_module()
     html = '''
@@ -329,6 +354,37 @@ def test_make_web_progress_hook_can_compute_percent_from_bytes():
     })
     assert any(item.startswith('__HYL_PROGRESS__|web_percent|percent=25.0') for item in captured)
     assert '正在下载 "demo.mp4" "2.0 KiB/s" "25%"' in captured
+
+
+def test_download_web_concurrent_reraises_cancelled_error():
+    module = load_module()
+    original_run = module._run_web_task
+    try:
+        def fake_run(task, output_root, options, progress_cb, token):
+            raise module.CancelledError('cancelled')
+
+        module._run_web_task = fake_run
+        tasks = [(0, module.DownloadTask('https://example.com/a', 'web', 'a'))]
+        with tempfile.TemporaryDirectory() as tmp:
+            try:
+                module._download_web_concurrent(tasks, pathlib.Path(tmp), module.DownloadOptions(), None, 1, 0, 1)
+            except module.CancelledError:
+                pass
+            else:
+                raise AssertionError('_download_web_concurrent should reraise CancelledError')
+    finally:
+        module._run_web_task = original_run
+
+
+def test_select_candidates_rejects_multiple_before_after_indices():
+    module = load_module()
+    for mode in ('before', 'after'):
+        try:
+            module._select_candidates(['a', 'b', 'c'], mode, [1, 2])
+        except module.DownloadError as exc:
+            assert 'before/after' in str(exc)
+        else:
+            raise AssertionError(f'{mode} should reject multiple indices')
 
 
 def test_make_telegram_progress_callback_emits_speed_and_eta():
@@ -659,7 +715,7 @@ def test_emit_aria2_progress_reports_speed_without_overall_percent():
         'demo.mp4',
         '[#abc 12MiB/100MiB(12%) CN:12 DL:4.5MiB ETA:19s]',
     )
-    assert any(item.startswith('__HYL_PROGRESS__|web_aria2|') and 'speed=4.5MiB/s' in item and 'eta=00:19' in item for item in captured)
+    assert any(item.startswith('__HYL_PROGRESS__|web_aria2|') and 'speed=4.5MiB/s' in item and 'percent=12' in item and 'eta=00:19' in item for item in captured)
     assert not any(item.startswith('__HYL_PROGRESS__|web_status|') for item in captured)
     assert any('正在下载 "demo.mp4" "4.5MiB/s" "--"' in item for item in captured)
 
@@ -719,6 +775,12 @@ def test_build_source_mode_summary_for_web_hides_telegram_counts():
     assert '网页链接' in summary
     assert 'Telegram 消息' not in summary
     assert 'Telegram 群/频道' not in summary
+
+
+def test_guess_source_kind_uses_host_instead_of_path_fragment():
+    tab_module = load_tab_module()
+    assert tab_module._guess_source_kind('https://example.com/path/t.me/demo/1') == 'web'
+    assert tab_module._guess_source_kind('https://t.me/demo/1') == 'telegram_message'
 
 
 def test_format_web_task_summary_can_show_scan_results():
