@@ -964,6 +964,12 @@ def _download_url_with_ytdlp(
         'overwrites': bool(options.overwrite),
         'outtmpl': str(output_root / f'{unique_stem}.%(ext)s'),
         'progress_hooks': [_make_web_progress_hook(progress_cb)],
+        'concurrent_fragment_downloads': 16,
+        'file_access_retries': 3,
+        'fragment_retries': 5,
+        'retries': 5,
+        'socket_timeout': 30,
+        'http_chunk_size': 10 * 1024 * 1024,
     }
     ffmpeg = shutil.which('ffmpeg')
     if ffmpeg:
@@ -1086,16 +1092,39 @@ def _download_m3u8_with_ffmpeg(
     command = [
         ffmpeg,
         '-y' if options.overwrite else '-n',
-        '-i',
-        media_url,
-        '-c',
-        'copy',
+        '-i', media_url,
+        '-c', 'copy',
+        '-progress', 'pipe:1',
+        '-nostats',
+        '-loglevel', 'error',
         str(output_path),
     ]
-    result = subprocess.run(command, capture_output=True, text=True)
-    if result.returncode != 0:
-        message = (result.stderr or result.stdout or 'ffmpeg 下载失败').strip()
-        raise DownloadError(message)
+    proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    assert proc.stdout is not None
+    started = monotonic()
+    last_emit = 0.0
+    for line in proc.stdout:
+        line = line.strip()
+        if not line.startswith('out_time='):
+            continue
+        time_val = line.split('=', 1)[1].strip()
+        if time_val == '00:00:00.000000':
+            continue
+        now = monotonic()
+        if now - last_emit < 0.5:
+            continue
+        last_emit = now
+        seconds = _parse_ffmpeg_time(time_val)
+        speed_text = ''
+        if seconds > 0:
+            elapsed = max(now - started, 1e-6)
+            speed_text = _format_byte_rate(_estimate_download_rate(elapsed, seconds))
+        _emit(progress_cb, f'ffmpeg 下载中: {output_path.name} 已下载 {_format_duration(seconds)}')
+        _emit_web_transfer_progress(progress_cb, output_path.name, '', speed_text, '')
+    proc.wait()
+    if proc.returncode != 0:
+        stderr = (proc.stderr.read() if proc.stderr else '').strip()
+        raise DownloadError(stderr or 'ffmpeg 下载失败')
     _emit(progress_cb, f'网页 OK -> {output_path.name}')
     return {
         'success': True,
@@ -1250,6 +1279,34 @@ def _format_eta_seconds(seconds: int) -> str:
     if hours:
         return f'{hours:d}:{minutes:02d}:{secs:02d}'
     return f'{minutes:02d}:{secs:02d}'
+
+
+def _parse_ffmpeg_time(time_str: str) -> float:
+    """Parse ffmpeg time string 'HH:MM:SS.xxxxxx' to seconds."""
+    parts = time_str.strip().split(':')
+    if len(parts) != 3:
+        return 0.0
+    try:
+        return float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
+    except ValueError:
+        return 0.0
+
+
+def _format_duration(seconds: float) -> str:
+    s = max(0.0, seconds)
+    h, r = divmod(int(s), 3600)
+    m, sec = divmod(r, 60)
+    if h:
+        return f'{h}:{m:02d}:{sec:02d}'
+    return f'{m:02d}:{sec:02d}'
+
+
+def _estimate_download_rate(elapsed: float, media_seconds: float) -> float:
+    """Estimate effective byte rate based on typical m3u8 bitrate (~2 Mbps)."""
+    if elapsed <= 0 or media_seconds <= 0:
+        return 0.0
+    estimated_bytes = media_seconds * 250_000
+    return estimated_bytes / elapsed
 
 
 def _make_result(task: DownloadTask, success: bool, files: Iterable[Path], error: str) -> dict[str, object]:
