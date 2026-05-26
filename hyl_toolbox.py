@@ -57,6 +57,7 @@ try:
         QProgressBar,
         QScrollArea,
         QSpacerItem,
+        QSpinBox,
         QStackedWidget,
         QVBoxLayout,
         QWidget,
@@ -81,7 +82,7 @@ except ModuleNotFoundError:
     QObject = QThread = Signal = None
     QCheckBox = QFileDialog = QFileIconProvider = QFrame = QGraphicsOpacityEffect = QHBoxLayout = QLabel = QLineEdit = QListWidget = QListView = None
     QMainWindow = QMessageBox = QPushButton = QPlainTextEdit = QProgressBar = QStackedWidget = QDialog = None
-    QVBoxLayout = QWidget = QComboBox = QSizePolicy = QStyledItemDelegate = QScrollArea = QSpacerItem = None
+    QVBoxLayout = QWidget = QComboBox = QSizePolicy = QStyledItemDelegate = QScrollArea = QSpacerItem = QSpinBox = None
 
 ROOT = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
 SOURCE_DIR = Path(__file__).resolve().parent
@@ -3398,6 +3399,7 @@ if QWidget is not None:
             'QPushButton': QPushButton,
             'QLabel': QLabel,
             'QCheckBox': QCheckBox,
+            'QSpinBox': QSpinBox,
             'QPlainTextEdit': QPlainTextEdit,
             'QProgressBar': QProgressBar,
             'QFileDialog': QFileDialog,
