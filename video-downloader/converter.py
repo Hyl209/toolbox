@@ -3,7 +3,8 @@ from __future__ import annotations
 import asyncio
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, time, timezone
-from threading import Lock
+from threading import Event, Lock
+import threading as _threading
 from html import unescape
 import importlib.util
 import re
@@ -74,6 +75,41 @@ class TelegramUrlParts:
 
 class DownloadError(RuntimeError):
     pass
+
+
+class CancelledError(RuntimeError):
+    pass
+
+
+class Token:
+    __slots__ = ('cancel', 'pause')
+
+    def __init__(self) -> None:
+        self.cancel = Event()
+        self.pause = Event()
+
+
+def _check_cancel(token: Token) -> None:
+    if token.cancel.is_set():
+        raise CancelledError('下载已取消')
+
+
+_state = _threading.local()
+
+
+def _current_token() -> Token | None:
+    return getattr(_state, 'token', None)
+
+
+def _set_current_token(token: Token | None) -> None:
+    _state.token = token
+
+
+def _require_token() -> Token:
+    token = _current_token()
+    if token is None:
+        return Token()
+    return token
 
 
 def parse_task_lines(text: str) -> list[str]:
@@ -305,6 +341,11 @@ def ensure_unique_stem(directory: str | Path, stem: str) -> str:
         return candidate
 
 
+def _run_web_task(task, output_root, options, progress_cb, token):
+    _set_current_token(token)
+    return _download_web_task(task, output_root, options, progress_cb)
+
+
 def _download_web_entries(
     web_entries: list[tuple[int, DownloadTask]],
     output_root: Path,
@@ -332,9 +373,21 @@ def _download_web_sequential(
 ) -> dict[int, dict[str, object]]:
     results: dict[int, dict[str, object]] = {}
     for index, task in web_entries:
+        _check_cancel(_require_token())
+        token = _current_token()
+        if token and token.pause.is_set():
+            _emit(progress_cb, '下载已暂停')
+            token.pause.wait()
+            _emit(progress_cb, '下载已恢复')
         _emit_task_start(progress_cb, index, total_tasks, task)
+        _set_current_token(_require_token())
         try:
             results[index] = _download_web_task(task, output_root, options, progress_cb)
+        except CancelledError:
+            results[index] = _make_result(task, False, [], '下载已取消')
+            completed_count += 1
+            _emit_task_done(progress_cb, completed_count, total_tasks)
+            raise
         except Exception as exc:
             results[index] = _make_result(task, False, [], str(exc))
         completed_count += 1
@@ -355,9 +408,10 @@ def _download_web_concurrent(
     task_by_index = {index: task for index, task in web_entries}
     for index, task in web_entries:
         _emit_task_start(progress_cb, index, total_tasks, task)
+    token = _current_token()
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_map = {
-            executor.submit(_download_web_task, task, output_root, options, progress_cb): index
+            executor.submit(_run_web_task, task, output_root, options, progress_cb, token): index
             for index, task in web_entries
         }
         for future in as_completed(future_map):
@@ -389,6 +443,7 @@ def _download_web_auto(
         tracker = _SpeedTracker(progress_cb)
         index, task = web_entries[i]
         _emit_task_start(progress_cb, index, total_tasks, task)
+        _set_current_token(_require_token())
         try:
             results[index] = _download_web_task(task, output_root, options, tracker.emit)
         except Exception as exc:
@@ -474,10 +529,14 @@ def download_batch(
     telegram_config: TelegramConfig | None,
     options: DownloadOptions | None = None,
     progress_cb: ProgressCallback | None = None,
+    *,
+    token: Token | None = None,
 ) -> list[dict[str, object]]:
     task_list = _coerce_tasks(tasks)
     config = telegram_config
     download_options = options or DownloadOptions()
+    if token is not None:
+        _set_current_token(token)
     errors = validate_download_request(
         task_list,
         str(output_dir),
@@ -495,26 +554,31 @@ def download_batch(
     output_root.mkdir(parents=True, exist_ok=True)
     results: dict[int, dict[str, object]] = {}
     total_tasks = len(task_list)
-    telegram_entries = [(index, task) for index, task in enumerate(task_list) if task.source_kind.startswith('telegram')]
-    if telegram_entries:
-        telegram_results = asyncio.run(
-            _download_telegram_entries(
-                telegram_entries,
-                output_root,
-                config,
-                download_options,
-                progress_cb,
-                total_tasks=total_tasks,
+    try:
+        telegram_entries = [(index, task) for index, task in enumerate(task_list) if task.source_kind.startswith('telegram')]
+        if telegram_entries:
+            telegram_results = asyncio.run(
+                _download_telegram_entries(
+                    telegram_entries,
+                    output_root,
+                    config,
+                    download_options,
+                    progress_cb,
+                    total_tasks=total_tasks,
+                )
             )
-        )
-        results.update(telegram_results)
-    web_entries = [(index, task) for index, task in enumerate(task_list) if not task.source_kind.startswith('telegram')]
-    if not web_entries:
-        return [results[index] for index in range(len(task_list))]
-    if download_options.max_concurrent_downloads <= 0 and len(web_entries) > 1:
-        results.update(_download_web_auto(web_entries, output_root, download_options, progress_cb, total_tasks, len(results)))
-    else:
-        results.update(_download_web_entries(web_entries, output_root, download_options, progress_cb, total_tasks, len(results)))
+            results.update(telegram_results)
+        web_entries = [(index, task) for index, task in enumerate(task_list) if not task.source_kind.startswith('telegram')]
+        if not web_entries:
+            return [results[index] for index in range(len(task_list))]
+        if download_options.max_concurrent_downloads <= 0 and len(web_entries) > 1:
+            results.update(_download_web_auto(web_entries, output_root, download_options, progress_cb, total_tasks, len(results)))
+        else:
+            results.update(_download_web_entries(web_entries, output_root, download_options, progress_cb, total_tasks, len(results)))
+    except CancelledError:
+        for index in range(len(task_list)):
+            if index not in results:
+                results[index] = _make_result(task_list[index], False, [], '下载已取消')
     return [results[index] for index in range(len(task_list))]
 
 
@@ -1170,7 +1234,7 @@ def _download_url_with_ytdlp(
         'windowsfilenames': True,
         'overwrites': bool(options.overwrite),
         'outtmpl': str(output_root / f'{unique_stem}.%(ext)s'),
-        'progress_hooks': [_make_web_progress_hook(progress_cb)],
+        'progress_hooks': [_make_web_progress_hook(progress_cb, _current_token())],
         'concurrent_fragment_downloads': 16,
         'file_access_retries': 3,
         'fragment_retries': 5,
@@ -1314,6 +1378,14 @@ def _download_m3u8_with_ffmpeg(
     started = monotonic()
     last_emit = 0.0
     for line in proc.stdout:
+        token = _current_token()
+        if token and token.cancel.is_set():
+            proc.terminate()
+            try:
+                proc.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+            raise CancelledError('ffmpeg 下载已取消')
         line = line.strip()
         if not line.startswith('out_time='):
             continue
@@ -1365,8 +1437,10 @@ def _probe_stream_duration(url: str, ffmpeg_path: str = '') -> float | None:
     return None
 
 
-def _make_web_progress_hook(progress_cb: ProgressCallback | None):
+def _make_web_progress_hook(progress_cb: ProgressCallback | None, token: Token | None = None):
     def hook(status: dict[str, object]) -> None:
+        if token and token.cancel.is_set():
+            raise CancelledError('yt-dlp 下载已取消')
         state = str(status.get('status') or '')
         if state == 'downloading':
             filename = Path(str(status.get('filename') or '')).name

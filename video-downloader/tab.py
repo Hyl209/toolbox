@@ -326,14 +326,16 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             progress = Signal(str)
             finished = Signal(list)
             failed = Signal(str)
+            cancelled = Signal()
 
-            def __init__(self, module, tasks, output_dir, telegram_config, options):
+            def __init__(self, module, tasks, output_dir, telegram_config, options, token=None):
                 super().__init__()
                 self.module = module
                 self.tasks = tasks
                 self.output_dir = output_dir
                 self.telegram_config = telegram_config
                 self.options = options
+                self._token = token
 
             def run(self):
                 try:
@@ -343,8 +345,11 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                         self.telegram_config,
                         self.options,
                         progress_cb=self.progress.emit,
+                        token=self._token,
                     )
                     self.finished.emit(results)
+                except self.module.CancelledError:
+                    self.cancelled.emit()
                 except Exception as exc:
                     self.failed.emit(str(exc))
 
@@ -366,15 +371,17 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                     self.failed.emit(str(exc))
     else:
         class DownloadWorker:
-            def __init__(self, module, tasks, output_dir, telegram_config, options):
+            def __init__(self, module, tasks, output_dir, telegram_config, options, token=None):
                 self.module = module
                 self.tasks = tasks
                 self.output_dir = output_dir
                 self.telegram_config = telegram_config
                 self.options = options
+                self._token = token
                 self.progress = _FallbackSignal()
                 self.finished = _FallbackSignal()
                 self.failed = _FallbackSignal()
+                self.cancelled = _FallbackSignal()
 
             def run(self):
                 try:
@@ -384,8 +391,11 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                         self.telegram_config,
                         self.options,
                         progress_cb=self.progress.emit,
+                        token=self._token,
                     )
                     self.finished.emit(results)
+                except self.module.CancelledError:
+                    self.cancelled.emit()
                 except Exception as exc:
                     self.failed.emit(str(exc))
 
@@ -436,6 +446,8 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             self.web_all_candidates_checkbox = None
             self.concurrent_combo = None
             self.scan_button = None
+            self.pause_button = None
+            self.cancel_button = None
             self.web_scan_results: dict[str, dict[str, object]] = {}
             self.phone_code_hash = load_setting(settings, self._shared_setting_key('phone_code_hash'))
             self.current_theme = load_setting(settings, 'ui/theme', 'dark')
@@ -443,6 +455,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             self.total_tasks = 0
             self.completed_tasks = 0
             self._last_log_is_progress = False
+            self._token = None
             self.module = get_video_downloader_module()
             self.session_file = VIDEO_DOWNLOADER_DIR / self.module.SESSION_FILE_NAME
             textedit_style = build_video_textedit_style(build_global_scrollbar_style, self.current_theme)
@@ -608,6 +621,14 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             self.run_button = QPushButton(RUN_BUTTON_TEXT)
             self.run_button.clicked.connect(self.run_download)
             action_row.addWidget(self.run_button)
+            self.pause_button = QPushButton('暂停')
+            self.pause_button.clicked.connect(self.toggle_pause)
+            self.pause_button.setVisible(False)
+            action_row.addWidget(self.pause_button)
+            self.cancel_button = QPushButton('取消')
+            self.cancel_button.clicked.connect(self.cancel_download)
+            self.cancel_button.setVisible(False)
+            action_row.addWidget(self.cancel_button)
             task_layout.addLayout(action_row)
             if self.source_mode == 'web':
                 layout.addWidget(task_card, 1)
@@ -805,8 +826,12 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             for widget in widgets:
                 if widget is not None:
                     widget.setEnabled(not busy)
-            self.run_button.setEnabled(not busy)
-            self.run_button.setText(RUNNING_BUTTON_TEXT if busy else RUN_BUTTON_TEXT)
+            self.run_button.setVisible(not busy)
+            if self.pause_button is not None:
+                self.pause_button.setVisible(busy)
+                self.pause_button.setText('暂停')
+            if self.cancel_button is not None:
+                self.cancel_button.setVisible(busy)
             if QApplication is not None:
                 QApplication.processEvents()
 
@@ -815,6 +840,28 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                 return
             self.recent_count_edit.setEnabled(not self.all_messages_checkbox.isChecked())
             self.save_form_settings()
+
+        def toggle_pause(self):
+            if self._token is None:
+                return
+            if self._token.pause.is_set():
+                self._token.pause.clear()
+                if self.pause_button is not None:
+                    self.pause_button.setText('暂停')
+            else:
+                self._token.pause.set()
+                if self.pause_button is not None:
+                    self.pause_button.setText('继续')
+
+        def cancel_download(self):
+            if self._token is not None:
+                self._token.cancel.set()
+
+        def handle_download_cancelled(self):
+            self.append_log('下载已取消')
+            self.progress_label.setText('下载已取消')
+            self.cleanup_worker()
+            self.set_busy(False)
 
         def handle_web_all_candidates_changed(self):
             if self.web_candidate_index_edit is None or self.web_all_candidates_checkbox is None:
@@ -1131,10 +1178,12 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             self.log.clear()
             self._last_log_is_progress = False
             self.reset_progress_ui(len(tasks))
-            self.worker = DownloadWorker(module, tasks, self.output_edit.text().strip(), self.build_config(), options)
+            self._token = module.Token()
+            self.worker = DownloadWorker(module, tasks, self.output_edit.text().strip(), self.build_config(), options, token=self._token)
             self.worker.progress.connect(self.handle_worker_progress)
             self.worker.finished.connect(self.finalize_download)
             self.worker.failed.connect(self.handle_worker_error)
+            self.worker.cancelled.connect(self.handle_download_cancelled)
             if QThread is None:
                 self.worker.run()
                 return
