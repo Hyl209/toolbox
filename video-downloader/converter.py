@@ -528,10 +528,14 @@ def _normalize_url_text(text: str) -> str:
     if not cleaned:
         return ''
     cleaned = cleaned.lstrip('-*').strip()
+    if '://' in cleaned:
+        return cleaned
     if cleaned.startswith('www.'):
-        cleaned = f'https://{cleaned}'
-    elif '://' not in cleaned and cleaned.startswith(('t.me/', 'telegram.me/', 'telegram.dog/')):
-        cleaned = f'https://{cleaned}'
+        return f'https://{cleaned}'
+    if cleaned.startswith(('t.me/', 'telegram.me/', 'telegram.dog/')):
+        return f'https://{cleaned}'
+    if '.' in cleaned.split('/')[0]:
+        return f'https://{cleaned}'
     return cleaned
 
 
