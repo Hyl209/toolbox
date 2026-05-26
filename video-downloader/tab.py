@@ -812,7 +812,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                 return
             if text.startswith('正在下载') or text.startswith('ffmpeg 下载中'):
                 plain = self.log.toPlainText()
-                lines = plain.rstrip('\n ').split('\n')
+                lines = plain.rstrip('\n').split('\n')
                 if lines and (lines[-1].startswith('正在下载') or lines[-1].startswith('ffmpeg 下载中')):
                     cursor = self.log.textCursor()
                     cursor.movePosition(cursor.MoveOperation.End)
