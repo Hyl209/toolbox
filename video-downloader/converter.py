@@ -56,6 +56,7 @@ class DownloadOptions:
     overwrite: bool = False
     filename_template: str = DEFAULT_FILENAME_TEMPLATE
     web_candidate_indices: list[int] | None = None
+    web_candidate_mode: str = 'pick'
     web_download_all_candidates: bool = False
     max_concurrent_downloads: int = 1
     telegram_recent_limit: int | None = 500
@@ -260,15 +261,40 @@ def normalize_recent_limit(value: str | int | None, default: int | None = 500) -
     return limit
 
 
+def _parse_candidate_mode(value: str) -> tuple[str, str]:
+    """Parse mode prefix from candidate filter input.
+    Returns (mode, cleaned_value) where mode is 'pick', 'exclude', 'before', or 'after'.
+    """
+    cleaned = str(value or '').strip()
+    lower = cleaned.lower()
+    for prefix, mode in [('before', 'before'), ('after', 'after'), ('not', 'exclude'), ('no', 'exclude')]:
+        if lower.startswith(prefix) and len(cleaned) > len(prefix):
+            after = cleaned[len(prefix):]
+            if after[0].isdigit():
+                return mode, after
+    return 'pick', cleaned
+
+
+def _resolve_candidate_indices(mode: str, indices: list[int] | None, total: int) -> list[int] | None:
+    """Resolve before/after shorthand into concrete 1-based indices."""
+    if mode == 'before' and indices and len(indices) == 1:
+        n = indices[0]
+        return list(range(1, min(n, total) + 1))
+    if mode == 'after' and indices and len(indices) == 1:
+        n = indices[0]
+        return list(range(max(1, n), total + 1))
+    return indices
+
+
 def normalize_positive_indices(value: str | int | None, field_label: str) -> list[int] | None:
-    """Parse '3' or '3,4,6' into a list of positive integers. Returns None for empty input."""
+    """Parse '3' or '3,4,6' into a list of positive integers. Supports 'no' prefix for exclusion."""
     if value is None:
         return None
     if isinstance(value, int):
         if value <= 0:
             raise ValueError(f'{field_label}必须大于 0')
         return [value]
-    cleaned = str(value).strip()
+    cleaned = _parse_candidate_mode(str(value).strip())[1]
     if not cleaned:
         return None
     parts = [p.strip() for p in cleaned.split(',') if p.strip()]
@@ -521,6 +547,34 @@ def _speed_to_concurrency(bytes_per_sec: float) -> int:
     if mbps >= 0.5:
         return 2
     return 1
+
+
+def _expand_web_all_candidates(tasks: list[DownloadTask], progress_cb: ProgressCallback | None) -> list[DownloadTask]:
+    """Expand web tasks into individual candidate tasks when download_all_candidates is set.
+
+    Each web URL that resolves to multiple yt-dlp entries is replaced by one task per
+    entry so the UI shows the real video count instead of "1 总计".
+    """
+    expanded: list[DownloadTask] = []
+    for task in tasks:
+        if task.source_kind != 'web':
+            expanded.append(task)
+            continue
+        try:
+            candidates = _extract_ytdlp_entry_candidates(task.source_url)
+        except Exception:
+            candidates = []
+        if len(candidates) <= 1:
+            expanded.append(task)
+            continue
+        _emit(progress_cb, f'展开候选: {task.source_url} → {len(candidates)} 个独立任务')
+        for candidate_url in candidates:
+            expanded.append(DownloadTask(
+                source_url=candidate_url,
+                source_kind='web',
+                target_title=guess_task_title(candidate_url),
+            ))
+    return expanded
 
 
 def download_batch(
@@ -1024,8 +1078,8 @@ def _download_web_candidates(
     last_error: Exception | None = None
     total_candidates = len(candidates)
     for candidate_index, candidate in enumerate(candidates, start=1):
+        _emit_file_select(progress_cb, candidate, candidate_index, total_candidates)
         try:
-            _emit_file_select(progress_cb, candidate, candidate_index, total_candidates)
             downloaded = _download_web_candidate(
                 candidate,
                 task,
@@ -1101,7 +1155,7 @@ def _download_web_task(task: DownloadTask, output_root: Path, options: DownloadO
                     if downloaded_files:
                         return _make_result(task, True, downloaded_files, '')
                 elif options.web_candidate_indices is not None:
-                    selected = _pick_candidates(ytdlp_candidates, options.web_candidate_indices)
+                    selected = _select_candidates(ytdlp_candidates, options.web_candidate_mode, options.web_candidate_indices)
                     downloaded_files, last_error = _download_web_candidates(
                         selected,
                         task,
@@ -1151,7 +1205,7 @@ def _download_web_task(task: DownloadTask, output_root: Path, options: DownloadO
             return _make_result(task, True, downloaded_files, '')
         raise DownloadError(f'{first_error}; 全部候选下载失败: {last_error}')
     if options.web_candidate_indices is not None:
-        selected = _pick_candidates(candidates, options.web_candidate_indices)
+        selected = _select_candidates(candidates, options.web_candidate_mode, options.web_candidate_indices)
         downloaded_files, last_error = _download_web_candidates(
             selected,
             task,
@@ -1189,6 +1243,23 @@ def _pick_candidates(candidates: list[str], indices: list[int]) -> list[str]:
             raise DownloadError(f'网页候选序号 {idx} 超出范围，共找到 {total} 个候选')
         selected.append(candidates[pos])
     return selected
+
+
+def _select_candidates(candidates: list[str], mode: str, raw_indices: list[int] | None) -> list[str]:
+    """Apply mode + indices to a candidate list. Returns the selected candidates."""
+    total = len(candidates)
+    resolved = _resolve_candidate_indices(mode, raw_indices, total)
+    if resolved is None:
+        return candidates
+    if mode == 'exclude':
+        resolved = _inverse_indices(total, resolved)
+    return _pick_candidates(candidates, resolved)
+
+
+def _inverse_indices(total: int, exclude: list[int]) -> list[int]:
+    """Return all 1-based indices from 1..total except those in `exclude`."""
+    exclude_set = set(exclude)
+    return [i for i in range(1, total + 1) if i not in exclude_set]
 
 
 def _collect_web_media_candidates(source_url: str) -> tuple[list[str], str]:
@@ -1235,14 +1306,19 @@ def _download_url_with_ytdlp(
         'overwrites': bool(options.overwrite),
         'outtmpl': str(output_root / f'{unique_stem}.%(ext)s'),
         'progress_hooks': [_make_web_progress_hook(progress_cb, _current_token())],
-        'concurrent_fragment_downloads': 16,
+        'concurrent_fragment_downloads': 32,
         'file_access_retries': 3,
-        'fragment_retries': 5,
-        'retries': 5,
+        'fragment_retries': 10,
+        'retries': 10,
         'socket_timeout': 30,
         'nocheckcertificate': True,
+        'throttled_rate': '100K',
         'http_chunk_size': 10 * 1024 * 1024,
     }
+    aria2c = shutil.which('aria2c')
+    if aria2c:
+        ydl_opts['external_downloader'] = 'aria2c'
+        ydl_opts['external_downloader_args'] = ['-x', '16', '-s', '16', '-k', '1M', '--file-allocation=none']
     ffmpeg = shutil.which('ffmpeg')
     if ffmpeg:
         ydl_opts['ffmpeg_location'] = ffmpeg

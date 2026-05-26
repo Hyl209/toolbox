@@ -36,8 +36,9 @@ def build_help_popup_state(image_path: Path | None):
     }
 
 try:
-    from PySide6.QtCore import QSettings, Qt, QPoint, QSize, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, QEventLoop, QTimer, QFileInfo, QObject, QThread, Signal
+    from PySide6.QtCore import QSettings, Qt, QPoint, QSize, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, QEventLoop, QTimer, QFileInfo, QObject, QThread, Signal, QUrl
     from PySide6.QtGui import QIcon, QPixmap, QPainter, QPen, QColor
+    from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
     from PySide6.QtWidgets import (
         QApplication,
         QCheckBox,
@@ -83,6 +84,7 @@ except ModuleNotFoundError:
     QCheckBox = QFileDialog = QFileIconProvider = QFrame = QGraphicsOpacityEffect = QHBoxLayout = QLabel = QLineEdit = QListWidget = QListView = None
     QMainWindow = QMessageBox = QPushButton = QPlainTextEdit = QProgressBar = QStackedWidget = QDialog = None
     QVBoxLayout = QWidget = QComboBox = QSizePolicy = QStyledItemDelegate = QScrollArea = QSpacerItem = QSpinBox = None
+    QMediaPlayer = QAudioOutput = QUrl = None
 
 ROOT = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
 SOURCE_DIR = Path(__file__).resolve().parent
@@ -98,6 +100,7 @@ NAME_DIR = ROOT / 'name'
 FILE_SORTER_DIR = ROOT / '分类'
 SAME_DIR = ROOT / 'same'
 LOGO_PATH = ROOT / 'logo.png'
+SOUND_PATH = ROOT / 'sound.mp3'
 WEIXIN_IMAGE_PATH = next((p for p in (MUSIC_DIR / 'weixin.png', ROOT / 'weixin.png') if p.exists()), None)
 DARK_STYLESHEET = """
 QMainWindow {
@@ -1720,6 +1723,15 @@ if QWidget is not None:
 
 
     def show_themed_success(parent, title: str, lines: list[str]):
+        if QMediaPlayer is not None and SOUND_PATH.exists():
+            try:
+                player = QMediaPlayer()
+                audio = QAudioOutput()
+                player.setAudioOutput(audio)
+                player.setSource(QUrl.fromLocalFile(str(SOUND_PATH.resolve())))
+                player.play()
+            except Exception:
+                pass
         show_themed_message(parent, title, lines, '完成')
 
 

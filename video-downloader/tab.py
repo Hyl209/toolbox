@@ -11,7 +11,7 @@ OUTPUT_PLACEHOLDER = '选择输出文件夹'
 DEFAULT_RECENT_LIMIT = '500'
 DATE_FROM_PLACEHOLDER = '开始日期 YYYY-MM-DD'
 DATE_TO_PLACEHOLDER = '结束日期 YYYY-MM-DD'
-WEB_INDEX_PLACEHOLDER = '候选序号，如 3 或 3,4,6，留空则自动'
+WEB_INDEX_PLACEHOLDER = '如 3 或 3,4,6，no3 排除，留空则自动'
 SUMMARY_EMPTY_TEXT = '请先输入下载链接'
 RUN_BUTTON_TEXT = '开始下载'
 RUNNING_BUTTON_TEXT = '下载中...'
@@ -250,7 +250,10 @@ def validate_video_downloader_form(
     mode_errors = validate_source_mode_urls(module.parse_task_lines(task_text), source_mode)
     errors.extend(mode_errors)
     try:
-        module.normalize_positive_indices(web_candidate_index, '网页候选序号')
+        indices = module.normalize_positive_indices(web_candidate_index, '网页候选序号')
+        mode = module._parse_candidate_mode(web_candidate_index)[0]
+        if mode in ('before', 'after') and indices and len(indices) != 1:
+            errors.append('before/after 只需填写一个序号，如 before3 或 after5')
     except ValueError as exc:
         errors.append(str(exc))
     if mode_errors:
@@ -443,6 +446,9 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             self.include_video_checkbox = None
             self.include_photo_checkbox = None
             self.web_candidate_index_edit = None
+            self.web_candidate_exclude_checkbox = None
+            self.web_candidate_before_checkbox = None
+            self.web_candidate_after_checkbox = None
             self.web_all_candidates_checkbox = None
             self.concurrent_combo = None
             self.scan_button = None
@@ -689,10 +695,22 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                 web_row.setSpacing(10)
                 self.web_candidate_index_edit = QLineEdit(load_setting(settings, self._mode_setting_key('web_candidate_index')))
                 self.web_candidate_index_edit.setPlaceholderText(WEB_INDEX_PLACEHOLDER)
-                self.web_candidate_index_edit.setMaximumWidth(180)
+                self.web_candidate_index_edit.setMaximumWidth(160)
                 self.web_candidate_index_edit.editingFinished.connect(self.save_form_settings)
                 web_row.addWidget(self.web_candidate_index_edit)
-                self.web_all_candidates_checkbox = QCheckBox('网页全部候选')
+                self.web_candidate_exclude_checkbox = QCheckBox('跳过')
+                self.web_candidate_exclude_checkbox.setChecked(load_setting(settings, self._mode_setting_key('web_candidate_exclude'), '0') == '1')
+                self.web_candidate_exclude_checkbox.clicked.connect(self.handle_exclude_checked)
+                web_row.addWidget(self.web_candidate_exclude_checkbox)
+                self.web_candidate_before_checkbox = QCheckBox('之前')
+                self.web_candidate_before_checkbox.setChecked(load_setting(settings, self._mode_setting_key('web_candidate_before'), '0') == '1')
+                self.web_candidate_before_checkbox.clicked.connect(self.handle_before_checked)
+                web_row.addWidget(self.web_candidate_before_checkbox)
+                self.web_candidate_after_checkbox = QCheckBox('之后')
+                self.web_candidate_after_checkbox.setChecked(load_setting(settings, self._mode_setting_key('web_candidate_after'), '0') == '1')
+                self.web_candidate_after_checkbox.clicked.connect(self.handle_after_checked)
+                web_row.addWidget(self.web_candidate_after_checkbox)
+                self.web_all_candidates_checkbox = QCheckBox('全部候选')
                 self.web_all_candidates_checkbox.setChecked(load_setting(settings, self._mode_setting_key('web_all_candidates'), '0') == '1')
                 self.web_all_candidates_checkbox.clicked.connect(self.handle_web_all_candidates_changed)
                 web_row.addWidget(self.web_all_candidates_checkbox)
@@ -713,6 +731,10 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             self.progress_label.setProperty('cardSub', True)
             self.progress_label.setWordWrap(True)
             log_layout.addWidget(self.progress_label)
+
+            self.task_counter_label = QLabel('')
+            self.task_counter_label.setProperty('cardSub', True)
+            log_layout.addWidget(self.task_counter_label)
 
             self.progress_bar = QProgressBar()
             self.progress_bar.setMinimum(0)
@@ -772,6 +794,9 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                 save_setting(self.settings, self._mode_setting_key('include_photos'), '1' if self._is_checked(self.include_photo_checkbox) else '0')
             if self.web_candidate_index_edit is not None:
                 save_setting(self.settings, self._mode_setting_key('web_candidate_index'), self._widget_text(self.web_candidate_index_edit))
+                save_setting(self.settings, self._mode_setting_key('web_candidate_exclude'), '1' if self._is_checked(self.web_candidate_exclude_checkbox) else '0')
+                save_setting(self.settings, self._mode_setting_key('web_candidate_before'), '1' if self._is_checked(self.web_candidate_before_checkbox) else '0')
+                save_setting(self.settings, self._mode_setting_key('web_candidate_after'), '1' if self._is_checked(self.web_candidate_after_checkbox) else '0')
                 save_setting(self.settings, self._mode_setting_key('web_all_candidates'), '1' if self._is_checked(self.web_all_candidates_checkbox) else '0')
             save_setting(self.settings, self._mode_setting_key('overwrite'), '1' if self._is_checked(self.overwrite_checkbox) else '0')
             save_setting(self.settings, self._mode_setting_key('concurrent'), self._concurrent_value() if self.concurrent_combo is not None else '1')
@@ -812,6 +837,9 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                 self.include_video_checkbox,
                 self.include_photo_checkbox,
                 self.web_candidate_index_edit,
+                self.web_candidate_exclude_checkbox,
+                self.web_candidate_before_checkbox,
+                self.web_candidate_after_checkbox,
                 self.web_all_candidates_checkbox,
                 self.output_edit,
                 self.overwrite_checkbox,
@@ -863,10 +891,49 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             self.cleanup_worker()
             self.set_busy(False)
 
+        def _resolve_candidate_mode(self) -> str:
+            if self._is_checked(self.web_candidate_exclude_checkbox):
+                return 'exclude'
+            if self._is_checked(self.web_candidate_before_checkbox):
+                return 'before'
+            if self._is_checked(self.web_candidate_after_checkbox):
+                return 'after'
+            return self.module._parse_candidate_mode(self._widget_text(self.web_candidate_index_edit))[0]
+
+        def _uncheck_mode_checkboxes(self, keep: str = ''):
+            if keep != 'exclude' and self.web_candidate_exclude_checkbox is not None:
+                self.web_candidate_exclude_checkbox.setChecked(False)
+            if keep != 'before' and self.web_candidate_before_checkbox is not None:
+                self.web_candidate_before_checkbox.setChecked(False)
+            if keep != 'after' and self.web_candidate_after_checkbox is not None:
+                self.web_candidate_after_checkbox.setChecked(False)
+
+        def handle_exclude_checked(self):
+            if self.web_candidate_exclude_checkbox is not None and self.web_candidate_exclude_checkbox.isChecked():
+                self._uncheck_mode_checkboxes('exclude')
+            self.save_form_settings()
+
+        def handle_before_checked(self):
+            if self.web_candidate_before_checkbox is not None and self.web_candidate_before_checkbox.isChecked():
+                self._uncheck_mode_checkboxes('before')
+            self.save_form_settings()
+
+        def handle_after_checked(self):
+            if self.web_candidate_after_checkbox is not None and self.web_candidate_after_checkbox.isChecked():
+                self._uncheck_mode_checkboxes('after')
+            self.save_form_settings()
+
         def handle_web_all_candidates_changed(self):
             if self.web_candidate_index_edit is None or self.web_all_candidates_checkbox is None:
                 return
-            self.web_candidate_index_edit.setEnabled(not self.web_all_candidates_checkbox.isChecked())
+            enabled = not self.web_all_candidates_checkbox.isChecked()
+            self.web_candidate_index_edit.setEnabled(enabled)
+            if self.web_candidate_exclude_checkbox is not None:
+                self.web_candidate_exclude_checkbox.setEnabled(enabled)
+            if self.web_candidate_before_checkbox is not None:
+                self.web_candidate_before_checkbox.setEnabled(enabled)
+            if self.web_candidate_after_checkbox is not None:
+                self.web_candidate_after_checkbox.setEnabled(enabled)
             self.save_form_settings()
 
         def reset_progress_ui(self, total_tasks: int):
@@ -877,6 +944,14 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             self.progress_bar.setMaximum(100)
             self.progress_bar.setValue(0)
             self.progress_label.setText(f'准备开始，共 {self.total_tasks} 个任务')
+            self._update_task_counter()
+
+        def _update_task_counter(self):
+            if self.total_tasks > 0:
+                current = self.current_task_index + 1 if self.current_task_index >= 0 else 0
+                self.task_counter_label.setText(f'任务进度: {self.completed_tasks} 完成 / {current} 进行中 / {self.total_tasks} 总计')
+            else:
+                self.task_counter_label.setText('')
 
         def update_progress_percent(self, current_percent: float | int):
             if self.total_tasks <= 0:
@@ -896,11 +971,13 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                     self.total_tasks = int(payload.get('total', str(self.total_tasks)) or self.total_tasks or 0)
                     url = payload.get('url', '')
                     self.progress_label.setText(f'处理中 {self.current_task_index + 1}/{self.total_tasks}: {url}')
+                    self._update_task_counter()
                 elif kind == 'task_done':
                     self.completed_tasks = int(payload.get('completed', str(self.completed_tasks)) or self.completed_tasks)
                     self.total_tasks = int(payload.get('total', str(self.total_tasks)) or self.total_tasks or 0)
                     self.update_progress_percent(0)
                     self.progress_label.setText(f'已完成 {self.completed_tasks}/{self.total_tasks} 个任务')
+                    self._update_task_counter()
                 elif kind == 'tg_scan':
                     scanned = int(payload.get('scanned', '0') or 0)
                     matched = int(payload.get('matched', '0') or 0)
@@ -1172,11 +1249,14 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                 telegram_include_videos=self._is_checked(self.include_video_checkbox) or self.source_mode != 'telegram',
                 telegram_include_photos=self._is_checked(self.include_photo_checkbox),
                 web_candidate_indices=module.normalize_positive_indices(self._widget_text(self.web_candidate_index_edit), '网页候选序号'),
+                web_candidate_mode=self._resolve_candidate_mode(),
                 web_download_all_candidates=self._is_checked(self.web_all_candidates_checkbox),
             )
             self.set_busy(True)
             self.log.clear()
             self._last_log_is_progress = False
+            if options.web_download_all_candidates:
+                tasks = module._expand_web_all_candidates(tasks, self.append_log)
             self.reset_progress_ui(len(tasks))
             self._token = module.Token()
             self.worker = DownloadWorker(module, tasks, self.output_edit.text().strip(), self.build_config(), options, token=self._token)
