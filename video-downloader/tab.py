@@ -256,9 +256,9 @@ def validate_video_downloader_form(
     if mode_errors:
         if not (output_dir or '').strip():
             errors.append('请选择输出目录')
-        if web_download_all_candidates and str(web_candidate_index).strip():
-            errors.append('勾选"网页全部候选"时，不需要再填写候选序号')
         return errors
+    if web_download_all_candidates and str(web_candidate_index).strip():
+        errors.append('勾选"网页全部候选"时，不需要再填写候选序号')
     session_file = Path(__file__).resolve().with_name(module.SESSION_FILE_NAME)
     config = module.TelegramConfig(
         api_id=api_id,
@@ -277,8 +277,6 @@ def validate_video_downloader_form(
         telegram_include_videos=telegram_include_videos,
         telegram_include_photos=telegram_include_photos,
     ))
-    if web_download_all_candidates and str(web_candidate_index).strip():
-        errors.append('勾选"网页全部候选"时，不需要再填写候选序号')
     return errors
 
 
