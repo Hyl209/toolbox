@@ -166,56 +166,6 @@ def format_web_task_summary(urls: list[str], web_scan_results: dict[str, dict[st
             else:
                 lines.append(f'扫描失败: {url}')
     else:
-        lines.append('（未扫描候选）')
-    preview = urls[:3]
-    if preview:
-        lines.append('预览:')
-        lines.extend(preview)
-    return '\n'.join(lines)
-
-def format_video_task_summary(urls: list[str]) -> str:
-    if not urls:
-        return SUMMARY_EMPTY_TEXT
-    telegram_message = 0
-    telegram_chat = 0
-    web = 0
-    for url in urls:
-        kind = _guess_source_kind(url)
-        if kind == 'telegram_message':
-            telegram_message += 1
-        elif kind == 'telegram_chat':
-            telegram_chat += 1
-        else:
-            web += 1
-    lines = [
-        f'任务总数: {len(urls)}',
-        f'Telegram 消息: {telegram_message}',
-        f'Telegram 群/频道: {telegram_chat}',
-        f'网页视频任务: {web}',
-    ]
-    preview = urls[:3]
-    if preview:
-        lines.append('预览:')
-        lines.extend(preview)
-    return '\n'.join(lines)
-
-
-def format_web_task_summary(urls: list[str], web_scan_results: dict[str, dict[str, object]] | None = None) -> str:
-    if not urls:
-        return SUMMARY_EMPTY_TEXT
-    lines = [f'网页链接: {len(urls)}']
-    if web_scan_results:
-        lines.append('扫描结果:')
-        for url in urls[:3]:
-            result = web_scan_results.get(url)
-            if not result:
-                continue
-            if result.get('success'):
-                count = int(result.get('candidate_count', 0) or 0)
-                lines.append(f'{count} 个候选: {url}')
-            else:
-                lines.append(f'扫描失败: {url}')
-    else:
         lines.append('点击“扫描候选”可查看每个页面的候选视频')
     preview = urls[:3]
     if preview:
