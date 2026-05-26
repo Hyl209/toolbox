@@ -10,7 +10,7 @@ import re
 import shutil
 import ssl
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from collections.abc import Iterable
 from pathlib import Path
 from time import monotonic
@@ -303,6 +303,43 @@ def ensure_unique_stem(directory: str | Path, stem: str) -> str:
     return candidate
 
 
+def _download_web_entries(
+    web_entries: list[tuple[int, DownloadTask]],
+    output_root: Path,
+    options: DownloadOptions,
+    progress_cb: ProgressCallback | None,
+    total_tasks: int,
+    completed_count: int,
+) -> dict[int, dict[str, object]]:
+    """Download web entries. Uses sequential loop for concurrency=1, thread pool otherwise."""
+    if not web_entries:
+        return {}
+    max_workers = max(1, min(options.max_concurrent_downloads, len(web_entries)))
+    if max_workers <= 1:
+        return _download_web_sequential(web_entries, output_root, options, progress_cb, total_tasks, completed_count)
+    return _download_web_concurrent(web_entries, output_root, options, progress_cb, total_tasks, completed_count, max_workers)
+
+
+def _download_web_sequential(
+    web_entries: list[tuple[int, DownloadTask]],
+    output_root: Path,
+    options: DownloadOptions,
+    progress_cb: ProgressCallback | None,
+    total_tasks: int,
+    completed_count: int,
+) -> dict[int, dict[str, object]]:
+    results: dict[int, dict[str, object]] = {}
+    for index, task in web_entries:
+        _emit_task_start(progress_cb, index, total_tasks, task)
+        try:
+            results[index] = _download_web_task(task, output_root, options, progress_cb)
+        except Exception as exc:
+            results[index] = _make_result(task, False, [], str(exc))
+        completed_count += 1
+        _emit_task_done(progress_cb, completed_count, total_tasks)
+    return results
+
+
 def _download_web_concurrent(
     web_entries: list[tuple[int, DownloadTask]],
     output_root: Path,
@@ -357,8 +394,9 @@ def _download_web_auto(
         return results
     concurrency = _speed_to_concurrency(first_speed)
     _emit(progress_cb, f'自动模式: 测速 {_format_byte_rate(first_speed)}, 并发数设为 {concurrency}')
-    results.update(_download_web_concurrent(
-        remaining, output_root, options, progress_cb, total_tasks, initial_completed + 1, concurrency,
+    concurrent_opts = replace(options, max_concurrent_downloads=concurrency)
+    results.update(_download_web_entries(
+        remaining, output_root, concurrent_opts, progress_cb, total_tasks, initial_completed + 1,
     ))
     return results
 
@@ -464,12 +502,10 @@ def download_batch(
     web_entries = [(index, task) for index, task in enumerate(task_list) if not task.source_kind.startswith('telegram')]
     if not web_entries:
         return [results[index] for index in range(len(task_list))]
-    is_auto = download_options.max_concurrent_downloads <= 0
-    if is_auto and len(web_entries) > 1:
+    if download_options.max_concurrent_downloads <= 0 and len(web_entries) > 1:
         results.update(_download_web_auto(web_entries, output_root, download_options, progress_cb, total_tasks, len(results)))
     else:
-        max_workers = max(1, min(download_options.max_concurrent_downloads, len(web_entries))) if not is_auto else len(web_entries)
-        results.update(_download_web_concurrent(web_entries, output_root, download_options, progress_cb, total_tasks, len(results), max_workers))
+        results.update(_download_web_entries(web_entries, output_root, download_options, progress_cb, total_tasks, len(results)))
     return [results[index] for index in range(len(task_list))]
 
 
