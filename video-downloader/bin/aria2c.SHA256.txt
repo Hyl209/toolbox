@@ -1,0 +1,4 @@
+aria2 1.37.0 Windows 64-bit build1
+Source: https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip
+ZIP SHA256: 67d015301eef0b612191212d564c5bb0a14b5b9c4796b76454276a4d28d9b288
+aria2c.exe SHA256: BE2099C214F63A3CB4954B09A0BECD6E2E34660B886D4C898D260FEBFE9D70C2

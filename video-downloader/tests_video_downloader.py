@@ -2,6 +2,7 @@ import importlib.util
 import pathlib
 import tempfile
 import sys
+import types
 
 
 ROOT = pathlib.Path(__file__).resolve().parent
@@ -195,7 +196,7 @@ def test_download_web_task_falls_back_to_page_media_candidates_when_ytdlp_reject
     try:
         seen: list[str] = []
 
-        def fake_runner(source_url, output_root, options, progress_cb, title_hint=''):
+        def fake_runner(source_url, output_root, options, progress_cb, title_hint='', referer_url=''):
             seen.append(source_url)
             if source_url == 'https://example.com/post/1':
                 raise module.DownloadError('ERROR: Unsupported URL: https://example.com/post/1')
@@ -223,7 +224,7 @@ def test_download_web_task_can_download_all_page_media_candidates():
     try:
         seen: list[str] = []
 
-        def fake_runner(source_url, output_root, options, progress_cb, title_hint=''):
+        def fake_runner(source_url, output_root, options, progress_cb, title_hint='', referer_url=''):
             seen.append(source_url)
             if source_url == 'https://example.com/post/1':
                 raise module.DownloadError('ERROR: Unsupported URL: https://example.com/post/1')
@@ -262,7 +263,7 @@ def test_download_web_task_uses_ytdlp_multi_entry_candidates_instead_of_collapsi
     try:
         seen: list[str] = []
 
-        def fake_runner(source_url, output_root, options, progress_cb, title_hint=''):
+        def fake_runner(source_url, output_root, options, progress_cb, title_hint='', referer_url=''):
             seen.append(source_url)
             if source_url == 'https://example.com/post/1':
                 path = output_root / 'first-only.mp4'
@@ -312,7 +313,7 @@ def test_make_web_progress_hook_emits_speed_and_eta():
     })
     assert any(item.startswith('__HYL_PROGRESS__|web_percent|percent=12.3') for item in captured)
     assert any(item.startswith('__HYL_PROGRESS__|web_status|') and 'speed=1.2 MiB/s' in item and 'eta=00:05' in item for item in captured)
-    assert '正在下载 "demo.mp4" "1.2 MiB/s" "12.3%"' in captured
+    assert any('正在下载 "demo.mp4" "1.2 MiB/s" "12.3%"' in item for item in captured)
 
 
 def test_make_web_progress_hook_can_compute_percent_from_bytes():
@@ -450,6 +451,266 @@ def test_inspect_web_media_candidates_prefers_detected_candidates():
     assert result['success'] is True
     assert result['candidate_count'] == 2
     assert result['source'] == 'yt-dlp'
+
+
+def test_resolve_aria2c_path_prefers_bundled_binary():
+    module = load_module()
+    original_file = module.__file__
+    original_which = module.shutil.which
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        bundled = root / 'bin' / 'aria2c.exe'
+        bundled.parent.mkdir()
+        bundled.write_bytes(b'fake')
+        module.__file__ = str(root / 'converter.py')
+        module.shutil.which = lambda name: 'C:/PATH/aria2c.exe'
+        try:
+            assert module._resolve_aria2c_path() == str(bundled)
+        finally:
+            module.__file__ = original_file
+            module.shutil.which = original_which
+
+
+def test_download_url_with_ytdlp_uses_aria2_and_stability_options():
+    module = load_module()
+    fake_ytdlp = types.ModuleType('yt_dlp')
+    captured_opts: list[dict[str, object]] = []
+
+    class FakeYoutubeDL:
+        def __init__(self, opts):
+            self.opts = opts
+            captured_opts.append(opts)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def extract_info(self, url, download=False):
+            if not download:
+                return {'title': 'Demo', 'id': 'abc'}
+            pathlib.Path(str(self.opts['outtmpl']).replace('%(ext)s', 'mp4')).write_text('ok', encoding='utf-8')
+            return {'ok': True}
+
+    fake_ytdlp.YoutubeDL = FakeYoutubeDL
+    original_module = sys.modules.get('yt_dlp')
+    original_require = module._require_web_backend
+    original_resolve_aria2 = module._resolve_aria2c_path
+    original_ffmpeg = module.shutil.which
+    try:
+        sys.modules['yt_dlp'] = fake_ytdlp
+        module._require_web_backend = lambda: None
+        module._resolve_aria2c_path = lambda: 'C:/tools/aria2c.exe'
+        module.shutil.which = lambda name: ''
+        with tempfile.TemporaryDirectory() as tmp:
+            result = module._download_url_with_ytdlp(
+                'https://example.com/video',
+                pathlib.Path(tmp),
+                module.DownloadOptions(),
+                None,
+                referer_url='https://example.com/post/1',
+            )
+        download_opts = captured_opts[-1]
+        assert result['success'] is True
+        assert download_opts['external_downloader'] == 'C:/tools/aria2c.exe'
+        assert download_opts['continuedl'] is True
+        assert download_opts['fragment_retries'] == 20
+        assert download_opts['retries'] == 20
+        assert download_opts['throttledratelimit'] == 100 * 1024
+        assert download_opts['legacyserverconnect'] is True
+        assert download_opts['http_headers']['Referer'] == 'https://example.com/post/1'
+        assert '--summary-interval=1' in download_opts['external_downloader_args']
+        assert '--header=Referer: https://example.com/post/1' in download_opts['external_downloader_args']
+    finally:
+        if original_module is None:
+            sys.modules.pop('yt_dlp', None)
+        else:
+            sys.modules['yt_dlp'] = original_module
+        module._require_web_backend = original_require
+        module._resolve_aria2c_path = original_resolve_aria2
+        module.shutil.which = original_ffmpeg
+
+
+def test_download_url_with_ytdlp_keeps_completed_file_when_aria2_finish_trips_error():
+    module = load_module()
+    fake_ytdlp = types.ModuleType('yt_dlp')
+
+    class FakeYoutubeDL:
+        def __init__(self, opts):
+            self.opts = opts
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def extract_info(self, url, download=False):
+            if not download:
+                return {'title': 'Demo', 'id': 'abc'}
+            pathlib.Path(str(self.opts['outtmpl']).replace('%(ext)s', 'mp4')).write_text('ok', encoding='utf-8')
+            raise RuntimeError('yt-dlp post-download cleanup failed')
+
+    fake_ytdlp.YoutubeDL = FakeYoutubeDL
+    original_module = sys.modules.get('yt_dlp')
+    original_require = module._require_web_backend
+    original_resolve_aria2 = module._resolve_aria2c_path
+    original_ffmpeg = module.shutil.which
+    try:
+        sys.modules['yt_dlp'] = fake_ytdlp
+        module._require_web_backend = lambda: None
+        module._resolve_aria2c_path = lambda: 'C:/tools/aria2c.exe'
+        module.shutil.which = lambda name: ''
+        with tempfile.TemporaryDirectory() as tmp:
+            result = module._download_url_with_ytdlp('https://example.com/video', pathlib.Path(tmp), module.DownloadOptions(), None)
+        assert result['success'] is True
+        assert len(result['files']) == 1
+        assert pathlib.Path(result['files'][0]).name == 'Demo [abc].mp4'
+    finally:
+        if original_module is None:
+            sys.modules.pop('yt_dlp', None)
+        else:
+            sys.modules['yt_dlp'] = original_module
+        module._require_web_backend = original_require
+        module._resolve_aria2c_path = original_resolve_aria2
+        module.shutil.which = original_ffmpeg
+
+
+def test_download_url_with_ytdlp_sets_legacy_server_connect_for_tls_edge_cases():
+    module = load_module()
+    fake_ytdlp = types.ModuleType('yt_dlp')
+    captured_opts: list[dict[str, object]] = []
+
+    class FakeYoutubeDL:
+        def __init__(self, opts):
+            self.opts = opts
+            captured_opts.append(opts)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def extract_info(self, url, download=False):
+            if download:
+                pathlib.Path(str(captured_opts[-1]['outtmpl']).replace('%(ext)s', 'mp4')).write_text('ok', encoding='utf-8')
+                return {'ok': True}
+            return {'title': 'Demo', 'id': 'abc'}
+
+    fake_ytdlp.YoutubeDL = FakeYoutubeDL
+    original_module = sys.modules.get('yt_dlp')
+    original_require = module._require_web_backend
+    original_resolve_aria2 = module._resolve_aria2c_path
+    original_ffmpeg = module.shutil.which
+    try:
+        sys.modules['yt_dlp'] = fake_ytdlp
+        module._require_web_backend = lambda: None
+        module._resolve_aria2c_path = lambda: ''
+        module.shutil.which = lambda name: ''
+        with tempfile.TemporaryDirectory() as tmp:
+            module._download_url_with_ytdlp('https://example.com/video', pathlib.Path(tmp), module.DownloadOptions(), None)
+        assert captured_opts[0]['legacyserverconnect'] is True
+        assert captured_opts[1]['legacyserverconnect'] is True
+    finally:
+        if original_module is None:
+            sys.modules.pop('yt_dlp', None)
+        else:
+            sys.modules['yt_dlp'] = original_module
+        module._require_web_backend = original_require
+        module._resolve_aria2c_path = original_resolve_aria2
+        module.shutil.which = original_ffmpeg
+
+
+def test_m3u8_candidate_tries_ytdlp_before_ffmpeg_fallback():
+    module = load_module()
+    calls: list[str] = []
+    original_ytdlp = module._download_url_with_ytdlp
+    original_ffmpeg = module._download_m3u8_with_ffmpeg
+    try:
+        def fake_ytdlp(source_url, output_root, options, progress_cb, title_hint='', referer_url=''):
+            calls.append('yt-dlp')
+            assert referer_url == 'https://example.com/post/1'
+            raise module.DownloadError('slow')
+
+        def fake_ffmpeg(media_url, task, output_root, options, progress_cb, ffmpeg_path='', referer_url=''):
+            calls.append('ffmpeg')
+            assert referer_url == 'https://example.com/post/1'
+            return {'success': True, 'files': [output_root / 'ok.mp4']}
+
+        module._download_url_with_ytdlp = fake_ytdlp
+        module._download_m3u8_with_ffmpeg = fake_ffmpeg
+        with tempfile.TemporaryDirectory() as tmp:
+            task = module.DownloadTask('https://example.com/post/1', 'web', 'demo')
+            result = module._download_web_candidate('https://cdn.example.com/live.m3u8', task, pathlib.Path(tmp), module.DownloadOptions(), None, ffmpeg_path='ffmpeg')
+        assert result['success'] is True
+        assert calls == ['yt-dlp', 'ffmpeg']
+    finally:
+        module._download_url_with_ytdlp = original_ytdlp
+        module._download_m3u8_with_ffmpeg = original_ffmpeg
+
+
+def test_emit_aria2_progress_reports_speed_without_overall_percent():
+    module = load_module()
+    captured: list[str] = []
+    module._emit_aria2_progress(
+        captured.append,
+        'demo.mp4',
+        '[#abc 12MiB/100MiB(12%) CN:12 DL:4.5MiB ETA:19s]',
+    )
+    assert any(item.startswith('__HYL_PROGRESS__|web_aria2|') and 'speed=4.5MiB/s' in item and 'eta=00:19' in item for item in captured)
+    assert not any(item.startswith('__HYL_PROGRESS__|web_status|') for item in captured)
+    assert any('正在下载 "demo.mp4" "4.5MiB/s" "--"' in item for item in captured)
+
+
+def test_ffmpeg_m3u8_command_enables_reconnect_options():
+    module = load_module()
+    captured: dict[str, object] = {}
+    original_popen = module.subprocess.Popen
+    original_probe = module._probe_stream_duration
+    try:
+        class FakeProcess:
+            stdout = []
+            returncode = 0
+
+            def wait(self, timeout=None):
+                return 0
+
+        def fake_popen(command, **kwargs):
+            captured['command'] = command
+            return FakeProcess()
+
+        module.subprocess.Popen = fake_popen
+        module._probe_stream_duration = lambda url, ffmpeg_path='': None
+        with tempfile.TemporaryDirectory() as tmp:
+            task = module.DownloadTask('https://example.com/post/1', 'web', 'demo')
+            module._download_m3u8_with_ffmpeg(
+                'https://cdn.example.com/live.m3u8',
+                task,
+                pathlib.Path(tmp),
+                module.DownloadOptions(),
+                None,
+                ffmpeg_path='ffmpeg',
+                referer_url='https://example.com/post/1',
+            )
+        command = captured['command']
+        assert '-reconnect' in command
+        assert '-reconnect_on_network_error' in command
+        assert '-reconnect_on_http_error' in command
+        assert '429,500,502,503,504' in command
+        assert '-multiple_requests' in command
+        assert '-headers' in command
+        assert any('Referer: https://example.com/post/1\r\n' in item for item in command)
+    finally:
+        module.subprocess.Popen = original_popen
+        module._probe_stream_duration = original_probe
+
+
+def test_hyltoolbox_spec_bundles_aria2c():
+    spec_text = (ROOT.parent / 'HylToolbox.spec').read_text(encoding='utf-8')
+    assert "video-downloader/bin/aria2c.exe" in spec_text
+    assert "video-downloader/bin/aria2c.SHA256.txt" in spec_text
 
 
 def test_build_source_mode_summary_for_web_hides_telegram_counts():

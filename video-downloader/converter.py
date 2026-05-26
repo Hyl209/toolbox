@@ -3,11 +3,13 @@ from __future__ import annotations
 import asyncio
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, time, timezone
+from contextlib import contextmanager
 from random import uniform
 from threading import Event, Lock
 import threading as _threading
 from html import unescape
 import importlib.util
+import os
 import re
 import shutil
 import ssl
@@ -28,11 +30,18 @@ TELEGRAM_HOSTS = {'t.me', 'telegram.me', 'telegram.dog', 'www.t.me', 'www.telegr
 INVALID_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]+')
 WHITESPACE_RE = re.compile(r'\s+')
 ANSI_ESCAPE_RE = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
+ARIA2_PROGRESS_RE = re.compile(r'\((?P<percent>\d+(?:\.\d+)?)%\).*?\bDL:(?P<speed>[^\s\]]+)(?:.*?\bETA:(?P<eta>[^\s\]]+))?', re.IGNORECASE)
 MEDIA_URL_RE = re.compile(r"""(?P<url>(?:https?:)?//[^"'\\\s<>]+?\.(?:mp4|m3u8|webm|mov|m4v)(?:\?[^"'\\\s<>]*)?)""", re.IGNORECASE)
 RELATIVE_MEDIA_RE = re.compile(r"""(?P<url>/[^"'\\\s<>]+?\.(?:mp4|m3u8|webm|mov|m4v)(?:\?[^"'\\\s<>]*)?)""", re.IGNORECASE)
 SESSION_FILE_NAME = 'telegram.session'
 DEFAULT_FILENAME_TEMPLATE = '%(title)s [%(id)s].%(ext)s'
+ARIA2_VERSION = '1.37.0'
+ARIA2_SOURCE_URL = 'https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip'
+ARIA2_ZIP_SHA256 = '67d015301eef0b612191212d564c5bb0a14b5b9c4796b76454276a4d28d9b288'
+ARIA2_EXE_SHA256 = 'BE2099C214F63A3CB4954B09A0BECD6E2E34660B886D4C898D260FEBFE9D70C2'
+WEB_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
 _stem_lock = Lock()
+_console_capture_lock = Lock()
 _INTER_TASK_DELAY_RANGE = (1.0, 3.0)
 
 
@@ -175,9 +184,16 @@ def guess_task_title(url: str) -> str:
 
 def probe_download_backends() -> dict[str, dict[str, object]]:
     ffmpeg = shutil.which('ffmpeg')
+    aria2c = _resolve_aria2c_path()
     return {
         'telethon': _build_backend_status('telethon', 'Telegram 登录/下载'),
         'yt_dlp': _build_backend_status('yt_dlp', '网页视频解析'),
+        'aria2c': {
+            'available': bool(aria2c),
+            'label': '网页多连接加速',
+            'message': f'已检测到 aria2c {ARIA2_VERSION}' if aria2c else '未检测到 aria2c，网页视频将使用 yt-dlp 内置下载',
+            'path': aria2c,
+        },
         'ffmpeg': {
             'available': bool(ffmpeg),
             'label': '媒体合并/转封装',
@@ -364,10 +380,26 @@ def ensure_unique_stem(directory: str | Path, stem: str) -> str:
     with _stem_lock:
         candidate = safe_stem
         index = 1
-        while any(folder.glob(f'{candidate}.*')):
+        while any(_find_files_by_stem(folder, candidate)):
             candidate = f'{safe_stem} ({index})'
             index += 1
         return candidate
+
+
+def _find_files_by_stem(directory: str | Path, stem: str) -> list[Path]:
+    folder = Path(directory)
+    if not folder.exists():
+        return []
+    return [path for path in folder.iterdir() if path.is_file() and path.stem == stem]
+
+
+def _find_completed_downloads(directory: str | Path, stem: str) -> list[Path]:
+    unfinished_suffixes = {'.part', '.ytdl', '.tmp', '.aria2'}
+    return [
+        path.resolve()
+        for path in _find_files_by_stem(directory, stem)
+        if path.suffix.lower() not in unfinished_suffixes and path.stat().st_size > 0
+    ]
 
 
 def _run_web_task(task, output_root, options, progress_cb, token):
@@ -691,6 +723,119 @@ def _build_backend_status(module_name: str, label: str) -> dict[str, object]:
         'message': f'已检测到 {module_name}' if available else f'未安装 {module_name}',
         'path': module_name,
     }
+
+
+def _resolve_bundled_tool(name: str) -> str:
+    suffix = '.exe' if not name.lower().endswith('.exe') else ''
+    candidate = Path(__file__).resolve().parent / 'bin' / f'{name}{suffix}'
+    return str(candidate) if candidate.is_file() else ''
+
+
+def _resolve_aria2c_path() -> str:
+    bundled = _resolve_bundled_tool('aria2c')
+    if bundled:
+        return bundled
+    return shutil.which('aria2c') or ''
+
+
+def _build_web_headers(referer_url: str = '') -> dict[str, str]:
+    headers = {
+        'User-Agent': WEB_USER_AGENT,
+        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+    }
+    if referer_url:
+        headers['Referer'] = referer_url
+    return headers
+
+
+def _build_ffmpeg_header_text(referer_url: str = '') -> str:
+    return ''.join(f'{key}: {value}\r\n' for key, value in _build_web_headers(referer_url).items())
+
+
+@contextmanager
+def _capture_aria2_console_progress(progress_cb: ProgressCallback | None, file_name: str):
+    if progress_cb is None:
+        yield
+        return
+    with _console_capture_lock:
+        saved_stdout = os.dup(1)
+        saved_stderr = os.dup(2)
+        read_fd, write_fd = os.pipe()
+        stop = Event()
+
+        def reader() -> None:
+            buffer = ''
+            try:
+                with os.fdopen(read_fd, 'rb', closefd=True) as pipe:
+                    while not stop.is_set():
+                        chunk = pipe.read(512)
+                        if not chunk:
+                            break
+                        buffer += chunk.decode('utf-8', errors='ignore')
+                        parts = re.split(r'[\r\n]+', buffer)
+                        buffer = parts.pop() if parts else ''
+                        for part in parts:
+                            _emit_aria2_progress(progress_cb, file_name, part)
+                    if buffer:
+                        _emit_aria2_progress(progress_cb, file_name, buffer)
+            except OSError:
+                pass
+
+        thread = _threading.Thread(target=reader, daemon=True)
+        try:
+            os.dup2(write_fd, 1)
+            os.dup2(write_fd, 2)
+            os.close(write_fd)
+            thread.start()
+            yield
+        finally:
+            os.dup2(saved_stdout, 1)
+            os.dup2(saved_stderr, 2)
+            os.close(saved_stdout)
+            os.close(saved_stderr)
+            stop.set()
+            thread.join(timeout=1)
+
+
+def _emit_aria2_progress(progress_cb: ProgressCallback | None, file_name: str, raw_line: str) -> None:
+    text = _normalize_progress_text(raw_line)
+    if not text or '[#' not in text:
+        return
+    match = ARIA2_PROGRESS_RE.search(text)
+    if not match:
+        return
+    percent = match.group('percent') or ''
+    speed = _normalize_aria2_speed(match.group('speed') or '')
+    eta = _normalize_aria2_eta(match.group('eta') or '')
+    clean_name = sanitize_filename_component(file_name or 'video', fallback='video')
+    parts = [f'name={clean_name}', f'speed={speed}']
+    if eta:
+        parts.append(f'eta={eta}')
+    _emit(progress_cb, '__HYL_PROGRESS__|web_aria2|' + '|'.join(parts))
+    _emit(progress_cb, _build_download_log_message(clean_name, speed, '', eta))
+
+
+def _normalize_aria2_speed(text: str) -> str:
+    speed = str(text or '').strip()
+    if not speed:
+        return ''
+    return speed if speed.endswith('/s') else f'{speed}/s'
+
+
+def _normalize_aria2_eta(text: str) -> str:
+    value = str(text or '').strip()
+    if not value:
+        return ''
+    total = 0
+    for amount, unit in re.findall(r'(\d+)([hms])', value.lower()):
+        number = int(amount)
+        if unit == 'h':
+            total += number * 3600
+        elif unit == 'm':
+            total += number * 60
+        else:
+            total += number
+    return _format_eta_seconds(total) if total > 0 else value
 
 
 async def _check_telegram_authorization_async(config: TelegramConfig) -> dict[str, object]:
@@ -1055,20 +1200,33 @@ def _download_web_candidate(
     ffmpeg_path: str = '',
 ) -> dict[str, object]:
     if _is_m3u8_url(candidate_url) and ffmpeg_path:
-        return _download_m3u8_with_ffmpeg(
-            candidate_url,
-            task,
-            output_root,
-            options,
-            progress_cb,
-            ffmpeg_path=ffmpeg_path,
-        )
+        try:
+            return _download_url_with_ytdlp(
+                candidate_url,
+                output_root,
+                options,
+                progress_cb,
+                title_hint=task.target_title,
+                referer_url=task.source_url,
+            )
+        except Exception as exc:
+            _emit(progress_cb, f'yt-dlp 下载 m3u8 失败，改用 ffmpeg 兜底: {exc}')
+            return _download_m3u8_with_ffmpeg(
+                candidate_url,
+                task,
+                output_root,
+                options,
+                progress_cb,
+                ffmpeg_path=ffmpeg_path,
+                referer_url=task.source_url,
+            )
     return _download_url_with_ytdlp(
         candidate_url,
         output_root,
         options,
         progress_cb,
         title_hint=task.target_title,
+        referer_url=task.source_url,
     )
 
 
@@ -1189,7 +1347,14 @@ def _download_web_task(task: DownloadTask, output_root: Path, options: DownloadO
             except Exception as exc:
                 first_error = exc
     try:
-        downloaded = _download_url_with_ytdlp(task.source_url, output_root, options, progress_cb, title_hint=task.target_title)
+        downloaded = _download_url_with_ytdlp(
+            task.source_url,
+            output_root,
+            options,
+            progress_cb,
+            title_hint=task.target_title,
+            referer_url=task.source_url,
+        )
         return _make_result(task, True, downloaded['files'], '')
     except Exception as exc:
         first_error = exc
@@ -1295,11 +1460,20 @@ def _download_url_with_ytdlp(
     options: DownloadOptions,
     progress_cb: ProgressCallback | None,
     title_hint: str = '',
+    referer_url: str = '',
 ) -> dict[str, object]:
     _require_web_backend()
     from yt_dlp import YoutubeDL
 
-    info = YoutubeDL({'quiet': True, 'skip_download': True, 'noplaylist': True, 'nocheckcertificate': True}).extract_info(source_url, download=False)
+    http_headers = _build_web_headers(referer_url)
+    info = YoutubeDL({
+        'quiet': True,
+        'skip_download': True,
+        'noplaylist': True,
+        'nocheckcertificate': True,
+        'legacyserverconnect': True,
+        'http_headers': http_headers,
+    }).extract_info(source_url, download=False)
     title = sanitize_filename_component(str(info.get('title') or title_hint or 'video'))
     media_id = sanitize_filename_component(str(info.get('id') or 'video'))
     base_stem = options.filename_template.replace('%(title)s', title).replace('%(id)s', media_id).replace('.%(ext)s', '')
@@ -1314,18 +1488,42 @@ def _download_url_with_ytdlp(
         'overwrites': bool(options.overwrite),
         'outtmpl': str(output_root / f'{unique_stem}.%(ext)s'),
         'progress_hooks': [_make_web_progress_hook(progress_cb, _current_token())],
-        'concurrent_fragment_downloads': 8,
-        'file_access_retries': 3,
-        'fragment_retries': 10,
-        'retries': 10,
-        'socket_timeout': 30,
+        'concurrent_fragment_downloads': 12,
+        'continuedl': True,
+        'extractor_retries': 3,
+        'file_access_retries': 5,
+        'fragment_retries': 20,
+        'retries': 20,
+        'socket_timeout': 45,
         'nocheckcertificate': True,
-        'http_chunk_size': 1024 * 1024,
+        'legacyserverconnect': True,
+        'http_chunk_size': 4 * 1024 * 1024,
+        'throttledratelimit': 100 * 1024,
+        'http_headers': http_headers,
     }
-    aria2c = shutil.which('aria2c')
+    aria2c = _resolve_aria2c_path()
     if aria2c:
-        ydl_opts['external_downloader'] = 'aria2c'
-        ydl_opts['external_downloader_args'] = ['-x', '8', '-s', '8', '-k', '1M', '--file-allocation=none']
+        ydl_opts['external_downloader'] = aria2c
+        ydl_opts['external_downloader_args'] = [
+            '-x', '12',
+            '-s', '12',
+            '-k', '1M',
+            '--continue=true',
+            '--max-tries=8',
+            '--retry-wait=2',
+            '--timeout=30',
+            '--connect-timeout=15',
+            '--lowest-speed-limit=50K',
+            '--file-allocation=none',
+            '--summary-interval=1',
+            '--console-log-level=notice',
+        ]
+        if referer_url:
+            ydl_opts['external_downloader_args'].extend([
+                f'--user-agent={WEB_USER_AGENT}',
+                f'--header=Referer: {referer_url}',
+            ])
+        _emit(progress_cb, f'网页加速: 使用 aria2c -> {aria2c}')
     ffmpeg = shutil.which('ffmpeg')
     if ffmpeg:
         ydl_opts['ffmpeg_location'] = ffmpeg
@@ -1334,14 +1532,24 @@ def _download_url_with_ytdlp(
     max_reconnects = 3
     for reconnect_attempt in range(max_reconnects + 1):
         try:
-            with YoutubeDL(ydl_opts) as ydl:
-                ydl.extract_info(source_url, download=True)
+            with _capture_aria2_console_progress(progress_cb, unique_stem):
+                with YoutubeDL(ydl_opts) as ydl:
+                    ydl.extract_info(source_url, download=True)
         except CancelledError:
             token = _current_token()
             if token and token.reconnect.is_set():
                 token.reconnect.clear()
                 _emit(progress_cb, f'重连中... (第{reconnect_attempt + 1}次)')
                 continue
+            raise
+        except Exception:
+            created = sorted(_find_completed_downloads(output_root, unique_stem))
+            if created:
+                _emit(progress_cb, f'网页 OK -> {created[0].name}')
+                return {
+                    'success': True,
+                    'files': created,
+                }
             raise
         # extract_info returned normally — check if reconnect flag was set
         # (yt-dlp may catch CancelledError internally and return normally)
@@ -1353,8 +1561,7 @@ def _download_url_with_ytdlp(
         break
     else:
         raise DownloadError('重连次数已达上限')
-    created = sorted(output_root.glob(f'{unique_stem}.*'))
-    created = [path.resolve() for path in created if path.is_file()]
+    created = sorted(_find_completed_downloads(output_root, unique_stem))
     if not created:
         raise DownloadError('网页视频下载完成，但未找到输出文件')
     _emit(progress_cb, f'网页 OK -> {created[0].name}')
@@ -1371,7 +1578,7 @@ def _fetch_webpage_html(url: str) -> str:
     request = Request(
         url,
         headers={
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+            'User-Agent': WEB_USER_AGENT,
             'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             'Referer': url,
@@ -1459,6 +1666,7 @@ def _download_m3u8_with_ffmpeg(
     options: DownloadOptions,
     progress_cb: ProgressCallback | None,
     ffmpeg_path: str = '',
+    referer_url: str = '',
 ) -> dict[str, object]:
     ffmpeg = ffmpeg_path or shutil.which('ffmpeg')
     if not ffmpeg:
@@ -1469,6 +1677,15 @@ def _download_m3u8_with_ffmpeg(
     command = [
         ffmpeg,
         '-y' if options.overwrite else '-n',
+        '-reconnect', '1',
+        '-reconnect_streamed', '1',
+        '-reconnect_on_network_error', '1',
+        '-reconnect_on_http_error', '429,500,502,503,504',
+        '-reconnect_delay_max', '15',
+        '-rw_timeout', '30000000',
+        '-multiple_requests', '1',
+        '-user_agent', WEB_USER_AGENT,
+        '-headers', _build_ffmpeg_header_text(referer_url),
         '-i', media_url,
         '-c', 'copy',
         '-progress', 'pipe:1',

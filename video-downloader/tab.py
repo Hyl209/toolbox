@@ -175,7 +175,7 @@ def format_web_task_summary(urls: list[str], web_scan_results: dict[str, dict[st
 
 def format_backend_status(status: dict[str, dict[str, object]]) -> str:
     lines: list[str] = []
-    for key in ('telethon', 'yt_dlp', 'ffmpeg'):
+    for key in ('telethon', 'yt_dlp', 'aria2c', 'ffmpeg'):
         item = status.get(key, {})
         available = bool(item.get('available'))
         label = str(item.get('label') or key)
@@ -1006,6 +1006,17 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                         self.progress_label.setText(f'{prefix}: 当前文件 {name}')
                 elif kind == 'web_percent':
                     self.update_progress_percent(float(payload.get('percent', '0') or 0))
+                elif kind == 'web_aria2':
+                    name = payload.get('name', '')
+                    speed = payload.get('speed', '')
+                    eta = payload.get('eta', '')
+                    details = []
+                    if speed:
+                        details.append(speed)
+                    if eta:
+                        details.append(f'ETA {eta}')
+                    prefix = f'处理中 {self.current_task_index + 1}/{self.total_tasks}' if self.total_tasks > 0 and self.current_task_index >= 0 else '处理中'
+                    self.progress_label.setText(f'{prefix}: {name} {" | ".join(details)}')
                 elif kind in {'web_status', 'tg_media'}:
                     percent = float(payload.get('percent', '0') or 0)
                     self.update_progress_percent(percent)
