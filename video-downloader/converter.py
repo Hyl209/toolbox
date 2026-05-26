@@ -926,6 +926,8 @@ def _download_web_candidates(
     options: DownloadOptions,
     progress_cb: ProgressCallback | None,
     ffmpeg_path: str = '',
+    *,
+    download_all: bool = False,
 ) -> tuple[list[Path], Exception | None]:
     downloaded_files: list[Path] = []
     last_error: Exception | None = None
@@ -942,7 +944,7 @@ def _download_web_candidates(
                 ffmpeg_path=ffmpeg_path,
             )
             files = [Path(item) for item in downloaded['files']]
-            if not options.web_download_all_candidates:
+            if not options.web_download_all_candidates and not download_all:
                 return files, None
             downloaded_files.extend(files)
         except Exception as exc:
@@ -1016,6 +1018,7 @@ def _download_web_task(task: DownloadTask, output_root: Path, options: DownloadO
                         options,
                         progress_cb,
                         ffmpeg_path=ffmpeg_path,
+                        download_all=True,
                     )
                     if downloaded_files:
                         return _make_result(task, True, downloaded_files, '')
@@ -1065,6 +1068,7 @@ def _download_web_task(task: DownloadTask, output_root: Path, options: DownloadO
             options,
             progress_cb,
             ffmpeg_path=ffmpeg_path,
+            download_all=True,
         )
         if downloaded_files:
             return _make_result(task, True, downloaded_files, '')
