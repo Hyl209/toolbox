@@ -345,7 +345,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
     QFileDialog = deps['QFileDialog']
     QApplication = deps['QApplication']
     QCheckBox = deps['QCheckBox']
-    QSpinBox = deps['QSpinBox']
+    QComboBox = deps['QComboBox']
     QObject = deps['QObject']
     QThread = deps['QThread']
     Signal = deps['Signal']
@@ -485,7 +485,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             self.include_photo_checkbox = None
             self.web_candidate_index_edit = None
             self.web_all_candidates_checkbox = None
-            self.concurrent_spin = None
+            self.concurrent_combo = None
             self.scan_button = None
             self.web_scan_results: dict[str, dict[str, object]] = {}
             self.phone_code_hash = load_setting(settings, self._shared_setting_key('phone_code_hash'))
@@ -633,12 +633,14 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             self.overwrite_checkbox.clicked.connect(self.save_form_settings)
             common_row.addWidget(self.overwrite_checkbox)
             common_row.addWidget(QLabel('同时下载'))
-            self.concurrent_spin = QSpinBox()
-            self.concurrent_spin.setRange(1, 8)
-            self.concurrent_spin.setValue(int(load_setting(settings, self._mode_setting_key('concurrent'), '1') or '1'))
-            self.concurrent_spin.setMaximumWidth(58)
-            self.concurrent_spin.valueChanged.connect(self.save_form_settings)
-            common_row.addWidget(self.concurrent_spin)
+            self.concurrent_combo = QComboBox()
+            self.concurrent_combo.addItems(['1', '2', '3', '4', '5', '自动'])
+            saved_concurrent = load_setting(settings, self._mode_setting_key('concurrent'), '1')
+            saved_index = 5 if saved_concurrent == '0' else max(0, min(4, int(saved_concurrent or '1') - 1))
+            self.concurrent_combo.setCurrentIndex(saved_index)
+            self.concurrent_combo.setMaximumWidth(68)
+            self.concurrent_combo.currentIndexChanged.connect(self.save_form_settings)
+            common_row.addWidget(self.concurrent_combo)
             common_row.addStretch(1)
             task_layout.addWidget(common_row_widget)
 
@@ -762,6 +764,12 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
         def _mode_setting_key(self, name: str) -> str:
             return f'{self.mode_settings_prefix}/{name}'
 
+        def _concurrent_value(self) -> str:
+            if self.concurrent_combo is None:
+                return '1'
+            idx = self.concurrent_combo.currentIndex()
+            return '0' if idx == 5 else str(idx + 1)
+
         @staticmethod
         def _widget_text(widget) -> str:
             return widget.text().strip() if widget is not None else ''
@@ -789,7 +797,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                 save_setting(self.settings, self._mode_setting_key('web_candidate_index'), self._widget_text(self.web_candidate_index_edit))
                 save_setting(self.settings, self._mode_setting_key('web_all_candidates'), '1' if self._is_checked(self.web_all_candidates_checkbox) else '0')
             save_setting(self.settings, self._mode_setting_key('overwrite'), '1' if self._is_checked(self.overwrite_checkbox) else '0')
-            save_setting(self.settings, self._mode_setting_key('concurrent'), str(self.concurrent_spin.value()) if self.concurrent_spin is not None else '1')
+            save_setting(self.settings, self._mode_setting_key('concurrent'), self._concurrent_value() if self.concurrent_combo is not None else '1')
             save_setting(self.settings, self._shared_setting_key('phone_code_hash'), self.phone_code_hash)
 
         def append_log(self, text: str):
@@ -817,7 +825,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                 self.web_all_candidates_checkbox,
                 self.output_edit,
                 self.overwrite_checkbox,
-                self.concurrent_spin,
+                self.concurrent_combo,
                 self.choose_button,
                 self.scan_button,
                 self.send_code_button,
@@ -1135,7 +1143,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             )
             options = module.DownloadOptions(
                 overwrite=self.overwrite_checkbox.isChecked(),
-                max_concurrent_downloads=self.concurrent_spin.value() if self.concurrent_spin is not None else 1,
+                max_concurrent_downloads=int(self._concurrent_value()) if self.concurrent_combo is not None else 1,
                 telegram_recent_limit=module.normalize_recent_limit(
                     self._widget_text(self.recent_count_edit),
                     default=int(DEFAULT_RECENT_LIMIT),

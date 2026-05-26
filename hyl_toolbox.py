@@ -3399,7 +3399,7 @@ if QWidget is not None:
             'QPushButton': QPushButton,
             'QLabel': QLabel,
             'QCheckBox': QCheckBox,
-            'QSpinBox': QSpinBox,
+            'QComboBox': QComboBox,
             'QPlainTextEdit': QPlainTextEdit,
             'QProgressBar': QProgressBar,
             'QFileDialog': QFileDialog,

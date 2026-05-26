@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, time, timezone
+from threading import Lock
 from html import unescape
 import importlib.util
 import re
@@ -291,6 +292,124 @@ def ensure_unique_stem(directory: str | Path, stem: str) -> str:
     return candidate
 
 
+def _download_web_concurrent(
+    web_entries: list[tuple[int, DownloadTask]],
+    output_root: Path,
+    options: DownloadOptions,
+    progress_cb: ProgressCallback | None,
+    total_tasks: int,
+    completed_count: int,
+    max_workers: int,
+) -> dict[int, dict[str, object]]:
+    results: dict[int, dict[str, object]] = {}
+    task_by_index = {index: task for index, task in web_entries}
+    for index, task in web_entries:
+        _emit_task_start(progress_cb, index, total_tasks, task)
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_map = {
+            executor.submit(_download_web_task, task, output_root, options, progress_cb): index
+            for index, task in web_entries
+        }
+        for future in as_completed(future_map):
+            index = future_map[future]
+            try:
+                results[index] = future.result()
+            except Exception as exc:
+                results[index] = _make_result(task_by_index[index], False, [], str(exc))
+            completed_count += 1
+            _emit_task_done(progress_cb, completed_count, total_tasks)
+    return results
+
+
+def _download_web_auto(
+    web_entries: list[tuple[int, DownloadTask]],
+    output_root: Path,
+    options: DownloadOptions,
+    progress_cb: ProgressCallback | None,
+    total_tasks: int,
+    initial_completed: int,
+) -> dict[int, dict[str, object]]:
+    if not web_entries:
+        return {}
+    speed_tracker = _SpeedTracker(progress_cb)
+    first_index, first_task = web_entries[0]
+    _emit_task_start(progress_cb, first_index, total_tasks, first_task)
+    try:
+        result = _download_web_task(first_task, output_root, options, speed_tracker.emit)
+    except Exception as exc:
+        result = _make_result(first_task, False, [], str(exc))
+    first_speed = speed_tracker.max_speed
+    _emit_task_done(progress_cb, initial_completed + 1, total_tasks)
+    results: dict[int, dict[str, object]] = {first_index: result}
+    remaining = web_entries[1:]
+    if not remaining:
+        return results
+    concurrency = _speed_to_concurrency(first_speed)
+    _emit(progress_cb, f'自动模式: 测速 {_format_byte_rate(first_speed)}, 并发数设为 {concurrency}')
+    results.update(_download_web_concurrent(
+        remaining, output_root, options, progress_cb, total_tasks, initial_completed + 1, concurrency,
+    ))
+    return results
+
+
+class _SpeedTracker:
+    """Wraps a progress callback and records max download speed from web_status markers."""
+    def __init__(self, delegate: ProgressCallback | None):
+        self._delegate = delegate
+        self.max_speed: float = 0.0
+        self._lock = Lock()
+
+    def emit(self, message: str) -> None:
+        if self._delegate:
+            self._delegate(message)
+        if not message.startswith('__HYL_PROGRESS__|web_status|'):
+            return
+        parts = message.split('|')
+        speed_str = ''
+        for part in parts:
+            if part.startswith('speed='):
+                speed_str = part.split('=', 1)[1]
+                break
+        speed = _parse_speed_bytes(speed_str)
+        if speed > 0:
+            with self._lock:
+                if speed > self.max_speed:
+                    self.max_speed = speed
+
+
+def _parse_speed_bytes(text: str) -> float:
+    """Parse speed string like '2.5 MiB/s' to bytes/sec."""
+    text = str(text or '').strip()
+    if not text:
+        return 0.0
+    parts = text.split()
+    if not parts:
+        return 0.0
+    try:
+        value = float(parts[0])
+    except ValueError:
+        return 0.0
+    if len(parts) < 2:
+        return value
+    unit = parts[1].lower()
+    multipliers = {'b/s': 1, 'kib/s': 1024, 'mib/s': 1024**2, 'gib/s': 1024**3}
+    return value * multipliers.get(unit, 1)
+
+
+def _speed_to_concurrency(bytes_per_sec: float) -> int:
+    """Map download speed to recommended concurrency (1-5)."""
+    if bytes_per_sec <= 0:
+        return 2
+    mbps = bytes_per_sec / (1024 * 1024)
+    if mbps >= 5:
+        return 5
+    if mbps >= 2:
+        return 3
+    if mbps >= 0.5:
+        return 2
+    return 1
+
+
 def download_batch(
     tasks: Iterable[str] | Iterable[DownloadTask],
     output_dir: str | Path,
@@ -334,23 +453,12 @@ def download_batch(
     web_entries = [(index, task) for index, task in enumerate(task_list) if not task.source_kind.startswith('telegram')]
     if not web_entries:
         return [results[index] for index in range(len(task_list))]
-    max_workers = max(1, min(download_options.max_concurrent_downloads, len(web_entries)))
-    for index, task in web_entries:
-        _emit_task_start(progress_cb, index, total_tasks, task)
-    completed_count = len(results)
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_map = {
-            executor.submit(_download_web_task, task, output_root, download_options, progress_cb): index
-            for index, task in web_entries
-        }
-        for future in as_completed(future_map):
-            index = future_map[future]
-            try:
-                results[index] = future.result()
-            except Exception as exc:
-                results[index] = _make_result(task_list[index], False, [], str(exc))
-            completed_count += 1
-            _emit_task_done(progress_cb, completed_count, total_tasks)
+    is_auto = download_options.max_concurrent_downloads <= 0
+    if is_auto and len(web_entries) > 1:
+        results.update(_download_web_auto(web_entries, output_root, download_options, progress_cb, total_tasks, len(results)))
+    else:
+        max_workers = max(1, min(download_options.max_concurrent_downloads, len(web_entries))) if not is_auto else len(web_entries)
+        results.update(_download_web_concurrent(web_entries, output_root, download_options, progress_cb, total_tasks, len(results), max_workers))
     return [results[index] for index in range(len(task_list))]
 
 
