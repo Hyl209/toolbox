@@ -381,24 +381,31 @@ def _download_web_auto(
 ) -> dict[int, dict[str, object]]:
     if not web_entries:
         return {}
-    speed_tracker = _SpeedTracker(progress_cb)
-    first_index, first_task = web_entries[0]
-    _emit_task_start(progress_cb, first_index, total_tasks, first_task)
-    try:
-        result = _download_web_task(first_task, output_root, options, speed_tracker.emit)
-    except Exception as exc:
-        result = _make_result(first_task, False, [], str(exc))
-    first_speed = speed_tracker.max_speed
-    _emit_task_done(progress_cb, initial_completed + 1, total_tasks)
-    results: dict[int, dict[str, object]] = {first_index: result}
-    remaining = web_entries[1:]
+    sample_count = min(2, len(web_entries))
+    probe_speeds: list[float] = []
+    results: dict[int, dict[str, object]] = {}
+    completed = initial_completed
+    for i in range(sample_count):
+        tracker = _SpeedTracker(progress_cb)
+        index, task = web_entries[i]
+        _emit_task_start(progress_cb, index, total_tasks, task)
+        try:
+            results[index] = _download_web_task(task, output_root, options, tracker.emit)
+        except Exception as exc:
+            results[index] = _make_result(task, False, [], str(exc))
+        completed += 1
+        _emit_task_done(progress_cb, completed, total_tasks)
+        if tracker.max_speed > 0:
+            probe_speeds.append(tracker.max_speed)
+    remaining = web_entries[sample_count:]
     if not remaining:
         return results
-    concurrency = _speed_to_concurrency(first_speed)
-    _emit(progress_cb, f'自动模式: 测速 {_format_byte_rate(first_speed)}, 并发数设为 {concurrency}')
+    best_speed = max(probe_speeds) if probe_speeds else 0.0
+    concurrency = _speed_to_concurrency(best_speed)
+    _emit(progress_cb, f'自动模式: 采样 {sample_count} 个任务, 峰值速度 {_format_byte_rate(best_speed)}, 并发数设为 {concurrency}')
     concurrent_opts = replace(options, max_concurrent_downloads=concurrency)
     results.update(_download_web_entries(
-        remaining, output_root, concurrent_opts, progress_cb, total_tasks, initial_completed + 1,
+        remaining, output_root, concurrent_opts, progress_cb, total_tasks, completed,
     ))
     return results
 

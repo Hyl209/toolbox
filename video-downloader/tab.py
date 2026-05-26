@@ -442,6 +442,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             self.current_task_index = -1
             self.total_tasks = 0
             self.completed_tasks = 0
+            self._last_log_is_progress = False
             self.module = get_video_downloader_module()
             self.session_file = VIDEO_DOWNLOADER_DIR / self.module.SESSION_FILE_NAME
             textedit_style = build_video_textedit_style(build_global_scrollbar_style, self.current_theme)
@@ -759,9 +760,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             if not text:
                 return
             if text.startswith('正在下载'):
-                plain = self.log.toPlainText()
-                lines = plain.rstrip('\n').split('\n')
-                if lines and lines[-1].startswith('正在下载'):
+                if self._last_log_is_progress:
                     cursor = self.log.textCursor()
                     cursor.movePosition(cursor.MoveOperation.End)
                     cursor.movePosition(cursor.MoveOperation.StartOfBlock, cursor.MoveMode.KeepAnchor)
@@ -770,6 +769,9 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                     if QApplication is not None:
                         QApplication.processEvents()
                     return
+                self._last_log_is_progress = True
+            else:
+                self._last_log_is_progress = False
             self.log.appendPlainText(text)
             if QApplication is not None:
                 QApplication.processEvents()
@@ -1127,6 +1129,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             )
             self.set_busy(True)
             self.log.clear()
+            self._last_log_is_progress = False
             self.reset_progress_ui(len(tasks))
             self.worker = DownloadWorker(module, tasks, self.output_edit.text().strip(), self.build_config(), options)
             self.worker.progress.connect(self.handle_worker_progress)
