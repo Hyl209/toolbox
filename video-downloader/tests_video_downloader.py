@@ -345,16 +345,23 @@ def test_make_telegram_progress_callback_emits_speed_and_eta():
     assert any(item.startswith('正在下载 "demo.mp4" "') and '"50%"' in item for item in captured)
 
 
-def test_normalize_positive_index_accepts_blank_and_rejects_non_positive_values():
+def test_normalize_positive_indices_accepts_blank_and_rejects_non_positive_values():
     module = load_module()
-    assert module.normalize_positive_index('', '网页候选序号') is None
-    assert module.normalize_positive_index('2', '网页候选序号') == 2
+    assert module.normalize_positive_indices('', '网页候选序号') is None
+    assert module.normalize_positive_indices('2', '网页候选序号') == [2]
+    assert module.normalize_positive_indices('3,4,6', '网页候选序号') == [3, 4, 6]
     try:
-        module.normalize_positive_index('0', '网页候选序号')
+        module.normalize_positive_indices('0', '网页候选序号')
     except ValueError as exc:
-        assert '网页候选序号必须大于 0' == str(exc)
+        assert '网页候选序号 0 必须大于 0' == str(exc)
     else:
         raise AssertionError('expected invalid index error')
+    try:
+        module.normalize_positive_indices('3,3', '网页候选序号')
+    except ValueError as exc:
+        assert '重复' in str(exc)
+    else:
+        raise AssertionError('expected duplicate index error')
 
 
 def test_validate_video_downloader_form_accepts_preloaded_module():

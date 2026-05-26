@@ -11,7 +11,7 @@ OUTPUT_PLACEHOLDER = '选择输出文件夹'
 DEFAULT_RECENT_LIMIT = '500'
 DATE_FROM_PLACEHOLDER = '开始日期 YYYY-MM-DD'
 DATE_TO_PLACEHOLDER = '结束日期 YYYY-MM-DD'
-WEB_INDEX_PLACEHOLDER = '网页候选序号，留空则自动选择'
+WEB_INDEX_PLACEHOLDER = '候选序号，如 3 或 3,4,6，留空则自动'
 SUMMARY_EMPTY_TEXT = '请先输入下载链接'
 RUN_BUTTON_TEXT = '开始下载'
 RUNNING_BUTTON_TEXT = '下载中...'
@@ -300,7 +300,7 @@ def validate_video_downloader_form(
     mode_errors = validate_source_mode_urls(module.parse_task_lines(task_text), source_mode)
     errors.extend(mode_errors)
     try:
-        module.normalize_positive_index(web_candidate_index, '网页候选序号')
+        module.normalize_positive_indices(web_candidate_index, '网页候选序号')
     except ValueError as exc:
         errors.append(str(exc))
     if mode_errors:
@@ -1162,7 +1162,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                 telegram_date_to=module.parse_iso_date(self._widget_text(self.date_to_edit), '结束日期'),
                 telegram_include_videos=self._is_checked(self.include_video_checkbox) or self.source_mode != 'telegram',
                 telegram_include_photos=self._is_checked(self.include_photo_checkbox),
-                web_candidate_index=module.normalize_positive_index(self._widget_text(self.web_candidate_index_edit), '网页候选序号'),
+                web_candidate_indices=module.normalize_positive_indices(self._widget_text(self.web_candidate_index_edit), '网页候选序号'),
                 web_download_all_candidates=self._is_checked(self.web_all_candidates_checkbox),
             )
             self.set_busy(True)

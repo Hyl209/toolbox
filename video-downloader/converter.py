@@ -52,7 +52,7 @@ class DownloadOptions:
     web_use_browser_cookies: bool = False
     overwrite: bool = False
     filename_template: str = DEFAULT_FILENAME_TEMPLATE
-    web_candidate_index: int | None = None
+    web_candidate_indices: list[int] | None = None
     web_download_all_candidates: bool = False
     max_concurrent_downloads: int = 1
     telegram_recent_limit: int | None = 500
@@ -222,23 +222,33 @@ def normalize_recent_limit(value: str | int | None, default: int | None = 500) -
     return limit
 
 
-def normalize_positive_index(value: str | int | None, field_label: str) -> int | None:
+def normalize_positive_indices(value: str | int | None, field_label: str) -> list[int] | None:
+    """Parse '3' or '3,4,6' into a list of positive integers. Returns None for empty input."""
     if value is None:
         return None
     if isinstance(value, int):
         if value <= 0:
             raise ValueError(f'{field_label}必须大于 0')
-        return value
+        return [value]
     cleaned = str(value).strip()
     if not cleaned:
         return None
-    try:
-        parsed = int(cleaned)
-    except ValueError as exc:
-        raise ValueError(f'{field_label}必须是正整数') from exc
-    if parsed <= 0:
-        raise ValueError(f'{field_label}必须大于 0')
-    return parsed
+    parts = [p.strip() for p in cleaned.split(',') if p.strip()]
+    if not parts:
+        return None
+    indices: list[int] = []
+    for part in parts:
+        try:
+            parsed = int(part)
+        except ValueError as exc:
+            raise ValueError(f'{field_label} "{part}" 不是有效的正整数') from exc
+        if parsed <= 0:
+            raise ValueError(f'{field_label} {parsed} 必须大于 0')
+        if parsed in indices:
+            raise ValueError(f'{field_label} {parsed} 重复')
+        indices.append(parsed)
+    indices.sort()
+    return indices
 
 
 def parse_iso_date(value: str | date | None, field_label: str) -> date | None:
@@ -960,13 +970,9 @@ def _download_web_task(task: DownloadTask, output_root: Path, options: DownloadO
                     )
                     if downloaded_files:
                         return _make_result(task, True, downloaded_files, '')
-                elif options.web_candidate_index is not None:
-                    candidate_position = options.web_candidate_index - 1
-                    if candidate_position < 0 or candidate_position >= len(ytdlp_candidates):
-                        raise DownloadError(f'网页候选序号超出范围，共找到 {len(ytdlp_candidates)} 个候选')
-                    selected = ytdlp_candidates[candidate_position]
-                    _emit_file_select(progress_cb, selected, options.web_candidate_index, len(ytdlp_candidates))
-                    downloaded = _download_web_candidate(
+                elif options.web_candidate_indices is not None:
+                    selected = _pick_candidates(ytdlp_candidates, options.web_candidate_indices)
+                    downloaded_files, last_error = _download_web_candidates(
                         selected,
                         task,
                         output_root,
@@ -974,7 +980,8 @@ def _download_web_task(task: DownloadTask, output_root: Path, options: DownloadO
                         progress_cb,
                         ffmpeg_path=ffmpeg_path,
                     )
-                    return _make_result(task, True, downloaded['files'], '')
+                    if downloaded_files:
+                        return _make_result(task, True, downloaded_files, '')
                 else:
                     downloaded_files, last_error = _download_web_candidates(
                         ytdlp_candidates,
@@ -1012,13 +1019,9 @@ def _download_web_task(task: DownloadTask, output_root: Path, options: DownloadO
         if downloaded_files:
             return _make_result(task, True, downloaded_files, '')
         raise DownloadError(f'{first_error}; 全部候选下载失败: {last_error}')
-    if options.web_candidate_index is not None:
-        candidate_position = options.web_candidate_index - 1
-        if candidate_position < 0 or candidate_position >= len(candidates):
-            raise DownloadError(f'网页候选序号超出范围，共找到 {len(candidates)} 个候选')
-        selected = candidates[candidate_position]
-        _emit_file_select(progress_cb, selected, options.web_candidate_index, len(candidates))
-        downloaded = _download_web_candidate(
+    if options.web_candidate_indices is not None:
+        selected = _pick_candidates(candidates, options.web_candidate_indices)
+        downloaded_files, last_error = _download_web_candidates(
             selected,
             task,
             output_root,
@@ -1026,7 +1029,9 @@ def _download_web_task(task: DownloadTask, output_root: Path, options: DownloadO
             progress_cb,
             ffmpeg_path=ffmpeg_path,
         )
-        return _make_result(task, True, downloaded['files'], '')
+        if downloaded_files:
+            return _make_result(task, True, downloaded_files, '')
+        raise DownloadError(f'{first_error}; 所选候选下载失败: {last_error}')
     downloaded_files, last_error = _download_web_candidates(
         candidates,
         task,
@@ -1038,6 +1043,20 @@ def _download_web_task(task: DownloadTask, output_root: Path, options: DownloadO
     if downloaded_files:
         return _make_result(task, True, downloaded_files, '')
     raise DownloadError(f'{first_error}; 兜底媒体地址下载失败: {last_error}')
+
+
+def _pick_candidates(candidates: list[str], indices: list[int]) -> list[str]:
+    """Pick candidates by 1-based indices. Raises DownloadError if any index is out of range."""
+    if not indices:
+        return candidates
+    selected: list[str] = []
+    total = len(candidates)
+    for idx in indices:
+        pos = idx - 1
+        if pos < 0 or pos >= total:
+            raise DownloadError(f'网页候选序号 {idx} 超出范围，共找到 {total} 个候选')
+        selected.append(candidates[pos])
+    return selected
 
 
 def _collect_web_media_candidates(source_url: str) -> tuple[list[str], str]:
