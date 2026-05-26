@@ -651,7 +651,9 @@ async def _download_telegram_entries(
     results: dict[int, dict[str, object]] = {}
     if config is None:
         for index, task in entries:
+            _emit_task_start(progress_cb, index, total_tasks, task)
             results[index] = _make_result(task, False, [], 'Telegram 配置缺失')
+            _emit_task_done(progress_cb, len(results), total_tasks)
         return results
     try:
         client = await _create_telegram_client(config)
@@ -659,6 +661,7 @@ async def _download_telegram_entries(
         if not await client.is_user_authorized():
             message = 'Telegram 尚未登录，请先在页面完成验证码登录'
             for index, task in entries:
+                _emit_task_start(progress_cb, index, total_tasks, task)
                 results[index] = _make_result(task, False, [], message)
                 _emit_task_done(progress_cb, len(results), total_tasks)
             return results
