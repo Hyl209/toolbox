@@ -30,6 +30,7 @@ MEDIA_URL_RE = re.compile(r"""(?P<url>(?:https?:)?//[^"'\\\s<>]+?\.(?:mp4|m3u8|w
 RELATIVE_MEDIA_RE = re.compile(r"""(?P<url>/[^"'\\\s<>]+?\.(?:mp4|m3u8|webm|mov|m4v)(?:\?[^"'\\\s<>]*)?)""", re.IGNORECASE)
 SESSION_FILE_NAME = 'telegram.session'
 DEFAULT_FILENAME_TEMPLATE = '%(title)s [%(id)s].%(ext)s'
+_stem_lock = Lock()
 
 
 @dataclass(frozen=True)
@@ -295,12 +296,13 @@ def ensure_unique_path(path: str | Path) -> Path:
 def ensure_unique_stem(directory: str | Path, stem: str) -> str:
     folder = Path(directory)
     safe_stem = sanitize_filename_component(stem)
-    candidate = safe_stem
-    index = 1
-    while any(folder.glob(f'{candidate}.*')):
-        candidate = f'{safe_stem} ({index})'
-        index += 1
-    return candidate
+    with _stem_lock:
+        candidate = safe_stem
+        index = 1
+        while any(folder.glob(f'{candidate}.*')):
+            candidate = f'{safe_stem} ({index})'
+            index += 1
+        return candidate
 
 
 def _download_web_entries(
@@ -1129,7 +1131,6 @@ def _download_url_with_ytdlp(
     _require_web_backend()
     from yt_dlp import YoutubeDL
 
-    before = {item.resolve() for item in output_root.glob('*') if item.is_file()}
     info = YoutubeDL({'quiet': True, 'skip_download': True, 'noplaylist': True, 'nocheckcertificate': True}).extract_info(source_url, download=False)
     title = sanitize_filename_component(str(info.get('title') or title_hint or 'video'))
     media_id = sanitize_filename_component(str(info.get('id') or 'video'))
@@ -1160,11 +1161,8 @@ def _download_url_with_ytdlp(
         ydl_opts['cookiesfrombrowser'] = ('chrome',)
     with YoutubeDL(ydl_opts) as ydl:
         ydl.extract_info(source_url, download=True)
-    after = {item.resolve() for item in output_root.glob('*') if item.is_file()}
-    created = sorted(path for path in after - before if path.is_file())
-    if not created:
-        matched = sorted(output_root.glob(f'{unique_stem}.*'))
-        created = [path.resolve() for path in matched if path.is_file()]
+    created = sorted(output_root.glob(f'{unique_stem}.*'))
+    created = [path.resolve() for path in created if path.is_file()]
     if not created:
         raise DownloadError('网页视频下载完成，但未找到输出文件')
     _emit(progress_cb, f'网页 OK -> {created[0].name}')
