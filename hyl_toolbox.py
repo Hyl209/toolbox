@@ -3415,6 +3415,7 @@ if QWidget is not None:
             'show_themed_warning': show_themed_warning,
             'show_themed_error': show_themed_error,
             'show_themed_success': show_themed_success,
+            'style_combo_popup': style_combo_popup,
             'get_video_downloader_module': get_video_downloader_module,
             'ROOT': ROOT,
             'VIDEO_DOWNLOADER_DIR': VIDEO_DOWNLOADER_DIR,

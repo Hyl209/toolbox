@@ -357,6 +357,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
     show_themed_warning = deps['show_themed_warning']
     show_themed_error = deps['show_themed_error']
     show_themed_success = deps['show_themed_success']
+    style_combo_popup = deps['style_combo_popup']
     get_video_downloader_module = deps['get_video_downloader_module']
     ROOT = deps['ROOT']
     VIDEO_DOWNLOADER_DIR = deps['VIDEO_DOWNLOADER_DIR']
@@ -634,12 +635,16 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             common_row.addWidget(self.overwrite_checkbox)
             common_row.addWidget(QLabel('同时下载'))
             self.concurrent_combo = QComboBox()
-            self.concurrent_combo.addItems(['1', '2', '3', '4', '5', '自动'])
+            self.concurrent_combo.addItems(['自动', '1', '2', '3', '4', '5'])
             saved_concurrent = load_setting(settings, self._mode_setting_key('concurrent'), '1')
-            saved_index = 5 if saved_concurrent == '0' else max(0, min(4, int(saved_concurrent or '1') - 1))
+            if saved_concurrent == '0':
+                saved_index = 0
+            else:
+                saved_index = max(1, min(5, int(saved_concurrent or '1')))
             self.concurrent_combo.setCurrentIndex(saved_index)
-            self.concurrent_combo.setMaximumWidth(68)
+            self.concurrent_combo.setMaximumWidth(72)
             self.concurrent_combo.currentIndexChanged.connect(self.save_form_settings)
+            style_combo_popup(self.concurrent_combo, self.current_theme)
             common_row.addWidget(self.concurrent_combo)
             common_row.addStretch(1)
             task_layout.addWidget(common_row_widget)
@@ -768,7 +773,9 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             if self.concurrent_combo is None:
                 return '1'
             idx = self.concurrent_combo.currentIndex()
-            return '0' if idx == 5 else str(idx + 1)
+            if idx == 0:
+                return '0'
+            return str(idx)
 
         @staticmethod
         def _widget_text(widget) -> str:
@@ -970,6 +977,8 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             style = build_video_textedit_style(build_global_scrollbar_style, self.current_theme)
             apply_video_textedit_surface(self.task_edit, style, self.current_theme)
             apply_video_textedit_surface(self.log, style, self.current_theme)
+            if self.concurrent_combo is not None:
+                style_combo_popup(self.concurrent_combo, self.current_theme)
 
         def handle_task_text_changed(self):
             if self.source_mode == 'web':
