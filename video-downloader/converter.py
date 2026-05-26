@@ -747,19 +747,21 @@ async def _resolve_telegram_entity(client, parts: TelegramUrlParts):
         try:
             updates = await client(functions.messages.ImportChatInviteRequest(parts.invite_hash))
         except UserAlreadyParticipantError:
-            updates = None
+            try:
+                return await client.get_entity(f'https://t.me/+{parts.invite_hash}')
+            except Exception:
+                pass
+            async for dialog in client.iter_dialogs():
+                if _dialog_matches_invite(dialog, parts.invite_hash):
+                    return dialog.entity
+            raise DownloadError('无法根据邀请链接解析聊天，请确认账号已加入该会话')
         except Exception as exc:
             raise DownloadError(f'无法访问 Telegram 邀请链接: {exc}') from exc
         if updates is not None:
             chats = getattr(updates, 'chats', None) or []
             if chats:
                 return chats[0]
-        async for dialog in client.iter_dialogs():
-            link_hash = sanitize_filename_component(parts.invite_hash, fallback='')
-            title = sanitize_filename_component(_get_entity_title(dialog.entity), fallback='')
-            if link_hash and link_hash in title:
-                return dialog.entity
-        raise DownloadError('无法根据邀请链接解析聊天，请确认账号已加入该会话')
+        raise DownloadError('邀请链接解析失败，未返回聊天信息')
     if isinstance(parts.entity_ref, int):
         expected_peer_id = int(f'-100{parts.entity_ref}')
         async for dialog in client.iter_dialogs():
@@ -862,6 +864,15 @@ def _message_matches_media_selection(message, options: DownloadOptions) -> bool:
 
 def _get_entity_title(entity) -> str:
     return getattr(entity, 'title', '') or getattr(entity, 'username', '') or getattr(entity, 'first_name', '') or 'telegram_chat'
+
+
+def _dialog_matches_invite(dialog, invite_hash: str) -> bool:
+    """Best-effort match of a dialog to an invite hash via username. Last-resort fallback."""
+    invite_lower = str(invite_hash or '').lower()
+    if not invite_lower:
+        return False
+    username = str(getattr(dialog.entity, 'username', '') or '').lower()
+    return bool(username and invite_lower in username)
 
 
 def _resolve_task_output_dir(output_root: Path, task: DownloadTask, default_name: str = '') -> Path:
