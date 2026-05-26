@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, time, timezone
+from random import uniform
 from threading import Event, Lock
 import threading as _threading
 from html import unescape
@@ -14,7 +15,7 @@ import subprocess
 from dataclasses import dataclass, replace
 from collections.abc import Iterable
 from pathlib import Path
-from time import monotonic
+from time import monotonic, sleep
 from typing import Callable, Literal
 from urllib.parse import urljoin, urlparse
 from urllib.request import Request, urlopen
@@ -32,6 +33,7 @@ RELATIVE_MEDIA_RE = re.compile(r"""(?P<url>/[^"'\\\s<>]+?\.(?:mp4|m3u8|webm|mov|
 SESSION_FILE_NAME = 'telegram.session'
 DEFAULT_FILENAME_TEMPLATE = '%(title)s [%(id)s].%(ext)s'
 _stem_lock = Lock()
+_INTER_TASK_DELAY_RANGE = (1.0, 3.0)
 
 
 @dataclass(frozen=True)
@@ -83,11 +85,12 @@ class CancelledError(RuntimeError):
 
 
 class Token:
-    __slots__ = ('cancel', 'pause')
+    __slots__ = ('cancel', 'pause', 'reconnect')
 
     def __init__(self) -> None:
         self.cancel = Event()
         self.pause = Event()
+        self.reconnect = Event()
 
 
 def _check_cancel(token: Token) -> None:
@@ -398,6 +401,7 @@ def _download_web_sequential(
     completed_count: int,
 ) -> dict[int, dict[str, object]]:
     results: dict[int, dict[str, object]] = {}
+    remaining = len(web_entries)
     for index, task in web_entries:
         _check_cancel(_require_token())
         token = _current_token()
@@ -418,6 +422,10 @@ def _download_web_sequential(
             results[index] = _make_result(task, False, [], str(exc))
         completed_count += 1
         _emit_task_done(progress_cb, completed_count, total_tasks)
+        remaining -= 1
+        if remaining > 0 and _INTER_TASK_DELAY_RANGE[1] > 0:
+            delay = uniform(*_INTER_TASK_DELAY_RANGE)
+            sleep(delay)
     return results
 
 
@@ -1306,26 +1314,45 @@ def _download_url_with_ytdlp(
         'overwrites': bool(options.overwrite),
         'outtmpl': str(output_root / f'{unique_stem}.%(ext)s'),
         'progress_hooks': [_make_web_progress_hook(progress_cb, _current_token())],
-        'concurrent_fragment_downloads': 32,
+        'concurrent_fragment_downloads': 8,
         'file_access_retries': 3,
         'fragment_retries': 10,
         'retries': 10,
         'socket_timeout': 30,
         'nocheckcertificate': True,
-        'throttled_rate': '100K',
-        'http_chunk_size': 10 * 1024 * 1024,
+        'http_chunk_size': 1024 * 1024,
     }
     aria2c = shutil.which('aria2c')
     if aria2c:
         ydl_opts['external_downloader'] = 'aria2c'
-        ydl_opts['external_downloader_args'] = ['-x', '16', '-s', '16', '-k', '1M', '--file-allocation=none']
+        ydl_opts['external_downloader_args'] = ['-x', '8', '-s', '8', '-k', '1M', '--file-allocation=none']
     ffmpeg = shutil.which('ffmpeg')
     if ffmpeg:
         ydl_opts['ffmpeg_location'] = ffmpeg
     if options.web_use_browser_cookies:
         ydl_opts['cookiesfrombrowser'] = ('chrome',)
-    with YoutubeDL(ydl_opts) as ydl:
-        ydl.extract_info(source_url, download=True)
+    max_reconnects = 3
+    for reconnect_attempt in range(max_reconnects + 1):
+        try:
+            with YoutubeDL(ydl_opts) as ydl:
+                ydl.extract_info(source_url, download=True)
+        except CancelledError:
+            token = _current_token()
+            if token and token.reconnect.is_set():
+                token.reconnect.clear()
+                _emit(progress_cb, f'重连中... (第{reconnect_attempt + 1}次)')
+                continue
+            raise
+        # extract_info returned normally — check if reconnect flag was set
+        # (yt-dlp may catch CancelledError internally and return normally)
+        token = _current_token()
+        if token and token.reconnect.is_set():
+            token.reconnect.clear()
+            _emit(progress_cb, f'重连中... (第{reconnect_attempt + 1}次)')
+            continue
+        break
+    else:
+        raise DownloadError('重连次数已达上限')
     created = sorted(output_root.glob(f'{unique_stem}.*'))
     created = [path.resolve() for path in created if path.is_file()]
     if not created:
@@ -1462,6 +1489,13 @@ def _download_m3u8_with_ffmpeg(
             except subprocess.TimeoutExpired:
                 proc.kill()
             raise CancelledError('ffmpeg 下载已取消')
+        if token and token.reconnect.is_set():
+            proc.terminate()
+            try:
+                proc.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+            raise CancelledError('ffmpeg 手动重连')
         line = line.strip()
         if not line.startswith('out_time='):
             continue
@@ -1517,6 +1551,8 @@ def _make_web_progress_hook(progress_cb: ProgressCallback | None, token: Token |
     def hook(status: dict[str, object]) -> None:
         if token and token.cancel.is_set():
             raise CancelledError('yt-dlp 下载已取消')
+        if token and token.reconnect.is_set():
+            raise CancelledError('手动重连')
         state = str(status.get('status') or '')
         if state == 'downloading':
             filename = Path(str(status.get('filename') or '')).name

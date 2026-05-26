@@ -454,6 +454,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             self.scan_button = None
             self.pause_button = None
             self.cancel_button = None
+            self.reconnect_button = None
             self.web_scan_results: dict[str, dict[str, object]] = {}
             self.phone_code_hash = load_setting(settings, self._shared_setting_key('phone_code_hash'))
             self.current_theme = load_setting(settings, 'ui/theme', 'dark')
@@ -635,6 +636,10 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             self.cancel_button.clicked.connect(self.cancel_download)
             self.cancel_button.setVisible(False)
             action_row.addWidget(self.cancel_button)
+            self.reconnect_button = QPushButton('重连')
+            self.reconnect_button.clicked.connect(self.reconnect_download)
+            self.reconnect_button.setVisible(False)
+            action_row.addWidget(self.reconnect_button)
             task_layout.addLayout(action_row)
             if self.source_mode == 'web':
                 layout.addWidget(task_card, 1)
@@ -860,6 +865,8 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                 self.pause_button.setText('暂停')
             if self.cancel_button is not None:
                 self.cancel_button.setVisible(busy)
+            if self.reconnect_button is not None:
+                self.reconnect_button.setVisible(busy)
             if QApplication is not None:
                 QApplication.processEvents()
 
@@ -884,6 +891,11 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
         def cancel_download(self):
             if self._token is not None:
                 self._token.cancel.set()
+
+        def reconnect_download(self):
+            if self._token is not None:
+                self._token.reconnect.set()
+                self.append_log('正在重连...')
 
         def handle_download_cancelled(self):
             self.append_log('下载已取消')

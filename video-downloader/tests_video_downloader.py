@@ -74,6 +74,7 @@ def test_download_batch_continues_when_web_task_fails():
     module = load_module()
     original_download = module._download_web_task
     original_require = module._require_web_backend
+    module._INTER_TASK_DELAY_RANGE = (0, 0)
     try:
         module._require_web_backend = lambda: None
 
@@ -150,6 +151,7 @@ def test_download_batch_returns_failure_result_for_failed_web_task():
     module = load_module()
     original_download = module._download_web_task
     original_require = module._require_web_backend
+    module._INTER_TASK_DELAY_RANGE = (0, 0)
     try:
         module._require_web_backend = lambda: None
 
