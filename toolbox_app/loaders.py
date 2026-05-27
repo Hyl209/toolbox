@@ -31,17 +31,18 @@ def load_module_once(module_name: str, file_path: Path) -> ModuleType:
         if parent_dir not in sys.path:
             sys.path.insert(0, parent_dir)
             inserted = True
-        _MODULE_CACHE[cache_key] = module
         try:
             spec.loader.exec_module(module)
         except Exception:
-            _MODULE_CACHE.pop(cache_key, None)
             if sys.modules.get(module_name) is module:
                 sys.modules.pop(module_name, None)
             raise
         finally:
             if inserted and sys.path[:1] == [parent_dir]:
                 sys.path.pop(0)
+        # Cache AFTER successful init — prevents other threads from seeing
+        # a partially-initialised module if exec_module is slow or fails.
+        _MODULE_CACHE[cache_key] = module
         return module
 
 
