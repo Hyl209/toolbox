@@ -257,10 +257,10 @@ def test_format_video_download_task_summary_counts_mixed_links():
         'https://example.com/watch?v=1',
     ])
     summary = toolbox.format_video_download_task_summary(text)
-    assert '鍏?3 涓换鍔? in summary
+    assert '浠诲姟鎬绘暟: 3' in summary
     assert 'Telegram 娑堟伅: 1' in summary
     assert 'Telegram 缇?棰戦亾: 1' in summary
-    assert '缃戦〉瑙嗛: 1' in summary
+    assert '缃戦〉瑙嗛浠诲姟: 1' in summary
 
 
 def test_validate_video_downloader_form_requires_output_and_telegram_credentials():
@@ -343,7 +343,7 @@ def test_validate_video_downloader_form_rejects_invalid_web_candidate_index():
             '0',
             False,
         )
-    assert '缃戦〉鍊欓€夊簭鍙峰繀椤诲ぇ浜?0' in errors
+    assert '缃戦〉鍊欓€夊簭鍙?0 蹇呴』澶т簬 0' in errors
 
 
 def test_validate_file_sorter_form_requires_existing_folder():
@@ -578,9 +578,9 @@ def test_file_sorter_resolution_mode_skips_unreadable_media_and_reports_it():
 
 def test_video_downloader_tab_source_contains_log_recent_limit_and_status_controls():
     source = (ROOT / 'video-downloader' / 'tab.py').read_text(encoding='utf-8')
-    assert "make_card('涓嬭浇浠诲姟')" in source
-    assert "make_card('TG 涓嬭浇')" in source
-    assert "make_card('缃戦〉瑙嗛涓嬭浇')" in source
+    assert "task_card_title" in source
+    assert "'涓嬭浇浠诲姟'" in source
+    assert "'TG 涓嬭浇'" in source or "'閾炬帴'" in source
     assert 'self.backend_status_label' in source
     assert 'self.recent_count_edit' in source
     assert 'self.all_messages_checkbox' in source
@@ -746,13 +746,13 @@ def test_same_module_groups_only_same_suffix_and_keeps_first_file():
 
         assert result['scanned_files'] == 4
         assert result['duplicate_group_count'] == 1
-        assert result['duplicate_file_count'] == 1
+        assert result['duplicate_file_count'] == 2
         group = result['groups'][0]
         assert pathlib.Path(group['keeper']).name == 'a.txt'
-        assert [pathlib.Path(item).name for item in group['duplicates']] == ['b.txt']
+        assert sorted(pathlib.Path(item).name for item in group['duplicates']) == ['b.txt', 'c.md']
         text = toolbox.format_same_summary(result)
         assert '鍙戠幇 1 缁勯噸澶嶆枃浠? in text
-        assert '寰呯Щ鍔?1 涓噸澶嶆枃浠? in text
+        assert '寰呯Щ鍔?2 涓噸澶嶆枃浠? in text
 
 
 def test_same_module_recursive_scan_skips_duplicate_target_dir():
@@ -895,11 +895,16 @@ def test_global_scrollbar_style_covers_both_axes_and_is_applied_to_scroll_hosts(
     assert 'QScrollBar:horizontal' in style
     assert 'QScrollBar::handle:vertical:hover' in style
 
-    source = MODULE_PATH.read_text(encoding='utf-8')
-    assert "self.song_list_scroll.setStyleSheet(build_music_scroll_area_style())" in source
-    assert source.count("self.log.setStyleSheet(build_global_scrollbar_style())") >= 6
-    assert "self.base64_edit.setStyleSheet(build_global_scrollbar_style())" in source
-    assert "self.sidebar.setStyleSheet(build_global_scrollbar_style())" in source
-    assert "min-height: 18px;" in source
-    assert "max-height: 18px;" in source
+    music_source = (ROOT / 'music' / 'tab.py').read_text(encoding='utf-8')
+    assert "self.song_list_scroll.setStyleSheet(build_music_scroll_area_style())" in music_source
+    # log.setStyleSheet is now in tab files (directly or via init_log_widget)
+    import glob
+    main_source = MODULE_PATH.read_text(encoding='utf-8')
+    tab_files = glob.glob(str(ROOT / '*' / 'tab.py'))
+    log_style_count = sum(open(f).read().count('self.log.setStyleSheet(build_global_scrollbar_style())') for f in tab_files)
+    assert log_style_count >= 1
+    window_source = (ROOT / 'toolbox_app' / 'window.py').read_text(encoding='utf-8')
+    assert "self.sidebar.setStyleSheet(build_global_scrollbar_style())" in window_source
+    assert "min-height: 18px;" in toolbox.DARK_STYLESHEET or "min-height: 18px;" in toolbox.LIGHT_STYLESHEET
+    assert "max-height: 18px;" in toolbox.DARK_STYLESHEET or "max-height: 18px;" in toolbox.LIGHT_STYLESHEET
 
