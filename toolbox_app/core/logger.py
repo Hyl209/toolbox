@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import logging.handlers
 from pathlib import Path
 from typing import Optional
 
@@ -17,6 +16,8 @@ class LoggerManager:
 
     def _setup_root_logger(self):
         """配置根日志记录器"""
+        import logging.handlers as _handlers
+
         root = logging.getLogger()
         root.setLevel(logging.DEBUG)
 
@@ -30,7 +31,7 @@ class LoggerManager:
         root.addHandler(console_handler)
 
         # 文件处理器 - 应用日志
-        app_handler = logging.handlers.RotatingFileHandler(
+        app_handler = _handlers.RotatingFileHandler(
             self.log_dir / 'app.log',
             maxBytes=10*1024*1024,  # 10MB
             backupCount=5,
@@ -44,7 +45,7 @@ class LoggerManager:
         root.addHandler(app_handler)
 
         # 文件处理器 - 错误日志
-        error_handler = logging.handlers.RotatingFileHandler(
+        error_handler = _handlers.RotatingFileHandler(
             self.log_dir / 'error.log',
             maxBytes=10*1024*1024,  # 10MB
             backupCount=5,

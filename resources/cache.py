@@ -22,6 +22,7 @@ class CacheManager:
 
         self.max_size_bytes = max_size_mb * 1024 * 1024
         self._cache_index: dict[str, dict[str, Any]] = {}
+        self._dirty = False
         self._load_index()
 
     def _load_index(self):
@@ -36,13 +37,21 @@ class CacheManager:
                 self._cache_index = {}
 
     def _save_index(self):
-        """保存缓存索引"""
+        """保存缓存索引（仅在有脏数据时写盘）"""
+        if not self._dirty:
+            return
         index_file = self.cache_dir / "index.json"
         try:
             with open(index_file, 'w', encoding='utf-8') as f:
                 json.dump(self._cache_index, f, indent=2, ensure_ascii=False)
+            self._dirty = False
         except Exception as e:
             logger.error(f"保存缓存索引失败: {e}")
+
+    def flush(self):
+        """强制持久化索引到磁盘"""
+        self._dirty = True
+        self._save_index()
 
     def _generate_key(self, key: str) -> str:
         """生成缓存键"""
@@ -70,6 +79,7 @@ class CacheManager:
         cache_path = self._get_cache_path(cache_key)
         if not cache_path.exists():
             self._cache_index.pop(cache_key, None)
+            self._dirty = True
             self._save_index()
             return None
 
@@ -77,9 +87,9 @@ class CacheManager:
             with open(cache_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
 
-            # 更新访问时间
+            # 更新访问时间（标记脏，延迟持久化）
             cache_info['last_accessed'] = time.time()
-            self._save_index()
+            self._dirty = True
 
             return data.get('value')
 
@@ -113,6 +123,7 @@ class CacheManager:
                 'size': cache_path.stat().st_size
             }
 
+            self._dirty = True
             self._save_index()
 
             # 检查缓存大小
@@ -140,6 +151,7 @@ class CacheManager:
 
         # 从索引中删除
         del self._cache_index[cache_key]
+        self._dirty = True
         self._save_index()
 
         logger.debug(f"删除缓存: {key}")
@@ -170,6 +182,7 @@ class CacheManager:
                 cache_path.unlink()
 
             self._cache_index.clear()
+            self._dirty = True
             self._save_index()
 
             logger.info("清空所有缓存")
@@ -192,6 +205,7 @@ class CacheManager:
             del self._cache_index[cache_key]
 
         if expired_keys:
+            self._dirty = True
             self._save_index()
             logger.info(f"清理 {len(expired_keys)} 个过期缓存")
 
@@ -220,6 +234,7 @@ class CacheManager:
             total_size -= cache_info.get('size', 0)
             del self._cache_index[cache_key]
 
+        self._dirty = True
         self._save_index()
         logger.info("缓存大小超限，已清理")
 
