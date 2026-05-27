@@ -12,7 +12,7 @@ from toolbox_app.utils import load_setting, save_setting
 ALLOWED_PASSWORD_SYMBOLS = '!@#$%^&*()_+-='
 FORBIDDEN_PASSWORD_FRAGMENTS = ('2024', '2025', '2026', 'admin', 'root', 'password')
 DEFAULT_ADMIN_USERNAME = 'admin'
-DEFAULT_ADMIN_PASSWORD = '123'
+DEFAULT_ADMIN_PASSWORD = '123'  # WARNING: 首次登录后应强制修改
 
 
 def load_users(store_path: str | Path) -> list[dict[str, str]]:
@@ -71,9 +71,6 @@ def find_user(users: list[dict[str, str]], username: str):
 
 
 def validate_password_policy(password: str, username: str = '') -> list[str]:
-    clean_name = username.strip().casefold()
-    if clean_name == DEFAULT_ADMIN_USERNAME and password == DEFAULT_ADMIN_PASSWORD:
-        return []
     errors: list[str] = []
     if len(password) != 12:
         errors.append('密码长度必须严格等于 12 位')

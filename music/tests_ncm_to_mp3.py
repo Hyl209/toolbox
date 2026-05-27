@@ -4,27 +4,36 @@ import subprocess
 import sys
 import tempfile
 
+import pytest
+
 SCRIPT = pathlib.Path(__file__).resolve().parent / 'ncm_to_mp3.py'
 PYTHON = pathlib.Path(__file__).resolve().parent / '.venv/bin/python'
 SAMPLE_NCM = pathlib.Path('PROJECT_ROOT/娴嬭瘯/绮惧僵寮篠ir - 鍚庡畼浣充附涓夊崈.ncm')
+
+_venv_exists = PYTHON.exists()
+_sample_ncm_exists = SAMPLE_NCM.exists()
+_ncmdump_available = importlib.util.find_spec('ncmdump') is not None
 
 
 def run_cmd(*args: str) -> subprocess.CompletedProcess:
     return subprocess.run(args, capture_output=True, text=True, check=False)
 
 
+@pytest.mark.skipif(not _venv_exists, reason='local .venv not found')
 def test_help_shows_usage():
     result = run_cmd(str(PYTHON), str(SCRIPT), '--help')
     assert result.returncode == 0
     assert 'usage:' in result.stdout.lower()
 
 
+@pytest.mark.skipif(not _venv_exists, reason='local .venv not found')
 def test_missing_input_fails():
     result = run_cmd(str(PYTHON), str(SCRIPT), '/no/such/file.ncm')
     assert result.returncode != 0
     assert 'input not found' in result.stderr.lower()
 
 
+@pytest.mark.skipif(not _venv_exists or not _sample_ncm_exists, reason='local .venv or sample NCM not found')
 def test_sample_ncm_path_is_accepted_for_scan_only():
     result = run_cmd(str(PYTHON), str(SCRIPT), str(SAMPLE_NCM), '--dry-run')
     assert result.returncode == 0
@@ -85,6 +94,10 @@ def test_extract_song_info_uses_common_folder_cover_names(tmp_path):
     assert info['cover_data_url'].startswith('data:image/jpeg;base64,')
 
 
+@pytest.mark.skipif(
+    not pathlib.Path('PROJECT_ROOT/娴嬭瘯/鐜嬭壋钖?- 绂诲紑鎴戠殑渚濊禆锛堟倓鎮勫仛涓ⅵ缁欎綘锛?mp3').exists(),
+    reason='sample MP3 not found',
+)
 def test_enrich_song_info_from_mp3_reads_real_tags_and_cover():
     spec = importlib.util.spec_from_file_location('ncm_to_mp3', SCRIPT)
     module = importlib.util.module_from_spec(spec)

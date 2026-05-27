@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import json
-import importlib
-import importlib.util
+import re
 from pathlib import Path
 from typing import Optional
 from .base import PluginBase, PluginInfo
@@ -11,68 +10,79 @@ from ..core.exceptions import PluginError
 
 logger = get_logger(__name__)
 
+# Regex to find class names that inherit from PluginBase
+_CLASS_RE = re.compile(r'class\s+(\w+)\s*\(.*PluginBase.*\)')
+
 
 class PluginDiscovery:
-    """插件发现系统"""
+    """插件发现系统
+
+    Discovery is manifest-first: only ``manifest.json`` metadata is read.
+    Bare ``.py`` files are scanned with a lightweight regex (no ``exec_module``).
+    Actual import/instantiation happens only when a plugin is *enabled*.
+    """
 
     def __init__(self, plugins_dir: str | Path = None):
         self.plugins_dir = Path(plugins_dir) if plugins_dir else Path(__file__).parent
         self._discovered_plugins: dict[str, PluginInfo] = {}
 
     def discover_plugins(self) -> dict[str, PluginInfo]:
-        """发现所有插件"""
+        """发现所有插件（只读 metadata，不执行插件代码）"""
         self._discovered_plugins.clear()
 
         # 扫描插件目录
         for plugin_path in self.plugins_dir.iterdir():
             if plugin_path.is_dir():
                 self._scan_plugin_directory(plugin_path)
-            elif plugin_path.suffix == '.py':
+            elif plugin_path.suffix == '.py' and not plugin_path.name.startswith('_'):
                 self._scan_plugin_file(plugin_path)
 
         logger.info(f"发现 {len(self._discovered_plugins)} 个插件")
         return self._discovered_plugins.copy()
 
     def _scan_plugin_directory(self, plugin_path: Path):
-        """扫描插件目录"""
+        """扫描插件目录 — 优先读 manifest.json"""
         manifest_path = plugin_path / "manifest.json"
         if manifest_path.exists():
             self._load_manifest(plugin_path, manifest_path)
         else:
-            # 尝试加载 __init__.py
+            # 无 manifest 的目录：仅做文本扫描，不执行代码
             init_path = plugin_path / "__init__.py"
             if init_path.exists():
                 self._scan_plugin_file(init_path, plugin_path.name)
 
     def _scan_plugin_file(self, plugin_path: Path, plugin_name: str = None):
-        """扫描插件文件"""
+        """扫描插件文件 — 只读文本查找 PluginBase 子类，不执行模块"""
         try:
-            # 尝试导入模块
             module_name = plugin_name or plugin_path.stem
-            spec = importlib.util.spec_from_file_location(module_name, plugin_path)
-            if spec is None:
+            source = plugin_path.read_text(encoding='utf-8', errors='ignore')
+            matches = _CLASS_RE.findall(source)
+            if not matches:
                 return
 
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-
-            # 查找插件类
-            for attr_name in dir(module):
-                attr = getattr(module, attr_name)
-                if (isinstance(attr, type) and
-                    issubclass(attr, PluginBase) and
-                    attr is not PluginBase):
-
-                    # 创建临时实例获取插件信息
-                    try:
-                        temp_instance = attr()
-                        plugin_info = temp_instance.get_plugin_info()
-                        self._discovered_plugins[plugin_info.name] = plugin_info
-                    except Exception as e:
-                        logger.error(f"加载插件信息失败 {module_name}: {e}")
+            # 用正则提取 plugin_info（name/version/description/author）
+            info = self._extract_info_from_source(source, module_name)
+            if info:
+                self._discovered_plugins[info.name] = info
 
         except Exception as e:
             logger.error(f"扫描插件文件失败 {plugin_path}: {e}")
+
+    @staticmethod
+    def _extract_info_from_source(source: str, fallback_name: str) -> Optional[PluginInfo]:
+        """Try to extract PluginInfo fields from source text via regex."""
+        name_match = re.search(r"""['"]name['"]\s*:\s*['"]([^'"]+)['"]""", source)
+        version_match = re.search(r"""['"]version['"]\s*:\s*['"]([^'"]+)['"]""", source)
+        desc_match = re.search(r"""['"]description['"]\s*:\s*['"]([^'"]+)['"]""", source)
+        author_match = re.search(r"""['"]author['"]\s*:\s*['"]([^'"]+)['"]""", source)
+        if not (name_match and version_match):
+            return None
+        return PluginInfo(
+            name=name_match.group(1) if name_match else fallback_name,
+            version=version_match.group(1) if version_match else '0.0.0',
+            description=desc_match.group(1) if desc_match else '',
+            author=author_match.group(1) if author_match else '',
+        )
 
     def _load_manifest(self, plugin_path: Path, manifest_path: Path):
         """加载 manifest.json"""
