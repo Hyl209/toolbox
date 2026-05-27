@@ -259,20 +259,7 @@ from toolbox_app.auth import (
 
 
 
-def get_tool_definitions() -> list[dict]:
-    return [
-        {'key': 'music', 'title': 'NCM转换'},
-        {'key': 'zipandpng', 'title': 'PNG伪装'},
-        {'key': 'mp4mp3', 'title': 'MP4转MP3'},
-        {'key': 'imageconvert', 'title': '图片格式互转'},
-        {'key': 'pdftools', 'title': 'PDF工具'},
-        {'key': 'tgdownloader', 'title': 'TG下载'},
-        {'key': 'webvideodownloader', 'title': '网页视频下载'},
-        {'key': 'batchrename', 'title': '批量命名'},
-        {'key': 'filesorter', 'title': '文件分类'},
-        {'key': 'same', 'title': '重复文件'},
-        {'key': 'base64', 'title': '图片Base64'},
-    ]
+from toolbox_app.tool_registry import get_tool_definitions  # noqa: F401
 
 
 # TODO: Proxy functions below exist solely for backward compatibility.

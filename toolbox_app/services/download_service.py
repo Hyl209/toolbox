@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import requests
 from pathlib import Path
 from typing import Optional, Callable
 from ..core.logger import get_logger
@@ -9,6 +8,15 @@ from ..core.file_utils import file_utils
 from ..core.downloader_base import DownloaderBase, DownloadProgress
 
 logger = get_logger(__name__)
+
+try:
+    import requests
+except ModuleNotFoundError:
+    class _MissingRequests:
+        def Session(self):
+            raise ModuleNotFoundError("No module named 'requests'")
+
+    requests = _MissingRequests()
 
 
 class DownloadService(DownloaderBase):
@@ -19,10 +27,13 @@ class DownloadService(DownloaderBase):
         self._session = None
         self._chunk_size = 8192
 
-    def _get_session(self) -> requests.Session:
+    def _get_session(self):
         """获取 HTTP 会话"""
         if self._session is None:
-            self._session = requests.Session()
+            try:
+                self._session = requests.Session()
+            except ModuleNotFoundError as e:
+                raise ServiceError("requests 未安装，无法使用 HTTP 下载服务", self.name) from e
             self._session.headers.update({
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             })

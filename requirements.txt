@@ -1,0 +1,12 @@
+PySide6
+PyMuPDF
+Pillow
+mutagen
+ncmdump
+pdf2image
+pypdf
+pytesseract
+python-docx
+requests
+telethon
+yt-dlp

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from toolbox_app.tool_registry import TOOL_DEFINITIONS
+
 
 def build_toolbox_window_class(deps: dict):
     """Return a ToolboxWindow class with all Qt/helper deps injected."""
@@ -39,6 +41,21 @@ def build_toolbox_window_class(deps: dict):
     FileSorterTab = deps['FileSorterTab']
     SameTab = deps['SameTab']
     Base64Tab = deps['Base64Tab']
+
+    # Tool id → tab class/instance mapping (order matches TOOL_DEFINITIONS)
+    _TAB_BUILDERS = {
+        'music': lambda s: MusicTab(s),
+        'zipandpng': lambda s: ZipAndPngTab(s),
+        'mp4mp3': lambda s: Mp4ToMp3Tab(s),
+        'imageconvert': lambda s: ImageConvertTab(s),
+        'pdftools': lambda s: PdfToolsTab(s),
+        'tgdownloader': lambda s: VideoDownloaderTab(s, 'telegram'),
+        'webvideodownloader': lambda s: VideoDownloaderTab(s, 'web'),
+        'batchrename': lambda s: BatchRenameTab(s),
+        'filesorter': lambda s: FileSorterTab(s),
+        'same': lambda s: SameTab(s),
+        'base64': lambda s: Base64Tab(s),
+    }
 
     class ToolboxWindow(QMainWindow):
         def __init__(self, settings, authenticated_username: str = ''):
@@ -93,17 +110,8 @@ def build_toolbox_window_class(deps: dict):
             self.sidebar.setProperty('navList', True)
             self.sidebar.setFixedWidth(196)
             self.sidebar.setStyleSheet(build_global_scrollbar_style())
-            self.sidebar.addItem('NCM 转 MP3')
-            self.sidebar.addItem('图片伪装')
-            self.sidebar.addItem('MP4 转 MP3')
-            self.sidebar.addItem('图片格式互转')
-            self.sidebar.addItem('PDF工具')
-            self.sidebar.addItem('TG下载')
-            self.sidebar.addItem('网页视频下载')
-            self.sidebar.addItem('批量命名')
-            self.sidebar.addItem('文件分类')
-            self.sidebar.addItem('重复文件')
-            self.sidebar.addItem('图片Base64')
+            for tool_def in TOOL_DEFINITIONS:
+                self.sidebar.addItem(tool_def.sidebar_label)
             self.sidebar.setCurrentRow(0)
             side_layout.addWidget(self.sidebar, 1)
             bottom_row = QHBoxLayout()
@@ -128,29 +136,25 @@ def build_toolbox_window_class(deps: dict):
             side_layout.addLayout(bottom_row)
             shell.addWidget(side_panel)
             self.stack = QStackedWidget()
-            self.music_tab = MusicTab(settings)
-            self.zip_tab = ZipAndPngTab(settings)
-            self.mp4_tab = Mp4ToMp3Tab(settings)
-            self.image_convert_tab = ImageConvertTab(settings)
-            self.pdf_tools_tab = PdfToolsTab(settings)
-            self.tg_downloader_tab = VideoDownloaderTab(settings, 'telegram')
-            self.web_video_downloader_tab = VideoDownloaderTab(settings, 'web')
+            self._tabs = {}
+            for tool_def in TOOL_DEFINITIONS:
+                builder = _TAB_BUILDERS[tool_def.id]
+                tab = builder(settings)
+                self._tabs[tool_def.id] = tab
+                self.stack.addWidget(tab)
+            # backward-compat aliases
+            self.music_tab = self._tabs['music']
+            self.zip_tab = self._tabs['zipandpng']
+            self.mp4_tab = self._tabs['mp4mp3']
+            self.image_convert_tab = self._tabs['imageconvert']
+            self.pdf_tools_tab = self._tabs['pdftools']
+            self.tg_downloader_tab = self._tabs['tgdownloader']
+            self.web_video_downloader_tab = self._tabs['webvideodownloader']
             self.video_downloader_tab = self.tg_downloader_tab
-            self.batch_rename_tab = BatchRenameTab(settings)
-            self.file_sorter_tab = FileSorterTab(settings)
-            self.same_tab = SameTab(settings)
-            self.base64_tab = Base64Tab(settings)
-            self.stack.addWidget(self.music_tab)
-            self.stack.addWidget(self.zip_tab)
-            self.stack.addWidget(self.mp4_tab)
-            self.stack.addWidget(self.image_convert_tab)
-            self.stack.addWidget(self.pdf_tools_tab)
-            self.stack.addWidget(self.tg_downloader_tab)
-            self.stack.addWidget(self.web_video_downloader_tab)
-            self.stack.addWidget(self.batch_rename_tab)
-            self.stack.addWidget(self.file_sorter_tab)
-            self.stack.addWidget(self.same_tab)
-            self.stack.addWidget(self.base64_tab)
+            self.batch_rename_tab = self._tabs['batchrename']
+            self.file_sorter_tab = self._tabs['filesorter']
+            self.same_tab = self._tabs['same']
+            self.base64_tab = self._tabs['base64']
             shell.addWidget(self.stack, 1)
             self.sidebar.currentRowChanged.connect(self.switch_tool_page)
             content_layout.addWidget(central, 1)

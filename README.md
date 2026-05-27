@@ -201,7 +201,10 @@ result = service.convert(input_path, output_path)
 
 ```bash
 # 安装依赖
-pip install PySide6 pypdf PyMuPDF Pillow mutagen ncmdump python-docx
+pip install -r requirements.txt
+
+# 安装测试依赖
+pip install -r requirements-dev.txt
 
 # 启动
 python hyl_toolbox.py

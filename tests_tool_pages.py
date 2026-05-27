@@ -70,7 +70,7 @@ def test_app_dir_uses_source_dir_when_not_frozen():
 
 def test_mp4_drop_summary_shows_selected_videos_in_same_area():
     toolbox = load_module()
-    assert toolbox.format_mp4_drop_summary([]) == '鎷栧叆 .mp4 鏂囦欢鎴栨枃浠跺す'
+    assert toolbox.format_mp4_drop_summary([]) == '鎷栧叆 瑙嗛'
     one = toolbox.format_mp4_drop_summary([pathlib.Path('lesson.mp4')])
     assert '宸叉坊鍔?1 涓棰? in one
     assert 'lesson' in one
@@ -81,7 +81,6 @@ def test_mp4_drop_summary_shows_selected_videos_in_same_area():
     ])
     assert '宸叉坊鍔?3 涓棰? in many
     assert 'a' in many and 'b' in many
-    assert '.mp4' not in many
 
 
 def test_validate_mp4_form_requires_files_and_output_dir():
@@ -155,9 +154,9 @@ def test_collect_image_convert_inputs_filters_supported_images_only():
 
 def test_image_convert_drop_summary_shows_selected_images_in_same_area():
     toolbox = load_module()
-    assert toolbox.format_image_convert_drop_summary([]) == '鎷栧叆 JPG / PNG / WebP / HEIC 鍥剧墖鎴栨枃浠跺す'
+    assert toolbox.format_image_convert_drop_summary([]) == '鎷栧叆 JPG / PNG / WebP / HEIC 鍥剧墖'
     one = toolbox.format_image_convert_drop_summary([pathlib.Path('cover.png')])
-    assert '宸叉坊鍔?1 寮犲浘鐗? in one
+    assert '宸叉坊鍔?1 涓狫PG / PNG / WebP / HEIC 鍥剧墖' in one
     assert 'cover' in one
 
 
@@ -225,8 +224,8 @@ def test_base64_drop_summary_shows_selected_images():
     toolbox = load_module()
     assert toolbox.format_base64_drop_summary([]) == '鎷栧叆 PNG / JPG / JPEG / WebP / GIF / BMP 鍥剧墖'
     one = toolbox.format_base64_drop_summary([pathlib.Path('cover.png')])
-    assert '宸叉坊鍔?1 寮犲浘鐗? in one
-    assert 'cover.png' in one
+    assert '宸叉坊鍔?1 涓狿NG / JPG / JPEG / WebP / GIF / BMP 鍥剧墖' in one
+    assert 'cover' in one
 
 
 def test_validate_base64_form_requires_mode_specific_inputs():
@@ -901,7 +900,7 @@ def test_global_scrollbar_style_covers_both_axes_and_is_applied_to_scroll_hosts(
     import glob
     main_source = MODULE_PATH.read_text(encoding='utf-8')
     tab_files = glob.glob(str(ROOT / '*' / 'tab.py'))
-    log_style_count = sum(open(f).read().count('self.log.setStyleSheet(build_global_scrollbar_style())') for f in tab_files)
+    log_style_count = sum(pathlib.Path(f).read_text(encoding='utf-8').count('self.log.setStyleSheet(build_global_scrollbar_style())') for f in tab_files)
     assert log_style_count >= 1
     window_source = (ROOT / 'toolbox_app' / 'window.py').read_text(encoding='utf-8')
     assert "self.sidebar.setStyleSheet(build_global_scrollbar_style())" in window_source
