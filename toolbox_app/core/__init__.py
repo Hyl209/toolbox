@@ -8,3 +8,5 @@ from .file_utils import file_utils
 from .downloader_base import DownloaderBase
 from .events import EventSystem
 from .ui_helpers import ui_helpers
+from .gpu_manager import GPUManager
+from .crash_recovery import CrashRecoveryManager
