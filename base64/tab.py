@@ -80,8 +80,15 @@ def build_base64_tab_class(deps: dict[str, object]):
     show_themed_success = deps['show_themed_success']
     get_base64_module = deps['get_base64_module']
     ROOT = deps['ROOT']
+    from toolbox_app.widgets import build_base_tool_tab_class
+    BaseToolTab = build_base_tool_tab_class(
+        QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton,
+        QLabel, QPlainTextEdit, QProgressBar, QFileDialog, Qt,
+        DropZoneCard, load_setting, save_setting, make_card,
+        build_global_scrollbar_style, ROOT, settings_prefix='base64')
 
-    class Base64Tab(QWidget):
+
+    class Base64Tab(BaseToolTab):
         def __init__(self, settings):
             super().__init__()
             self.settings = settings
@@ -153,12 +160,6 @@ def build_base64_tab_class(deps: dict[str, object]):
                 body_text=picked.name,
             )
             self.log.appendPlainText(picked.name)
-
-        def choose_output_dir(self):
-            path = QFileDialog.getExistingDirectory(self, '选择输出目录', self.output_edit.text() or str(ROOT))
-            if path:
-                self.output_edit.setText(path)
-                save_setting(self.settings, 'base64/output_dir', path)
 
         def clear_form(self):
             had_files = bool(self.files)

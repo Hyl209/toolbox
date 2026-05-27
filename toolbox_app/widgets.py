@@ -516,3 +516,51 @@ class DragTitleBar(QFrame):
         if event.button() == Qt.LeftButton:
             self.window.toggle_max_restore()
         super().mouseDoubleClickEvent(event)
+
+
+def build_base_tool_tab_class(QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton,
+                               QLabel, QPlainTextEdit, QProgressBar, QFileDialog, Qt,
+                               DropZoneCard, load_setting, save_setting, make_card,
+                               build_global_scrollbar_style, ROOT, settings_prefix: str):
+    """Return a BaseToolTab class with common UI helpers for tool tabs.
+
+    Args:
+        settings_prefix: The INI section prefix, e.g. 'mp4mp3', 'imageconvert'.
+    """
+
+    class BaseToolTab(QWidget):
+        _settings_prefix = settings_prefix
+
+        def init_output_dir_row(self, layout, placeholder='选择输出目录', setting_suffix='output_dir'):
+            """Create output directory row with choose button. Attaches self.output_edit and self._choose_btn."""
+            row = QHBoxLayout()
+            self.output_edit = QLineEdit(load_setting(self.settings, f'{self._settings_prefix}/{setting_suffix}'))
+            self.output_edit.setPlaceholderText(placeholder)
+            self._choose_btn = QPushButton('选择路径')
+            self._choose_btn.clicked.connect(self.choose_output_dir)
+            row.addWidget(self.output_edit)
+            row.addWidget(self._choose_btn)
+            layout.addLayout(row)
+
+        def init_log_widget(self, layout, min_height=140):
+            """Create read-only log widget. Attaches self.log."""
+            self.log = QPlainTextEdit()
+            self.log.setReadOnly(True)
+            self.log.setMinimumHeight(min_height)
+            self.log.setStyleSheet(build_global_scrollbar_style())
+            layout.addWidget(self.log)
+
+        def init_progress_widget(self, layout):
+            """Create progress bar. Attaches self.progress."""
+            self.progress = QProgressBar()
+            layout.addWidget(self.progress)
+
+        def choose_output_dir(self):
+            """Open directory dialog and save selection."""
+            path = QFileDialog.getExistingDirectory(
+                self, '选择输出目录', self.output_edit.text() or str(ROOT))
+            if path:
+                self.output_edit.setText(path)
+                save_setting(self.settings, f'{self._settings_prefix}/output_dir', path)
+
+    return BaseToolTab

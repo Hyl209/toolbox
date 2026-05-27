@@ -116,8 +116,15 @@ def build_music_tab_class(deps: dict[str, object]):
     show_themed_success = deps['show_themed_success']
     load_pixmap_from_data_url = deps['load_pixmap_from_data_url']
     ROOT = deps['ROOT']
+    from toolbox_app.widgets import build_base_tool_tab_class
+    BaseToolTab = build_base_tool_tab_class(
+        QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton,
+        QLabel, QPlainTextEdit, QProgressBar, QFileDialog, Qt,
+        DropZoneCard, load_setting, save_setting, make_card,
+        build_global_scrollbar_style, ROOT, settings_prefix='music')
 
-    class MusicTab(QWidget):
+
+    class MusicTab(BaseToolTab):
         def __init__(self, settings):
             super().__init__()
             self.settings = settings
@@ -186,13 +193,6 @@ def build_music_tab_class(deps: dict[str, object]):
                     new_items.append(normalized)
             self.refresh_song_list()
             self.log.appendPlainText(format_music_log_added(new_items))
-
-        def choose_output_dir(self):
-            path = QFileDialog.getExistingDirectory(self, '选择输出目录', self.output_edit.text() or str(ROOT))
-            if path:
-                self.output_edit.setText(path)
-                save_setting(self.settings, 'music/output_dir', path)
-                self.log.appendPlainText(format_music_log_output_dir(path))
 
         def refresh_song_list(self):
             has_items = bool(self.file_items)

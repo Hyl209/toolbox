@@ -70,8 +70,15 @@ def build_zipandpng_tab_class(deps: dict[str, object]):
     show_themed_warning = deps['show_themed_warning']
     get_zip_module = deps['get_zip_module']
     ROOT = deps['ROOT']
+    from toolbox_app.widgets import build_base_tool_tab_class
+    BaseToolTab = build_base_tool_tab_class(
+        QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton,
+        QLabel, QPlainTextEdit, QProgressBar, QFileDialog, Qt,
+        DropZoneCard, load_setting, save_setting, make_card,
+        build_global_scrollbar_style, ROOT, settings_prefix='zipandpng')
 
-    class ZipAndPngTab(QWidget):
+
+    class ZipAndPngTab(BaseToolTab):
         def __init__(self, settings):
             super().__init__()
             self.settings = settings

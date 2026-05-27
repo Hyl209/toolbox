@@ -61,6 +61,13 @@ def build_same_tab_class(deps: dict[str, object]):
     show_themed_success = deps['show_themed_success']
     get_same_module = deps['get_same_module']
     ROOT = deps['ROOT']
+    from toolbox_app.widgets import build_base_tool_tab_class
+    BaseToolTab = build_base_tool_tab_class(
+        QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton,
+        QLabel, QPlainTextEdit, QProgressBar, QFileDialog, Qt,
+        DropZoneCard, load_setting, save_setting, make_card,
+        build_global_scrollbar_style, ROOT, settings_prefix='same')
+
 
     class _FallbackSignal:
         def __init__(self):
@@ -104,7 +111,7 @@ def build_same_tab_class(deps: dict[str, object]):
                 except Exception as exc:
                     self.failed.emit(str(exc))
 
-    class SameTab(QWidget):
+    class SameTab(BaseToolTab):
         def __init__(self, settings):
             super().__init__()
             self.settings = settings

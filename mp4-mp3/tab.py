@@ -63,7 +63,14 @@ def build_mp4_tab_class(deps: dict):
     show_themed_success = deps['show_themed_success']
     ROOT = deps['ROOT']
 
-    class Mp4ToMp3Tab(QWidget):
+    from toolbox_app.widgets import build_base_tool_tab_class
+    BaseToolTab = build_base_tool_tab_class(
+        QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton,
+        QLabel, QPlainTextEdit, QProgressBar, QFileDialog, Qt,
+        DropZoneCard, load_setting, save_setting, make_card,
+        build_global_scrollbar_style, ROOT, settings_prefix='mp4mp3')
+
+    class Mp4ToMp3Tab(BaseToolTab):
         def __init__(self, settings):
             super().__init__()
             self.settings = settings
@@ -72,14 +79,7 @@ def build_mp4_tab_class(deps: dict):
             card, layout = make_card('MP4转MP3', '拖入 MP4 视频，输出 MP3 音频文件')
             self.drop_zone = DropZoneCard('拖入 .mp4 文件或文件夹', self.add_paths)
             layout.addWidget(self.drop_zone)
-            row = QHBoxLayout()
-            self.output_edit = QLineEdit(load_setting(settings, 'mp4mp3/output_dir'))
-            self.output_edit.setPlaceholderText('选择输出目录')
-            choose_btn = QPushButton('选择路径')
-            choose_btn.clicked.connect(self.choose_output_dir)
-            row.addWidget(self.output_edit)
-            row.addWidget(choose_btn)
-            layout.addLayout(row)
+            self.init_output_dir_row(layout)
             action_row = QHBoxLayout()
             action_row.addStretch(1)
             self.clear_files_button = QPushButton('清空文件')
@@ -89,13 +89,8 @@ def build_mp4_tab_class(deps: dict):
             self.convert_button.clicked.connect(self.convert_files)
             action_row.addWidget(self.convert_button)
             layout.addLayout(action_row)
-            self.progress = QProgressBar()
-            layout.addWidget(self.progress)
-            self.log = QPlainTextEdit()
-            self.log.setReadOnly(True)
-            self.log.setMinimumHeight(140)
-            self.log.setStyleSheet(build_global_scrollbar_style())
-            layout.addWidget(self.log)
+            self.init_progress_widget(layout)
+            self.init_log_widget(layout)
             root.addWidget(card)
 
         def add_paths(self, paths: list[str]):
@@ -120,12 +115,6 @@ def build_mp4_tab_class(deps: dict):
                 self.log.appendPlainText('\n'.join(p.stem for p in new_files))
             else:
                 self.log.appendPlainText('没有新增视频')
-
-        def choose_output_dir(self):
-            path = QFileDialog.getExistingDirectory(self, '选择输出目录', self.output_edit.text() or str(ROOT))
-            if path:
-                self.output_edit.setText(path)
-                save_setting(self.settings, 'mp4mp3/output_dir', path)
 
         def clear_form(self):
             had_files = bool(self.files)

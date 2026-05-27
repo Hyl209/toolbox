@@ -80,8 +80,15 @@ def build_pdf_tools_tab_class(deps: dict):
     show_themed_success = deps['show_themed_success']
     get_pdf_tools_module = deps['get_pdf_tools_module']
     ROOT = deps['ROOT']
+    from toolbox_app.widgets import build_base_tool_tab_class
+    BaseToolTab = build_base_tool_tab_class(
+        QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton,
+        QLabel, QPlainTextEdit, QProgressBar, QFileDialog, Qt,
+        DropZoneCard, load_setting, save_setting, make_card,
+        build_global_scrollbar_style, ROOT, settings_prefix='pdftools')
 
-    class PdfToolsTab(QWidget):
+
+    class PdfToolsTab(BaseToolTab):
         def __init__(self, settings):
             super().__init__()
             self.settings = settings
@@ -172,12 +179,6 @@ def build_pdf_tools_tab_class(deps: dict):
                 self.log.appendPlainText('\n'.join(p.name for p in new_files))
             else:
                 self.log.appendPlainText('没有新增 PDF')
-
-        def choose_output_dir(self):
-            path = QFileDialog.getExistingDirectory(self, '选择输出目录', self.output_edit.text() or str(ROOT))
-            if path:
-                self.output_edit.setText(path)
-                save_setting(self.settings, 'pdftools/output_dir', path)
 
         def clear_form(self):
             had_files = bool(self.files)
