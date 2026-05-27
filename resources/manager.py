@@ -208,6 +208,56 @@ class ResourceManager:
 
         return None
 
+    # ------------------------------------------------------------------
+    # OCR 模型管理
+    # ------------------------------------------------------------------
+
+    def get_ocr_model_path(self, model_name: str) -> Path:
+        """获取 OCR 模型文件路径
+
+        Args:
+            model_name: 模型名称（如 ``tesseract``、``easyocr``）
+
+        Returns:
+            模型文件所在的目录路径
+
+        Raises:
+            ResourceError: 模型不存在时抛出
+        """
+        model_path = self._resources_dir / "ocr_models" / model_name
+        if not model_path.exists():
+            raise ResourceError(f"OCR 模型不存在: {model_name}", "ocr_model")
+        return model_path
+
+    def list_ocr_models(self) -> list[str]:
+        """列出可用的 OCR 模型
+
+        Returns:
+            模型名称列表，若无模型则返回空列表
+        """
+        ocr_dir = self._resources_dir / "ocr_models"
+        if not ocr_dir.exists():
+            return []
+        return sorted(
+            entry.name for entry in ocr_dir.iterdir() if entry.is_dir()
+        )
+
+    def validate_ocr_model(self, model_name: str) -> bool:
+        """验证 OCR 模型是否存在且可用
+
+        Args:
+            model_name: 模型名称
+
+        Returns:
+            True 表示模型有效
+        """
+        try:
+            model_path = self.get_ocr_model_path(model_name)
+            # 模型目录中至少包含一个文件才算有效
+            return any(model_path.iterdir())
+        except ResourceError:
+            return False
+
 
 # 全局资源管理器实例
 _resource_manager: Optional[ResourceManager] = None
