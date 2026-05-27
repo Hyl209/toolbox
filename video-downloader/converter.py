@@ -12,7 +12,7 @@ import importlib.util
 import os
 import re
 import shutil
-import ssl
+
 import subprocess
 from dataclasses import dataclass, replace
 from collections.abc import Iterable
@@ -1512,8 +1512,6 @@ def _download_url_with_ytdlp(
         'quiet': True,
         'skip_download': True,
         'noplaylist': True,
-        'nocheckcertificate': True,
-        'legacyserverconnect': True,
         'http_headers': http_headers,
     }).extract_info(source_url, download=False)
     title = sanitize_filename_component(str(info.get('title') or title_hint or 'video'))
@@ -1537,8 +1535,6 @@ def _download_url_with_ytdlp(
         'fragment_retries': 20,
         'retries': 20,
         'socket_timeout': 45,
-        'nocheckcertificate': True,
-        'legacyserverconnect': True,
         'http_chunk_size': 4 * 1024 * 1024,
         'throttledratelimit': 100 * 1024,
         'http_headers': http_headers,
@@ -1614,9 +1610,6 @@ def _download_url_with_ytdlp(
 
 
 def _fetch_webpage_html(url: str) -> str:
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
     request = Request(
         url,
         headers={
@@ -1626,7 +1619,7 @@ def _fetch_webpage_html(url: str) -> str:
             'Referer': url,
         },
     )
-    with urlopen(request, timeout=20, context=ctx) as response:
+    with urlopen(request, timeout=20) as response:
         charset = response.headers.get_content_charset() or 'utf-8'
         return response.read().decode(charset, errors='ignore')
 
@@ -1652,7 +1645,7 @@ def _extract_ytdlp_entry_candidates(page_url: str) -> list[str]:
     _require_web_backend()
     from yt_dlp import YoutubeDL
 
-    info = YoutubeDL({'quiet': True, 'skip_download': True, 'nocheckcertificate': True}).extract_info(page_url, download=False)
+    info = YoutubeDL({'quiet': True, 'skip_download': True}).extract_info(page_url, download=False)
     entries = info.get('entries')
     if not isinstance(entries, Iterable):
         return []
@@ -1681,7 +1674,7 @@ def _supports_ytdlp_direct_media(source_url: str) -> bool:
     _require_web_backend()
     from yt_dlp import YoutubeDL
 
-    info = YoutubeDL({'quiet': True, 'skip_download': True, 'noplaylist': True, 'nocheckcertificate': True}).extract_info(source_url, download=False)
+    info = YoutubeDL({'quiet': True, 'skip_download': True, 'noplaylist': True}).extract_info(source_url, download=False)
     if not isinstance(info, dict):
         return False
     return bool(info.get('url') or info.get('formats') or info.get('id') or info.get('title'))

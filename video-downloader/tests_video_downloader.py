@@ -730,7 +730,6 @@ def test_download_url_with_ytdlp_uses_aria2_and_stability_options():
         assert download_opts['fragment_retries'] == 20
         assert download_opts['retries'] == 20
         assert download_opts['throttledratelimit'] == 100 * 1024
-        assert download_opts['legacyserverconnect'] is True
         assert download_opts['http_headers']['Referer'] == 'https://example.com/post/1'
         assert '--summary-interval=1' in download_opts['external_downloader_args']
         assert '--header=Referer: https://example.com/post/1' in download_opts['external_downloader_args']
@@ -823,8 +822,9 @@ def test_download_url_with_ytdlp_sets_legacy_server_connect_for_tls_edge_cases()
         module.shutil.which = lambda name: ''
         with tempfile.TemporaryDirectory() as tmp:
             module._download_url_with_ytdlp('https://example.com/video', pathlib.Path(tmp), module.DownloadOptions(), None)
-        assert captured_opts[0]['legacyserverconnect'] is True
-        assert captured_opts[1]['legacyserverconnect'] is True
+        # legacyserverconnect removed — no longer bypassing TLS
+        assert 'legacyserverconnect' not in captured_opts[0]
+        assert 'legacyserverconnect' not in captured_opts[1]
     finally:
         if original_module is None:
             sys.modules.pop('yt_dlp', None)
