@@ -1,4 +1,3 @@
-import importlib.util
 import json
 import os
 import sys
@@ -8,6 +7,9 @@ import base64
 import binascii
 from configparser import ConfigParser
 from pathlib import Path
+
+from toolbox_app.dynamic_modules import DynamicModuleLoader
+from toolbox_app.tool_tabs import build_external_tab_classes
 
 
 WEIXIN_IMAGE_BASE64 = """
@@ -183,8 +185,7 @@ QComboBox {
     background-color: #2a3038;
     border: 1px solid #46505c;
     border-radius: 18px;
-    padding: 8px 32px 8px 16px;
-    min-width: 118px;
+    padding: 8px 48px 8px 16px;
     color: #eef2f7;
 }
 QComboBox:focus {
@@ -194,12 +195,12 @@ QComboBox:focus {
 QComboBox::drop-down {
     subcontrol-origin: padding;
     subcontrol-position: top right;
-    width: 18px;
+    width: 26px;
     border: none;
     background: transparent;
 }
 QComboBox::down-arrow {
-    image: none;
+    image: url(arrow-dark.svg);
     width: 7px;
     height: 7px;
     border-right: 1.6px solid #eef2f7;
@@ -443,8 +444,7 @@ QComboBox {
     background-color: #eef1f5;
     border: 1px solid #d8dee6;
     border-radius: 18px;
-    padding: 8px 32px 8px 16px;
-    min-width: 118px;
+    padding: 8px 48px 8px 16px;
     color: #1f252d;
 }
 QComboBox:focus {
@@ -454,12 +454,12 @@ QComboBox:focus {
 QComboBox::drop-down {
     subcontrol-origin: padding;
     subcontrol-position: top right;
-    width: 18px;
+    width: 26px;
     border: none;
     background: transparent;
 }
 QComboBox::down-arrow {
-    image: none;
+    image: url(arrow-light.svg);
     width: 7px;
     height: 7px;
     border-right: 1.6px solid #1f252d;
@@ -659,69 +659,77 @@ class IniSettings:
         return 'default', key
 
 
+_dynamic_modules = DynamicModuleLoader({
+    'zip': ('zipandpng_module', ZIP_DIR / 'zipandpng.py'),
+    'ncm': ('music_ncm_to_mp3', MUSIC_DIR / 'ncm_to_mp3.py'),
+    'mp4': ('mp4_converter_module', MP4_DIR / 'converter.py'),
+    'image_convert': ('image_convert_module', IMAGE_CONVERT_DIR / 'converter.py'),
+    'pdf_tools': ('pdf_tools_module', PDF_TOOLS_DIR / 'converter.py'),
+    'video_downloader': ('video_downloader_module', VIDEO_DOWNLOADER_DIR / 'converter.py'),
+    'video_downloader_tab': ('video_downloader_tab_module', VIDEO_DOWNLOADER_DIR / 'tab.py'),
+    'file_sorter': ('file_sorter_module', FILE_SORTER_DIR / 'converter.py'),
+    'file_sorter_tab': ('file_sorter_tab_module', FILE_SORTER_DIR / 'tab.py'),
+    'name': ('batch_rename_module', NAME_DIR / 'converter.py'),
+    'name_tab': ('batch_rename_tab_module', NAME_DIR / 'tab.py'),
+    'same': ('same_converter_module', SAME_DIR / 'converter.py'),
+    'base64': ('base64_converter_module', BASE64_DIR / 'converter.py'),
+})
+
+
 def _load_module(module_name: str, file_path: Path):
-    spec = importlib.util.spec_from_file_location(module_name, file_path)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    parent_dir = str(file_path.parent)
-    inserted = False
-    if parent_dir not in sys.path:
-        sys.path.insert(0, parent_dir)
-        inserted = True
-    try:
-        spec.loader.exec_module(module)
-    finally:
-        if inserted and sys.path[:1] == [parent_dir]:
-            sys.path.pop(0)
-    return module
+    return _dynamic_modules.load_path(module_name, file_path)
+
+
+def _load_registered_module(key: str):
+    return _dynamic_modules.load(key)
 
 
 def _load_zip_module():
-    return _load_module('zipandpng_module', ZIP_DIR / 'zipandpng.py')
+    return _load_registered_module('zip')
 
 
 def _load_ncm_module():
-    return _load_module('music_ncm_to_mp3', MUSIC_DIR / 'ncm_to_mp3.py')
+    return _load_registered_module('ncm')
 
 
 def _load_mp4_module():
-    return _load_module('mp4_converter_module', MP4_DIR / 'converter.py')
+    return _load_registered_module('mp4')
 
 
 def _load_image_convert_module():
-    return _load_module('image_convert_module', IMAGE_CONVERT_DIR / 'converter.py')
+    return _load_registered_module('image_convert')
 
 
 def _load_pdf_tools_module():
-    return _load_module('pdf_tools_module', PDF_TOOLS_DIR / 'converter.py')
+    return _load_registered_module('pdf_tools')
 
 
 def _load_video_downloader_module():
-    return _load_module('video_downloader_module', VIDEO_DOWNLOADER_DIR / 'converter.py')
+    return _load_registered_module('video_downloader')
 
 
 def _load_video_downloader_tab_module():
-    return _load_module('video_downloader_tab_module', VIDEO_DOWNLOADER_DIR / 'tab.py')
+    return _load_registered_module('video_downloader_tab')
 
 
 def _load_file_sorter_module():
-    return _load_module('file_sorter_module', FILE_SORTER_DIR / 'converter.py')
+    return _load_registered_module('file_sorter')
 
 
 def _load_file_sorter_tab_module():
-    return _load_module('file_sorter_tab_module', FILE_SORTER_DIR / 'tab.py')
+    return _load_registered_module('file_sorter_tab')
 
 
 def _load_name_module():
-    return _load_module('batch_rename_module', NAME_DIR / 'converter.py')
+    return _load_registered_module('name')
 
 
 def _load_name_tab_module():
-    return _load_module('batch_rename_tab_module', NAME_DIR / 'tab.py')
+    return _load_registered_module('name_tab')
 
 
 def _load_same_module():
-    return _load_module('same_converter_module', SAME_DIR / 'converter.py')
+    return _load_registered_module('same')
 
 
 def make_settings(base_dir: str):
@@ -1084,7 +1092,7 @@ def get_same_module():
 
 
 def get_base64_module():
-    return _load_module('base64_converter_module', BASE64_DIR / 'converter.py')
+    return _load_registered_module('base64')
 
 
 def choose_output_suffix(cover_path: str) -> str:
@@ -3346,7 +3354,7 @@ if QWidget is not None:
                 return
 
 
-    FileSorterTab = _load_file_sorter_tab_module().build_file_sorter_tab_class(
+    _external_tab_classes = build_external_tab_classes(
         {
             'QWidget': QWidget,
             'QVBoxLayout': QVBoxLayout,
@@ -3360,62 +3368,7 @@ if QWidget is not None:
             'QFileDialog': QFileDialog,
             'QApplication': QApplication,
             'QComboBox': QComboBox,
-            'load_setting': load_setting,
-            'save_setting': save_setting,
-            'make_card': make_card,
-            'make_transparent_row': make_transparent_row,
-            'build_global_scrollbar_style': build_global_scrollbar_style,
-            'show_themed_warning': show_themed_warning,
-            'show_themed_error': show_themed_error,
-            'show_themed_success': show_themed_success,
-            'style_combo_popup': style_combo_popup,
-            'get_file_sorter_module': get_file_sorter_module,
-            'ROOT': ROOT,
-        }
-    )
-
-    BatchRenameTab = _load_name_tab_module().build_batch_rename_tab_class(
-        {
-            'QWidget': QWidget,
-            'QVBoxLayout': QVBoxLayout,
-            'QHBoxLayout': QHBoxLayout,
-            'QScrollArea': QScrollArea,
-            'QLineEdit': QLineEdit,
-            'QPushButton': QPushButton,
-            'QLabel': QLabel,
-            'QPlainTextEdit': QPlainTextEdit,
-            'QFileDialog': QFileDialog,
-            'QApplication': QApplication,
-            'QComboBox': QComboBox,
-            'load_setting': load_setting,
-            'save_setting': save_setting,
-            'make_card': make_card,
-            'make_transparent_row': make_transparent_row,
-            'build_global_scrollbar_style': build_global_scrollbar_style,
-            'show_themed_warning': show_themed_warning,
-            'show_themed_error': show_themed_error,
-            'show_themed_success': show_themed_success,
-            'style_combo_popup': style_combo_popup,
-            'get_name_module': get_name_module,
-            'ROOT': ROOT,
-        }
-    )
-
-    VideoDownloaderTab = _load_video_downloader_tab_module().build_video_downloader_tab_class(
-        {
-            'QWidget': QWidget,
-            'QVBoxLayout': QVBoxLayout,
-            'QHBoxLayout': QHBoxLayout,
-            'QScrollArea': QScrollArea,
-            'QLineEdit': QLineEdit,
-            'QPushButton': QPushButton,
-            'QLabel': QLabel,
-            'QCheckBox': QCheckBox,
-            'QComboBox': QComboBox,
-            'QPlainTextEdit': QPlainTextEdit,
             'QProgressBar': QProgressBar,
-            'QFileDialog': QFileDialog,
-            'QApplication': QApplication,
             'QObject': QObject,
             'QThread': QThread,
             'Signal': Signal,
@@ -3428,11 +3381,19 @@ if QWidget is not None:
             'show_themed_error': show_themed_error,
             'show_themed_success': show_themed_success,
             'style_combo_popup': style_combo_popup,
+            'get_file_sorter_module': get_file_sorter_module,
+            'get_name_module': get_name_module,
             'get_video_downloader_module': get_video_downloader_module,
+            '_load_file_sorter_tab_module': _load_file_sorter_tab_module,
+            '_load_name_tab_module': _load_name_tab_module,
+            '_load_video_downloader_tab_module': _load_video_downloader_tab_module,
             'ROOT': ROOT,
             'VIDEO_DOWNLOADER_DIR': VIDEO_DOWNLOADER_DIR,
         }
     )
+    FileSorterTab = _external_tab_classes['FileSorterTab']
+    BatchRenameTab = _external_tab_classes['BatchRenameTab']
+    VideoDownloaderTab = _external_tab_classes['VideoDownloaderTab']
 
 
     class ToolboxWindow(QMainWindow):
@@ -3473,7 +3434,7 @@ if QWidget is not None:
             side_layout = QVBoxLayout(side_panel)
             side_layout.setContentsMargins(18, 22, 18, 18)
             side_layout.setSpacing(14)
-            brand = QLabel('  格式转换工具')
+            brand = QLabel('  格式转换工具 · Clean local toolbox')
             brand.setProperty('brandTitle', True)
             sub = QLabel('    作者：HhhYl')
             sub.setProperty('brandSub', True)
@@ -3492,13 +3453,13 @@ if QWidget is not None:
             self.sidebar.addItem('图片伪装')
             self.sidebar.addItem('MP4 转 MP3')
             self.sidebar.addItem('图片格式互转')
-            self.sidebar.addItem('PDF 工具')
-            self.sidebar.addItem('Telegram 下载')
+            self.sidebar.addItem('PDF工具')
+            self.sidebar.addItem('TG下载')
             self.sidebar.addItem('网页视频下载')
             self.sidebar.addItem('批量命名')
             self.sidebar.addItem('文件分类')
-            self.sidebar.addItem('清理重复文件')
-            self.sidebar.addItem('图片 Base64 互转')
+            self.sidebar.addItem('重复文件')
+            self.sidebar.addItem('图片Base64')
             self.sidebar.setCurrentRow(0)
             side_layout.addWidget(self.sidebar, 1)
             bottom_row = QHBoxLayout()
@@ -3763,6 +3724,8 @@ if QWidget is not None:
         settings = make_settings(settings_dir)
         ensure_default_admin_user(get_user_store_path(settings_dir))
         window = ToolboxWindow(settings, load_setting(settings, 'auth/last_user', 'admin'))
+        window.show()
+        app.processEvents()
         return window, app
 
 
