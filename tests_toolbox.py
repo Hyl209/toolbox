@@ -164,13 +164,18 @@ def test_ensure_default_admin_user_creates_admin_account_once():
         assert [item['username'] for item in users] == ['admin']
 
 
-def test_register_user_allows_admin_password_123_only_for_admin_exception():
+def test_register_user_rejects_weak_password_for_all_users():
     toolbox = load_module()
     with tempfile.TemporaryDirectory() as tmp:
         store = pathlib.Path(tmp) / 'users.json'
-        created = toolbox.register_user(store, 'admin', '123')
-        assert created['username'] == 'admin'
-        assert toolbox.verify_user_credentials(store, 'admin', '123')
+        # admin 涔熶笉鑳界敤寮卞瘑鐮佷簡
+        try:
+            toolbox.register_user(store, 'admin', '123')
+        except ValueError as exc:
+            assert '涓ユ牸绛変簬 12 浣? in str(exc)
+        else:
+            raise AssertionError('expected password policy error for admin with weak password')
+        # alice 鍚屾牱涓嶈兘
         try:
             toolbox.register_user(store, 'alice', '123')
         except ValueError as exc:

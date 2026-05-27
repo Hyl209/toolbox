@@ -1,11 +1,19 @@
 """Legacy v1 config manager (simple JSON key-value).
 
-Authoritative implementation: ``config.manager.ConfigManager`` (v2) with
-per-user/per-plugin configs, version migration, and backup support.
-This module is kept for backward compatibility with existing callers
-that use the simple ``get``/``set`` API.
+.. deprecated::
+    Use ``config.manager.ConfigManager`` (v2) instead.
+    This module is kept for backward compatibility only.
+
+Authoritative implementation: ``config/manager.py``
 """
 from __future__ import annotations
+
+import warnings as _warnings
+_warnings.warn(
+    "toolbox_app.core.config is deprecated; use config.manager.ConfigManager instead",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 import json
 from pathlib import Path
