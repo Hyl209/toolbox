@@ -1537,6 +1537,14 @@ def _download_url_with_ytdlp(
         'throttledratelimit': 100 * 1024,
         'http_headers': http_headers,
     }
+    ffmpeg = shutil.which('ffmpeg')
+    if ffmpeg:
+        ydl_opts['ffmpeg_location'] = ffmpeg
+        ydl_opts['writethumbnail'] = True
+        ydl_opts['postprocessors'] = [
+            {'key': 'FFmpegThumbnailsConvertor', 'format': 'jpg'},
+            {'key': 'EmbedThumbnail', 'already_have_thumbnail': False},
+        ]
     aria2c = _resolve_aria2c_path()
     if aria2c:
         ydl_opts['external_downloader'] = aria2c
@@ -1560,9 +1568,6 @@ def _download_url_with_ytdlp(
                 f'--header=Referer: {referer_url}',
             ])
         _emit(progress_cb, f'网页加速: 使用 aria2c -> {aria2c}')
-    ffmpeg = shutil.which('ffmpeg')
-    if ffmpeg:
-        ydl_opts['ffmpeg_location'] = ffmpeg
     if options.web_use_browser_cookies:
         ydl_opts['cookiesfrombrowser'] = ('chrome',)
     max_reconnects = 3
@@ -2018,3 +2023,124 @@ def _emit_file_select(progress_cb: ProgressCallback | None, file_label: str, ind
     label = Path(parsed.path).name if parsed.path else str(file_label or '')
     clean_label = sanitize_filename_component(label, fallback='media')
     _emit(progress_cb, f'__HYL_PROGRESS__|file|index={index}|name={clean_label}|total={total}')
+
+
+def embed_thumbnail(
+    video_path: str | Path,
+    source_url: str,
+    progress_cb: ProgressCallback | None = None,
+    candidate_index: int | None = None,
+) -> dict[str, object]:
+    """Download thumbnail via yt-dlp and embed it into an existing mp4.
+
+    If *source_url* is a page with multiple video candidates (same as the
+    download pipeline), pass ``candidate_index`` (1-based) to pick one.
+    """
+    _require_web_backend()
+    from yt_dlp import YoutubeDL
+
+    video_path = Path(video_path)
+    if not video_path.is_file():
+        return {'success': False, 'error': f'文件不存在: {video_path}'}
+    if not source_url.strip():
+        return {'success': False, 'error': '请提供视频源链接'}
+
+    ffmpeg = shutil.which('ffmpeg')
+    if not ffmpeg:
+        return {'success': False, 'error': '未检测到 ffmpeg'}
+
+    thumb_dir = video_path.parent / '.thumb_tmp'
+    thumb_dir.mkdir(exist_ok=True)
+    stem = video_path.stem
+    try:
+        # Step 0: resolve page URL → actual video candidate URL
+        _emit(progress_cb, f'正在解析链接: {source_url}')
+        resolved_url = source_url
+        try:
+            candidates, _source = _collect_web_media_candidates(source_url)
+            if candidates:
+                if candidate_index is not None and 1 <= candidate_index <= len(candidates):
+                    resolved_url = candidates[candidate_index - 1]
+                    _emit(progress_cb, f'候选 {candidate_index}/{len(candidates)}: {resolved_url}')
+                elif len(candidates) == 1:
+                    resolved_url = candidates[0]
+                else:
+                    # Multiple candidates but no index specified – inform user
+                    labels = [f'  [{i+1}] {u}' for i, u in enumerate(candidates[:10])]
+                    return {
+                        'success': False,
+                        'error': f'该页面有 {len(candidates)} 个视频，请指定序号\n' + '\n'.join(labels),
+                        'candidate_count': len(candidates),
+                        'candidates': candidates,
+                    }
+        except Exception:
+            pass  # Fall through with original source_url
+
+        # Step 1: download thumbnail from resolved URL
+        _emit(progress_cb, f'正在抓取封面: {resolved_url}')
+        ydl_opts = {
+            'skip_download': True,
+            'writethumbnail': True,
+            'quiet': True,
+            'no_warnings': True,
+            'outtmpl': str(thumb_dir / f'{stem}.%(ext)s'),
+            'noplaylist': True,
+            'http_headers': _build_web_headers(source_url),
+        }
+        with YoutubeDL(ydl_opts) as ydl:
+            ydl.extract_info(resolved_url, download=True)
+
+        # Find downloaded thumbnail – match loosely since yt-dlp may sanitize stem
+        image_exts = {'.jpg', '.jpeg', '.png', '.webp'}
+        thumb_file = None
+        for f in thumb_dir.iterdir():
+            if f.suffix.lower() in image_exts:
+                thumb_file = f
+                break
+        if not thumb_file:
+            actual = [f.name for f in thumb_dir.iterdir()]
+            return {'success': False, 'error': f'未找到封面文件，目录内容: {actual}'}
+
+        # Convert to jpg if needed
+        if thumb_file.suffix.lower() != '.jpg':
+            jpg_thumb = thumb_dir / f'{stem}.jpg'
+            subprocess.run(
+                [ffmpeg, '-y', '-i', str(thumb_file), str(jpg_thumb)],
+                capture_output=True, check=True,
+            )
+            thumb_file.unlink(missing_ok=True)
+            thumb_file = jpg_thumb
+
+        _emit(progress_cb, f'封面已下载，正在嵌入: {video_path.name}')
+
+        # Step 2: embed thumbnail into mp4
+        tmp_out = video_path.parent / f'{stem}_cover_tmp.mp4'
+        subprocess.run(
+            [
+                ffmpeg, '-y',
+                '-i', str(video_path),
+                '-i', str(thumb_file),
+                '-map', '0', '-map', '1',
+                '-c', 'copy',
+                '-disposition:v:1', 'attached_pic',
+                str(tmp_out),
+            ],
+            capture_output=True, check=True,
+        )
+        # Replace original
+        video_path.unlink()
+        tmp_out.rename(video_path)
+
+        _emit(progress_cb, f'封面嵌入成功: {video_path.name}')
+        return {'success': True, 'files': [str(video_path)]}
+
+    except subprocess.CalledProcessError as exc:
+        stderr = exc.stderr.decode(errors='replace') if exc.stderr else ''
+        return {'success': False, 'error': f'ffmpeg 错误: {stderr[:200]}'}
+    except Exception as exc:
+        return {'success': False, 'error': str(exc)}
+    finally:
+        # Cleanup temp thumbnail dir
+        for f in thumb_dir.iterdir():
+            f.unlink(missing_ok=True)
+        thumb_dir.rmdir()

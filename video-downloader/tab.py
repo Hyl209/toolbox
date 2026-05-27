@@ -486,6 +486,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             self.web_scan_results: dict[str, dict[str, object]] = {}
             self.phone_code_hash = load_setting(self.settings, self._shared_setting_key('phone_code_hash'))
             self.current_theme = load_setting(self.settings, 'ui/theme', 'dark')
+            self._last_cover_dir = load_setting(self.settings, self._mode_setting_key('cover_dir'), '')
             self.current_task_index = -1
             self.total_tasks = 0
             self.completed_tasks = 0
@@ -649,6 +650,10 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                 self.scan_button = QPushButton('扫描候选')
                 self.scan_button.clicked.connect(self.scan_web_candidates)
                 action_row.addWidget(self.scan_button)
+            self.cover_button = QPushButton('补封面')
+            self.cover_button.setToolTip('给已下载的视频嵌入封面（需提供源链接）')
+            self.cover_button.clicked.connect(self.embed_thumbnail_clicked)
+            action_row.addWidget(self.cover_button)
             action_row.addStretch(1)
             self.run_button = QPushButton(RUN_BUTTON_TEXT)
             self.run_button.clicked.connect(self.run_download)
@@ -872,6 +877,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                 self.concurrent_combo,
                 self.choose_button,
                 self.scan_button,
+                self.cover_button,
                 self.send_code_button,
                 self.login_button,
                 self.check_status_button,
@@ -1263,6 +1269,52 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             except Exception as exc:
                 self.append_log(f'错误：{exc}')
                 show_themed_error(self, '状态检查失败', str(exc))
+
+        def embed_thumbnail_clicked(self):
+            """Open file dialog to select videos, then embed thumbnail using URL from task area."""
+            module = self.module
+            # Get source URL from task edit
+            urls = module.parse_task_lines(self.task_edit.toPlainText())
+            if not urls:
+                show_themed_warning(self, '提示', '请先在任务区输入视频源链接')
+                return
+            source_url = urls[0]
+            # Ask for candidate index if user typed one in web_candidate_index_edit
+            raw_idx = self._widget_text(self.web_candidate_index_edit) if self.web_candidate_index_edit else ''
+            candidate_index = None
+            if raw_idx.strip():
+                try:
+                    candidate_index = int(raw_idx.strip())
+                except ValueError:
+                    pass
+            # Select video files – remember last used directory
+            start_dir = self._last_cover_dir or self._widget_text(self.output_edit) or ''
+            files, _ = QFileDialog.getOpenFileNames(self, '选择要补封面的视频', start_dir, '视频文件 (*.mp4 *.mkv *.webm *.mov)')
+            if not files:
+                return
+            # Save directory for next time
+            self._last_cover_dir = str(Path(files[0]).parent)
+            save_setting(self.settings, self._mode_setting_key('cover_dir'), self._last_cover_dir)
+            self.set_busy(True)
+            self.log.clear()
+            self.append_log(f'补封面: 共 {len(files)} 个文件，源链接: {source_url}')
+            success_count = 0
+            fail_count = 0
+            for i, fpath in enumerate(files, 1):
+                self.progress_label.setText(f'补封面 {i}/{len(files)}: {Path(fpath).name}')
+                self.progress_bar.setValue(int((i - 1) / len(files) * 100))
+                result = module.embed_thumbnail(fpath, source_url, progress_cb=self.append_log, candidate_index=candidate_index)
+                if result.get('success'):
+                    success_count += 1
+                    self.append_log(f'  ✓ {Path(fpath).name}')
+                else:
+                    fail_count += 1
+                    self.append_log(f'  ✗ {Path(fpath).name}: {result.get("error")}')
+            self.progress_bar.setValue(100)
+            self.progress_label.setText(f'补封面完成: 成功 {success_count}, 失败 {fail_count}')
+            self.append_log(f'----\n补封面完成: 成功 {success_count}, 失败 {fail_count}')
+            show_themed_success(self, '完成', [f'成功: {success_count}', f'失败: {fail_count}'])
+            self.set_busy(False)
 
         def run_download(self):
             self.save_form_settings()

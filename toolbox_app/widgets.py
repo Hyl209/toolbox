@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import QUrl
 
+_SOUND_PATH = Path(__file__).resolve().parent.parent / 'sound.mp3'
 
 def make_card(title: str, subtitle: str = ''):
     frame = QFrame()
@@ -216,11 +217,6 @@ class ThemedMessageDialog(QDialog):
 
 
 def show_themed_message(parent, title: str, lines: list[str], button_text: str = '完成'):
-    theme_owner = parent
-    while theme_owner is not None and not hasattr(theme_owner, 'current_theme'):
-        theme_owner = theme_owner.parentWidget() if hasattr(theme_owner, 'parentWidget') else None
-    if theme_owner is not None:
-        theme_owner.setStyleSheet(get_theme_stylesheet(theme_owner.current_theme))
     dialog = ThemedMessageDialog(parent, title, lines, button_text)
     dialog.exec()
 
@@ -234,12 +230,12 @@ _active_audio_players: list = []
 
 
 def show_themed_success(parent, title: str, lines: list[str]):
-    if QMediaPlayer is not None and SOUND_PATH.exists():
+    if QMediaPlayer is not None and _SOUND_PATH.exists():
         try:
             player = QMediaPlayer()
             audio = QAudioOutput()
             player.setAudioOutput(audio)
-            player.setSource(QUrl.fromLocalFile(str(SOUND_PATH.resolve())))
+            player.setSource(QUrl.fromLocalFile(str(_SOUND_PATH.resolve())))
             player.play()
             # Prevent GC while audio is playing
             _active_audio_players.append((player, audio))
