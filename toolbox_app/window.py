@@ -78,7 +78,7 @@ def build_toolbox_window_class(deps: dict):
             side_layout = QVBoxLayout(side_panel)
             side_layout.setContentsMargins(18, 22, 18, 18)
             side_layout.setSpacing(14)
-            brand = QLabel('  格式转换工具 · Clean local toolbox')
+            brand = QLabel('  格式转换工具')
             brand.setProperty('brandTitle', True)
             sub = QLabel('    作者：HhhYl')
             sub.setProperty('brandSub', True)
