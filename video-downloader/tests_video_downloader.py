@@ -812,7 +812,7 @@ def test_download_url_with_ytdlp_uses_aria2_and_stability_options():
         assert download_opts['continuedl'] is True
         assert download_opts['fragment_retries'] == 20
         assert download_opts['retries'] == 20
-        assert download_opts['throttledratelimit'] == 100 * 1024
+        assert download_opts['throttledratelimit'] == 500 * 1024
         assert download_opts['http_headers']['Referer'] == 'https://example.com/post/1'
         assert '--summary-interval=1' in download_opts['external_downloader_args']
         assert '--header=Referer: https://example.com/post/1' in download_opts['external_downloader_args']

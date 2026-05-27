@@ -49,7 +49,7 @@ RELATIVE_MEDIA_RE = re.compile(r"""(?P<url>/[^"'\\\s<>]+?\.(?:mp4|m3u8|webm|mov|
 ARIA2_VERSION = '1.37.0'
 ARIA2_SOURCE_URL = 'https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip'
 _console_capture_lock = Lock()
-_INTER_TASK_DELAY_RANGE = (1.0, 3.0)
+_INTER_TASK_DELAY_RANGE = (0.5, 1.5)
 
 
 # ---------------------------------------------------------------------------
@@ -199,17 +199,19 @@ def _parse_speed_bytes(text: str) -> float:
 
 
 def _speed_to_concurrency(bytes_per_sec: float) -> int:
-    """Map download speed to recommended concurrency (1-5)."""
+    """Map download speed to recommended concurrency (1-8)."""
     if bytes_per_sec <= 0:
-        return 2
-    mbps = bytes_per_sec / (1024 * 1024)
-    if mbps >= 5:
-        return 5
-    if mbps >= 2:
         return 3
+    mbps = bytes_per_sec / (1024 * 1024)
+    if mbps >= 10:
+        return 8
+    if mbps >= 5:
+        return 6
+    if mbps >= 2:
+        return 4
     if mbps >= 0.5:
-        return 2
-    return 1
+        return 3
+    return 2
 
 
 # ---------------------------------------------------------------------------
@@ -781,16 +783,18 @@ def _download_url_with_ytdlp(
         'overwrites': bool(options.overwrite),
         'outtmpl': str(output_root / f'{unique_stem}.%(ext)s'),
         'progress_hooks': [_make_web_progress_hook(progress_cb, _current_token())],
-        'concurrent_fragment_downloads': 12,
+        'concurrent_fragment_downloads': 16,
         'continuedl': True,
         'extractor_retries': 3,
         'file_access_retries': 5,
         'fragment_retries': 20,
         'retries': 20,
-        'socket_timeout': 45,
-        'http_chunk_size': 4 * 1024 * 1024,
-        'throttledratelimit': 100 * 1024,
+        'socket_timeout': 60,
+        'http_chunk_size': 10 * 1024 * 1024,
+        'throttledratelimit': 500 * 1024,
         'http_headers': http_headers,
+        'buffersize': 1024 * 1024,
+        'http_no_compression': False,
     }
     ffmpeg = shutil.which('ffmpeg')
     if ffmpeg:
@@ -804,18 +808,25 @@ def _download_url_with_ytdlp(
     if aria2c:
         ydl_opts['external_downloader'] = aria2c
         ydl_opts['external_downloader_args'] = [
-            '-x', '12',
-            '-s', '12',
-            '-k', '1M',
+            '-x', '16',
+            '-s', '16',
+            '-k', '2M',
             '--continue=true',
-            '--max-tries=8',
-            '--retry-wait=2',
-            '--timeout=30',
-            '--connect-timeout=15',
-            '--lowest-speed-limit=50K',
-            '--file-allocation=none',
+            '--max-tries=10',
+            '--retry-wait=3',
+            '--timeout=60',
+            '--connect-timeout=30',
+            '--lowest-speed-limit=100K',
+            '--file-allocation=falloc',
             '--summary-interval=1',
             '--console-log-level=notice',
+            '--enable-http-pipelining=true',
+            '--async-dns=true',
+            '--max-connection-per-server=16',
+            '--min-split-size=1M',
+            '--disk-cache=64M',
+            '--auto-file-renaming=false',
+            '--allow-overwrite=true',
         ]
         if referer_url:
             ydl_opts['external_downloader_args'].extend([
