@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any, Optional
 from .app import AppConfig
@@ -9,9 +10,22 @@ from ..toolbox_app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
+# 版本迁移注册表: {(from_ver, to_ver): migration_callable}
+_MIGRATIONS: dict[tuple[str, str], Any] = {}
+
+
+def register_migration(from_version: str, to_version: str):
+    """装饰器，注册一个配置迁移函数"""
+    def decorator(func):
+        _MIGRATIONS[(from_version, to_version)] = func
+        return func
+    return decorator
+
 
 class ConfigManager:
     """配置管理器"""
+
+    config_version: str = "2.0.0"
 
     def __init__(self, config_dir: str | Path = "config"):
         self.config_dir = Path(config_dir)
@@ -20,6 +34,8 @@ class ConfigManager:
         self._app_config = AppConfig(self.config_dir)
         self._user_configs: dict[str, UserConfig] = {}
         self._plugin_configs: dict[str, PluginConfig] = {}
+
+        self._check_version()
 
     @property
     def app_config(self) -> AppConfig:
@@ -43,6 +59,74 @@ class ConfigManager:
         # 这里需要从某个地方获取当前用户名
         # 暂时返回 None
         return None
+
+    # ------------------------------------------------------------------
+    # 版本控制 & 迁移
+    # ------------------------------------------------------------------
+
+    def _check_version(self):
+        """启动时检查配置版本，若有可用迁移则自动执行"""
+        stored_version = self._app_config.get('app', 'config_version', '1.0.0')
+        if stored_version == self.config_version:
+            return
+
+        logger.info(
+            f"配置版本不匹配: 存储={stored_version}, 当前={self.config_version}，开始迁移"
+        )
+        try:
+            self.migrate(stored_version, self.config_version)
+        except Exception as e:
+            logger.error(f"配置迁移失败: {e}")
+            # 迁移失败不阻塞启动，仅记录日志
+
+    def migrate(self, old_version: str, new_version: str):
+        """执行配置格式迁移
+
+        按照版本链依次执行所有中间迁移步骤。
+        例: 1.0.0 -> 2.0.0，会查找 1.0.0->1.5.0、1.5.0->2.0.0 等路径。
+
+        如果没有注册任何迁移步骤，则直接更新版本号。
+        """
+        if old_version == new_version:
+            return
+
+        path = self._find_migration_path(old_version, new_version)
+        if not path:
+            logger.info(f"无已注册迁移步骤 {old_version}->{new_version}，直接更新版本号")
+        else:
+            for (fv, tv) in path:
+                func = _MIGRATIONS[(fv, tv)]
+                logger.info(f"执行迁移: {fv} -> {tv}")
+                func(self)
+
+        # 更新存储的版本号
+        self._app_config.set('app', 'config_version', new_version)
+        logger.info(f"配置版本已更新为 {new_version}")
+
+    @staticmethod
+    def _find_migration_path(
+        old_version: str, new_version: str
+    ) -> list[tuple[str, str]]:
+        """BFS 寻找从 old_version 到 new_version 的迁移路径"""
+        from collections import deque
+
+        queue: deque[list[tuple[str, str]]] = deque()
+        queue.append([])
+        visited: set[str] = {old_version}
+
+        while queue:
+            current_path = queue.popleft()
+            current_ver = current_path[-1][1] if current_path else old_version
+
+            if current_ver == new_version:
+                return current_path
+
+            for (fv, tv) in _MIGRATIONS:
+                if fv == current_ver and tv not in visited:
+                    visited.add(tv)
+                    queue.append(current_path + [(fv, tv)])
+
+        return []
 
     def save_all(self):
         """保存所有配置"""

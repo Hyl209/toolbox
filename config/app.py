@@ -15,6 +15,7 @@ class AppConfig:
         'app': {
             'name': 'HylToolbox',
             'version': '2.0.0',
+            'config_version': '2.0.0',
             'language': 'zh_CN',
             'theme': 'dark',
             'auto_save': True,
