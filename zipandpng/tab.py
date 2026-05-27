@@ -60,6 +60,7 @@ def build_zipandpng_tab_class(deps: dict[str, object]):
     QPushButton = deps['QPushButton']
     QLabel = deps['QLabel']
     QPlainTextEdit = deps['QPlainTextEdit']
+    QProgressBar = deps['QProgressBar']
     QFileDialog = deps['QFileDialog']
     Qt = deps['Qt']
     DropZoneCard = deps['DropZoneCard']
