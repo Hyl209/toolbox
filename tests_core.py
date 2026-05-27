@@ -843,6 +843,70 @@ class TestPluginDiscoveryEdgeCases:
             assert result["good"].version == "1.0"
 
 
+# =========================================================================
+# 回归测试
+# =========================================================================
+class TestRegression:
+    """回归测试 — 验证核心功能不退化"""
+
+    def test_logger_singleton(self):
+        """验证 logger 管理器是单例"""
+        from toolbox_app.core.logger import setup_logger, get_logger
+        import toolbox_app.core.logger as _mod
+        import logging
+
+        old = _mod._logger_manager
+        _mod._logger_manager = None
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                mgr1 = setup_logger(tmp)
+                mgr2 = setup_logger(tmp)
+                assert mgr1 is mgr2
+                logger_a = get_logger("singleton_test")
+                logger_b = get_logger("singleton_test")
+                assert logger_a is logger_b
+                # 关闭所有 handler 释放文件锁（Windows 需要）
+                root = logging.getLogger()
+                for h in root.handlers[:]:
+                    h.close()
+                    root.removeHandler(h)
+        finally:
+            _mod._logger_manager = old
+
+    def test_config_persistence(self):
+        """验证配置写入后能读回"""
+        from toolbox_app.core.config import ConfigManager
+        with tempfile.TemporaryDirectory() as tmp:
+            mgr = ConfigManager(tmp)
+            mgr.set("app", "regression_key", "regression_value")
+            # 新实例应能读回
+            mgr2 = ConfigManager(tmp)
+            assert mgr2.get("app", "regression_key") == "regression_value"
+
+    def test_event_system_no_leak(self):
+        """验证事件系统 off/clear 后不泄漏监听器"""
+        from toolbox_app.core.events import EventSystem
+        system = EventSystem()
+        for i in range(100):
+            system.on("leak_test", lambda e: None)
+        assert system.has_listeners("leak_test") is True
+        system.clear()
+        assert system.has_listeners("leak_test") is False
+        assert system._listeners.get("leak_test", []) == []
+
+    def test_task_manager_cleanup(self):
+        """验证任务管理器清理已完成任务"""
+        from toolbox_app.core.task_manager import TaskManager
+        import time
+
+        manager = TaskManager()
+        worker = manager.execute_task("regression_cleanup", lambda: 99)
+        time.sleep(0.2)
+        assert manager.get_worker("regression_cleanup") is not None
+        manager.cleanup_completed()
+        assert manager.get_worker("regression_cleanup") is None
+
+
 # 运行测试
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

@@ -855,3 +855,79 @@ def test_file_sorter_tab_exposes_choose_button_and_idle_state_when_pyside_availa
         window.close()
         app.quit()
 
+
+def test_toolbox_window_sidebar_navigation():
+    """娴嬭瘯渚ц竟鏍忕偣鍑诲垏鎹㈤〉闈?""
+    toolbox = load_module()
+    if toolbox.QWidget is None:
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        window, app = toolbox.build_main_window_for_test(tmp)
+        try:
+            assert window.stack.currentIndex() == 0
+            window.sidebar.setCurrentRow(3)
+            app.processEvents()
+            assert window.stack.currentIndex() == 3
+            window.sidebar.setCurrentRow(7)
+            app.processEvents()
+            assert window.stack.currentIndex() == 7
+            window.sidebar.setCurrentRow(0)
+            app.processEvents()
+            assert window.stack.currentIndex() == 0
+        finally:
+            window.close()
+            app.quit()
+
+
+def test_theme_toggle_switches_dark_light():
+    """娴嬭瘯涓婚鍒囨崲 dark <-> light"""
+    toolbox = load_module()
+    if toolbox.QWidget is None:
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        window, app = toolbox.build_main_window_for_test(tmp)
+        try:
+            initial = window.current_theme
+            window.toggle_theme()
+            app.processEvents()
+            assert window.current_theme == ('light' if initial == 'dark' else 'dark')
+            window.toggle_theme()
+            app.processEvents()
+            assert window.current_theme == initial
+            expected_icon = '鈽€锔? if window.current_theme == 'dark' else '馃寵'
+            assert window.theme_button.text() == expected_icon
+        finally:
+            window.close()
+            app.quit()
+
+
+def test_drop_zone_accepts_files():
+    """娴嬭瘯鎷栨斁鍖哄煙鎺ュ彈鏂囦欢"""
+    toolbox = load_module()
+    if toolbox.QWidget is None:
+        return
+    from unittest.mock import MagicMock
+
+    received = []
+    drop_zone = toolbox.DropZoneCard('鎷栧叆鏂囦欢', lambda paths: received.extend(paths))
+    assert drop_zone.acceptDrops() is True
+    assert drop_zone.property('dropzone') is True
+
+    # 妯℃嫙 dropEvent
+    mock_url_1 = MagicMock()
+    mock_url_1.toLocalFile.return_value = '/tmp/a.png'
+    mock_url_1.isLocalFile.return_value = True
+    mock_url_2 = MagicMock()
+    mock_url_2.toLocalFile.return_value = '/tmp/b.jpg'
+    mock_url_2.isLocalFile.return_value = True
+
+    mock_mime = MagicMock()
+    mock_mime.urls.return_value = [mock_url_1, mock_url_2]
+
+    mock_event = MagicMock()
+    mock_event.mimeData.return_value = mock_mime
+
+    drop_zone.dropEvent(mock_event)
+    assert received == ['/tmp/a.png', '/tmp/b.jpg']
+    mock_event.acceptProposedAction.assert_called_once()
+

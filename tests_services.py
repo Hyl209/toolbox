@@ -266,5 +266,52 @@ class TestPDFService:
             svc.export_text(Path("/nonexistent/input.pdf"), Path("/tmp/out"))
 
 
+# ---------------------------------------------------------------------------
+# OCRService
+# ---------------------------------------------------------------------------
+class TestOCRService:
+    """OCRService mock 测试"""
+
+    def test_initialize_without_tesseract(self):
+        """验证 tesseract 未安装时 initialize 抛出 ServiceError"""
+        from toolbox_app.services.ocr_service import OCRService
+        from toolbox_app.core.exceptions import ServiceError
+
+        svc = OCRService()
+        with patch("toolbox_app.services.ocr_service.OCRService._init_tesseract", side_effect=ServiceError("pytesseract 或 Pillow 未安装", "OCRService")):
+            with pytest.raises(ServiceError, match="OCR 服务初始化失败"):
+                svc.initialize("tesseract")
+
+    def test_recognize_text_file_not_exist(self):
+        """文件不存在时抛出 ServiceError"""
+        from toolbox_app.services.ocr_service import OCRService
+        from toolbox_app.core.exceptions import ServiceError
+
+        svc = OCRService()
+        svc._initialized = True
+        svc._engine = "tesseract"
+
+        with pytest.raises(ServiceError, match="文件不存在"):
+            svc.recognize_text("/nonexistent/image.png")
+
+    @patch("toolbox_app.services.ocr_service.OCRService._init_tesseract")
+    def test_recognize_text_mock(self, mock_init):
+        """mock pytesseract.image_to_string 验证 recognize_text"""
+        from toolbox_app.services.ocr_service import OCRService
+
+        svc = OCRService()
+        svc._initialized = True
+        svc._engine = "tesseract"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            img_path = Path(tmp) / "test.png"
+            img_path.write_bytes(b"fake image data")
+
+            with patch("toolbox_app.services.ocr_service.OCRService._recognize_tesseract", return_value="Hello OCR") as mock_recognize:
+                result = svc.recognize_text(img_path)
+                assert result == "Hello OCR"
+                mock_recognize.assert_called_once()
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
