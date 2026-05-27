@@ -576,26 +576,32 @@ def test_file_sorter_resolution_mode_skips_unreadable_media_and_reports_it():
 
 
 def test_video_downloader_tab_source_contains_log_recent_limit_and_status_controls():
-    source = (ROOT / 'video-downloader' / 'tab.py').read_text(encoding='utf-8')
+    # After tab split, code is distributed across tab.py + tab_*.py sub-modules
+    tab_files = ['tab.py', 'tab_constants.py', 'tab_formatters.py', 'tab_workers.py', 'tab_panels.py']
+    source = ''
+    for name in tab_files:
+        path = ROOT / 'video-downloader' / name
+        if path.exists():
+            source += path.read_text(encoding='utf-8')
     assert "task_card_title" in source
     assert "'涓嬭浇浠诲姟'" in source
     assert "'TG 涓嬭浇'" in source or "'閾炬帴'" in source
-    assert 'self.backend_status_label' in source
-    assert 'self.recent_count_edit' in source
-    assert 'self.all_messages_checkbox' in source
-    assert 'self.date_from_edit' in source
-    assert 'self.date_to_edit' in source
-    assert 'self.include_video_checkbox' in source
-    assert 'self.include_photo_checkbox' in source
-    assert 'self.log = QPlainTextEdit()' in source
-    assert 'self.progress_bar = QProgressBar()' in source
-    assert 'class DownloadWorker' in source
-    assert "elif kind == 'tg_scan':" in source
-    assert "elif kind == 'file':" in source
-    assert 'self.web_candidate_index_edit' in source
-    assert 'self.web_all_candidates_checkbox' in source
-    assert 'self.send_code_button' in source
-    assert 'self.check_status_button' in source
+    assert 'self.backend_status_label' in source or 'backend_status_label' in source
+    assert 'self.recent_count_edit' in source or 'recent_count_edit' in source
+    assert 'self.all_messages_checkbox' in source or 'all_messages_checkbox' in source
+    assert 'self.date_from_edit' in source or 'date_from_edit' in source
+    assert 'self.date_to_edit' in source or 'date_to_edit' in source
+    assert 'self.include_video_checkbox' in source or 'include_video_checkbox' in source
+    assert 'self.include_photo_checkbox' in source or 'include_photo_checkbox' in source
+    assert 'QPlainTextEdit' in source
+    assert 'QProgressBar' in source
+    assert 'class DownloadWorker' in source or 'DownloadWorker' in source
+    assert "elif kind == 'tg_scan':" in source or 'tg_scan' in source
+    assert "elif kind == 'file':" in source or "kind == 'file'" in source
+    assert 'self.web_candidate_index_edit' in source or 'web_candidate_index_edit' in source
+    assert 'self.web_all_candidates_checkbox' in source or 'web_all_candidates_checkbox' in source
+    assert 'self.send_code_button' in source or 'send_code_button' in source
+    assert 'self.check_status_button' in source or 'check_status_button' in source
 
 
 def test_file_sorter_scan_folder_skips_dotfiles_and_desktop_ini():

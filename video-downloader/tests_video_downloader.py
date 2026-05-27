@@ -21,7 +21,7 @@ def _ensure_package():
     pkg.__package__ = _PKG_NAME
     sys.modules[_PKG_NAME] = pkg
     # Load sub-modules in dependency order
-    sub_modules = ['_shared', 'models', 'source_parser', 'progress', 'telegram_backend', 'web_backend']
+    sub_modules = ['_shared', 'models', 'source_parser', 'progress', 'telegram_backend', 'web_backend', 'tab_constants', 'tab_formatters', 'tab_workers', 'tab_panels']
     for name in sub_modules:
         fpath = ROOT / f'{name}.py'
         if fpath.exists():

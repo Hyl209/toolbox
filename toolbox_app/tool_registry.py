@@ -70,18 +70,38 @@ def get_dynamic_module_specs(root) -> dict[tuple[str, str]]:
 
 
 def get_packaging_datas() -> list[tuple[str, str]]:
-    """Build PyInstaller datas list from TOOL_DEFINITIONS."""
+    """Build PyInstaller datas list from TOOL_DEFINITIONS.
+
+    Returns list of (source_path, dest_dir) tuples with forward slashes.
+    Includes sub-modules for packages that have been split (video-downloader, same).
+    """
+    # Sub-modules that must be included alongside converter.py
+    _EXTRA_SUB_MODULES: dict[str, list[str]] = {
+        'video-downloader': [
+            'models.py', '_shared.py', 'source_parser.py',
+            'progress.py', 'telegram_backend.py', 'web_backend.py',
+            'tab_constants.py', 'tab_formatters.py', 'tab_workers.py', 'tab_panels.py',
+            '__init__.py',
+        ],
+        'same': ['_common.py', 'exact_duplicate.py', 'video_signature.py', 'move_plan.py', '__init__.py'],
+    }
+
     datas = []
-    seen = set()
+    seen: set[str] = set()
+
+    def _add(path: str, dest: str) -> None:
+        if path not in seen:
+            datas.append((path, dest))
+            seen.add(path)
+
     for t in TOOL_DEFINITIONS:
-        dir_name = t.dir_name
-        conv = f'{dir_name}/{t.converter_file}'
-        tab = f'{dir_name}/{t.tab_file}'
-        datas.append((conv.replace('/', '\\'), dir_name))
-        datas.append((tab.replace('/', '\\'), dir_name))
+        d = t.dir_name
+        _add(f'{d}/{t.converter_file}', d)
+        _add(f'{d}/{t.tab_file}', d)
         for extra in t.extra_files:
-            path = f'{dir_name}/{extra}'
-            if path not in seen:
-                datas.append((path.replace('/', '\\'), dir_name))
-                seen.add(path)
+            _add(f'{d}/{extra}', d)
+        # Include sub-modules for split packages
+        for sub in _EXTRA_SUB_MODULES.get(d, []):
+            _add(f'{d}/{sub}', d)
+
     return datas
