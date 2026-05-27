@@ -4,18 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 import uuid
 
+from toolbox_app.utils import CATEGORY_EXTENSIONS, CATEGORY_ORDER, is_hidden_or_system_file
 
-CATEGORY_EXTENSIONS: dict[str, set[str]] = {
-    '图片': {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.heic', '.tif', '.tiff', '.svg', '.ico'},
-    '视频': {'.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v'},
-    '音频': {'.mp3', '.wav', '.flac', '.aac', '.m4a', '.ogg', '.wma', '.ncm'},
-    '文档': {'.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.md', '.csv'},
-    '压缩包': {'.zip', '.rar', '.7z', '.tar', '.gz', '.bz2'},
-    '程序': {'.exe', '.msi', '.bat', '.cmd', '.ps1', '.py'},
-    '其他': set(),
-}
-
-CATEGORY_ORDER = ('图片', '视频', '音频', '文档', '压缩包', '程序', '其他')
 GROUP_MODE_SUFFIX = 'suffix'
 GROUP_MODE_TYPE = 'type'
 GROUP_MODE_ALL = 'all'
@@ -24,9 +14,6 @@ SORT_MODE_MTIME = 'mtime'
 SORT_MODE_SIZE = 'size'
 ORDER_ASC = 'asc'
 ORDER_DESC = 'desc'
-WINDOWS_HIDDEN_ATTRIBUTE = 0x2
-WINDOWS_SYSTEM_ATTRIBUTE = 0x4
-DEFAULT_SKIPPED_NAMES = {'desktop.ini', 'thumbs.db'}
 
 
 @dataclass(frozen=True)
@@ -35,17 +22,6 @@ class RenamePlanItem:
     group_key: str
     order_value: object
     target_name: str
-
-
-def is_hidden_or_system_file(path: str | Path) -> bool:
-    candidate = Path(path)
-    if candidate.name.startswith('.') or candidate.name.lower() in DEFAULT_SKIPPED_NAMES:
-        return True
-    try:
-        attributes = candidate.stat(follow_symlinks=False).st_file_attributes
-    except (AttributeError, OSError):
-        return False
-    return bool(attributes & (WINDOWS_HIDDEN_ATTRIBUTE | WINDOWS_SYSTEM_ATTRIBUTE))
 
 
 def is_renameable_file(path: str | Path) -> bool:

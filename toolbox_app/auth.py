@@ -6,15 +6,7 @@ import json
 import os
 from pathlib import Path
 
-
-def save_setting(settings, key: str, value: str) -> None:
-    settings.setValue(key, value)
-    settings.sync()
-
-
-def load_setting(settings, key: str, default: str = '') -> str:
-    value = settings.value(key, default)
-    return '' if value is None else str(value)
+from toolbox_app.utils import load_setting, save_setting
 
 
 ALLOWED_PASSWORD_SYMBOLS = '!@#$%^&*()_+-='

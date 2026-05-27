@@ -69,16 +69,7 @@ def build_same_tab_class(deps: dict[str, object]):
         build_global_scrollbar_style, ROOT, settings_prefix='same')
 
 
-    class _FallbackSignal:
-        def __init__(self):
-            self._callbacks: list[object] = []
-
-        def connect(self, callback):
-            self._callbacks.append(callback)
-
-        def emit(self, *args):
-            for callback in list(self._callbacks):
-                callback(*args)
+    from toolbox_app.utils import _FallbackSignal
 
     if QObject is not None and Signal is not None:
         class SameDetectionWorker(QObject):

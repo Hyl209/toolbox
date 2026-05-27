@@ -8,18 +8,14 @@ from typing import Iterable
 
 from PIL import Image
 
+from toolbox_app.utils import (
+    CATEGORY_EXTENSIONS,
+    CATEGORY_ORDER,
+    _build_cache_key,
+    is_hidden_or_system_file,
+    resolve_name_conflict,
+)
 
-CATEGORY_EXTENSIONS: dict[str, set[str]] = {
-    '图片': {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.heic', '.tif', '.tiff', '.svg', '.ico'},
-    '视频': {'.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v'},
-    '音频': {'.mp3', '.wav', '.flac', '.aac', '.m4a', '.ogg', '.wma', '.ncm'},
-    '文档': {'.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.md', '.csv'},
-    '压缩包': {'.zip', '.rar', '.7z', '.tar', '.gz', '.bz2'},
-    '程序': {'.exe', '.msi', '.bat', '.cmd', '.ps1', '.py'},
-    '其他': set(),
-}
-
-CATEGORY_ORDER = ('图片', '视频', '音频', '文档', '压缩包', '程序', '其他')
 RESOLUTION_CATEGORY_ORDER = ('图片', '视频')
 OTHER_CATEGORY = CATEGORY_ORDER[-1]
 IMAGE_CATEGORY = CATEGORY_ORDER[0]
@@ -29,10 +25,7 @@ MODE_RESOLUTION = 'resolution'
 MODE_ORDER = (MODE_CATEGORY, MODE_RESOLUTION)
 FFPROBE_PATH = shutil.which('ffprobe')
 MEDIA_COMMAND_TIMEOUT_SECONDS = 20
-WINDOWS_HIDDEN_ATTRIBUTE = 0x2
-WINDOWS_SYSTEM_ATTRIBUTE = 0x4
 MAX_RENAME_ATTEMPTS = 1000
-DEFAULT_SKIPPED_NAMES = {'desktop.ini', 'thumbs.db'}
 RESOLUTION_BUCKET_RULES: tuple[tuple[int, str], ...] = (
     (854, '480p及以下'),
     (1280, '720p'),
@@ -67,25 +60,8 @@ def _normalize_files(files: Iterable[str | Path]) -> list[Path]:
     return [Path(file).resolve() for file in files]
 
 
-def _build_cache_key(path: str | Path) -> tuple[str, int, int]:
-    resolved = Path(path).resolve()
-    stat = resolved.stat()
-    return str(resolved).lower(), stat.st_size, stat.st_mtime_ns
-
-
 def normalize_mode(mode: str | None) -> str:
     return MODE_RESOLUTION if mode == MODE_RESOLUTION else MODE_CATEGORY
-
-
-def is_hidden_or_system_file(path: str | Path) -> bool:
-    candidate = Path(path)
-    if candidate.name.startswith('.') or candidate.name.lower() in DEFAULT_SKIPPED_NAMES:
-        return True
-    try:
-        attributes = candidate.stat(follow_symlinks=False).st_file_attributes
-    except (AttributeError, OSError):
-        return False
-    return bool(attributes & (WINDOWS_HIDDEN_ATTRIBUTE | WINDOWS_SYSTEM_ATTRIBUTE))
 
 
 def is_sortable_file(path: str | Path) -> bool:
@@ -266,17 +242,6 @@ def summarize_folder(
         'resolution_bucket_counts': resolution_bucket_counts,
         'files': files,
     }
-
-
-def resolve_name_conflict(path: str | Path, max_attempts: int = MAX_RENAME_ATTEMPTS) -> Path:
-    candidate = Path(path)
-    if not candidate.exists():
-        return candidate
-    for index in range(1, max_attempts + 1):
-        renamed = candidate.with_name(f'{candidate.stem}({index}){candidate.suffix}')
-        if not renamed.exists():
-            return renamed
-    raise RuntimeError(f'重名文件过多，超过最大尝试次数: {max_attempts}')
 
 
 def _build_result(

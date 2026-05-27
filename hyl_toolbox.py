@@ -272,14 +272,7 @@ def make_settings(base_dir: str):
     return IniSettings(str(settings_path))
 
 
-def save_setting(settings, key: str, value: str) -> None:
-    settings.setValue(key, value)
-    settings.sync()
-
-
-def load_setting(settings, key: str, default: str = '') -> str:
-    value = settings.value(key, default)
-    return '' if value is None else str(value)
+from toolbox_app.utils import save_setting, load_setting
 
 
 def get_user_store_path(base_dir: str | Path) -> Path:

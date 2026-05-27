@@ -8,6 +8,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from toolbox_app.utils import _build_cache_key, resolve_name_conflict
+
 
 DEFAULT_TARGET_DIR_NAME = '重复文件'
 HASH_CHUNK_SIZE = 1024 * 1024
@@ -93,12 +95,6 @@ def scan_files(root: str | Path, recursive: bool, target_dir_name: str = DEFAULT
     folder = _ensure_root(root)
     normalized_target_dir_name = _normalize_target_dir_name(target_dir_name)
     return _scan_files_from_root(folder, recursive, normalized_target_dir_name)
-
-
-def _build_cache_key(path: str | Path) -> tuple[str, int, int]:
-    resolved = Path(path).resolve()
-    stat = resolved.stat()
-    return str(resolved).lower(), stat.st_size, stat.st_mtime_ns
 
 
 def hash_file(path: str | Path) -> str:
@@ -485,17 +481,6 @@ def find_duplicate_groups(root: str | Path, recursive: bool, target_dir_name: st
         'groups': duplicate_groups,
     }
 
-
-def resolve_name_conflict(path: str | Path) -> Path:
-    candidate = Path(path)
-    if not candidate.exists():
-        return candidate
-    index = 1
-    while True:
-        renamed = candidate.with_name(f'{candidate.stem}({index}){candidate.suffix}')
-        if not renamed.exists():
-            return renamed
-        index += 1
 
 
 def _build_target_path(root: Path, source_path: Path, target_dir_name: str) -> Path:
