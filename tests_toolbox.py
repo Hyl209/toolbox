@@ -722,7 +722,8 @@ def test_build_main_window_sidebar_includes_image_convert_pdf_split_video_downlo
         assert window.min_button.width() == 24
         assert window.min_button.height() == 24
         assert window.sidebar.width() == 196
-        assert 'Clean local toolbox' in window.findChildren(toolbox.QLabel)[1].text()
+        labels = window.findChildren(toolbox.QLabel)
+        assert any('浣滆€咃細HhhYl' in label.text() for label in labels)
         stylesheet = toolbox.get_theme_stylesheet(window.current_theme)
         assert 'background-color: #1b1f25;' in toolbox.DARK_STYLESHEET
         assert 'background-color: #e5e9ef;' in toolbox.LIGHT_STYLESHEET
