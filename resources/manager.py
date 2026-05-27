@@ -3,8 +3,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 from typing import Optional
-from ..toolbox_app.core.logger import get_logger
-from ..toolbox_app.core.exceptions import ResourceError
+from toolbox_app.core.logger import get_logger
+from toolbox_app.core.exceptions import ResourceError
 
 logger = get_logger(__name__)
 

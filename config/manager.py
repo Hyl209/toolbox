@@ -6,7 +6,7 @@ from typing import Any, Optional
 from .app import AppConfig
 from .user import UserConfig
 from .plugin import PluginConfig
-from ..toolbox_app.core.logger import get_logger
+from toolbox_app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
