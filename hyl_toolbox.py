@@ -1,8 +1,6 @@
 import json
 import os
 import sys
-import hashlib
-import hmac
 import base64
 import binascii
 from configparser import ConfigParser

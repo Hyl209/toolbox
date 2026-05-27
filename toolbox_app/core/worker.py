@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import traceback
 from typing import Any, Callable, Optional
 from .logger import get_logger
 from .exceptions import TaskError

@@ -5,7 +5,6 @@ import requests
 from pathlib import Path
 from typing import Optional, Callable
 from .logger import get_logger
-from .exceptions import ToolboxError
 
 logger = get_logger(__name__)
 

@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable
 
-from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, QEventLoop, QTimer, QPoint, QSize, QFileInfo
-from PySide6.QtGui import QIcon, QPixmap, QPainter, QPen, QColor
+from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, QPoint, QSize, QFileInfo
+from PySide6.QtGui import QIcon, QPixmap, QPainter, QPen
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PySide6.QtWidgets import (
     QApplication,
