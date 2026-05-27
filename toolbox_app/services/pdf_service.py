@@ -1,171 +1,76 @@
+"""PDF 工具服务 — 包装 pdf-tools/converter.py"""
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 from ..core.logger import get_logger
 from ..core.exceptions import ServiceError
-from ..core.file_utils import file_utils
 
 logger = get_logger(__name__)
 
 
 class PDFService:
-    """PDF 服务"""
+    """PDF 处理服务"""
 
     def __init__(self):
-        self._initialized = False
+        self._converter = None
 
-    def initialize(self):
-        """初始化服务"""
-        if self._initialized:
-            return
+    def _get_converter(self):
+        if self._converter is None:
+            from ..loaders import load_module_once
+            converter_path = Path(__file__).resolve().parent.parent.parent / 'pdf-tools' / 'converter.py'
+            self._converter = load_module_once('pdf_tools_converter_module', converter_path)
+        return self._converter
 
+    def validate_action(self, action: str, files: list[Path], page_ranges: str) -> list[str]:
+        """验证 PDF 操作参数"""
+        conv = self._get_converter()
+        return conv.validate_pdf_action(action, files, page_ranges)
+
+    def merge(self, inputs: list[Path], output_path: Path) -> Path:
+        """合并多个 PDF"""
         try:
-            import PyPDF2
-            self._initialized = True
-            logger.info("PDF 服务初始化成功")
-        except ImportError:
-            raise ServiceError("PyPDF2 未安装", "PDFService")
-
-    def merge_pdfs(self, input_paths: list[str | Path], output_path: str | Path) -> bool:
-        """合并 PDF 文件"""
-        self.initialize()
-
-        try:
-            from PyPDF2 import PdfMerger
-            merger = PdfMerger()
-
-            for path in input_paths:
-                if not Path(path).exists():
-                    raise ServiceError(f"文件不存在: {path}", "PDFService")
-                merger.append(str(path))
-
-            output_path = Path(output_path)
-            file_utils.ensure_dir(output_path.parent)
-            merger.write(str(output_path))
-            merger.close()
-
-            logger.info(f"PDF 合并完成: {output_path}")
-            return True
-
+            conv = self._get_converter()
+            return conv.merge_pdfs(inputs, output_path)
         except Exception as e:
-            logger.error(f"PDF 合并失败: {e}")
-            raise ServiceError(f"PDF 合并失败: {e}", "PDFService")
+            raise ServiceError(f'PDF 合并失败: {e}', 'PDFService')
 
-    def split_pdf(self, input_path: str | Path, output_dir: str | Path,
-                  pages: list[int] = None) -> list[Path]:
-        """拆分 PDF 文件"""
-        self.initialize()
-
+    def split(self, input_path: Path, output_dir: Path, page_indexes: list[int]) -> list[Path]:
+        """拆分 PDF"""
         try:
-            from PyPDF2 import PdfReader, PdfWriter
-            input_path = Path(input_path)
-            output_dir = Path(output_dir)
-
-            if not input_path.exists():
-                raise ServiceError(f"文件不存在: {input_path}", "PDFService")
-
-            file_utils.ensure_dir(output_dir)
-            reader = PdfReader(str(input_path))
-            output_files = []
-
-            if pages is None:
-                pages = list(range(len(reader.pages)))
-
-            for page_num in pages:
-                if page_num < 0 or page_num >= len(reader.pages):
-                    continue
-
-                writer = PdfWriter()
-                writer.add_page(reader.pages[page_num])
-
-                output_file = output_dir / f"{input_path.stem}_page{page_num + 1}.pdf"
-                with open(output_file, 'wb') as f:
-                    writer.write(f)
-
-                output_files.append(output_file)
-
-            logger.info(f"PDF 拆分完成: {len(output_files)} 页")
-            return output_files
-
+            conv = self._get_converter()
+            return conv.split_pdf(input_path, output_dir, page_indexes)
         except Exception as e:
-            logger.error(f"PDF 拆分失败: {e}")
-            raise ServiceError(f"PDF 拆分失败: {e}", "PDFService")
+            raise ServiceError(f'PDF 拆分失败: {e}', 'PDFService')
 
-    def extract_text(self, input_path: str | Path, pages: list[int] = None) -> str:
+    def to_images(self, input_path: Path, output_dir: Path,
+                  image_format: str = 'png', dpi: int = 150) -> list[Path]:
+        """PDF 转图片"""
+        try:
+            conv = self._get_converter()
+            return conv.pdf_to_images(input_path, output_dir, image_format, dpi)
+        except Exception as e:
+            raise ServiceError(f'PDF 转图片失败: {e}', 'PDFService')
+
+    def extract_text(self, input_path: Path, ocr_fallback: bool = False,
+                     dpi: int = 150) -> str:
         """提取 PDF 文本"""
-        self.initialize()
-
         try:
-            from PyPDF2 import PdfReader
-            input_path = Path(input_path)
-
-            if not input_path.exists():
-                raise ServiceError(f"文件不存在: {input_path}", "PDFService")
-
-            reader = PdfReader(str(input_path))
-            text_parts = []
-
-            if pages is None:
-                pages = list(range(len(reader.pages)))
-
-            for page_num in pages:
-                if page_num < 0 or page_num >= len(reader.pages):
-                    continue
-                text_parts.append(reader.pages[page_num].extract_text())
-
-            return '\n'.join(text_parts)
-
+            conv = self._get_converter()
+            return conv.extract_text_from_pdf(input_path, ocr_fallback, dpi)
         except Exception as e:
-            logger.error(f"PDF 文本提取失败: {e}")
-            raise ServiceError(f"PDF 文本提取失败: {e}", "PDFService")
+            raise ServiceError(f'文本提取失败: {e}', 'PDFService')
 
-    def add_password(self, input_path: str | Path, output_path: str | Path,
-                     password: str) -> bool:
-        """添加密码保护"""
-        self.initialize()
-
+    def export_text(self, input_path: Path, output_dir: Path,
+                    export_format: str = 'txt', ocr_fallback: bool = False,
+                    dpi: int = 150) -> Path:
+        """导出 PDF 文本到文件"""
         try:
-            from PyPDF2 import PdfReader, PdfWriter
-            input_path = Path(input_path)
-            output_path = Path(output_path)
-
-            if not input_path.exists():
-                raise ServiceError(f"文件不存在: {input_path}", "PDFService")
-
-            reader = PdfReader(str(input_path))
-            writer = PdfWriter()
-
-            for page in reader.pages:
-                writer.add_page(page)
-
-            writer.encrypt(password)
-
-            file_utils.ensure_dir(output_path.parent)
-            with open(output_path, 'wb') as f:
-                writer.write(f)
-
-            logger.info(f"PDF 密码添加完成: {output_path}")
-            return True
-
+            conv = self._get_converter()
+            return conv.export_pdf_text(input_path, output_dir, export_format, ocr_fallback, dpi)
         except Exception as e:
-            logger.error(f"PDF 密码添加失败: {e}")
-            raise ServiceError(f"PDF 密码添加失败: {e}", "PDFService")
+            raise ServiceError(f'文本导出失败: {e}', 'PDFService')
 
-    def get_page_count(self, input_path: str | Path) -> int:
-        """获取 PDF 页数"""
-        self.initialize()
-
-        try:
-            from PyPDF2 import PdfReader
-            input_path = Path(input_path)
-
-            if not input_path.exists():
-                raise ServiceError(f"文件不存在: {input_path}", "PDFService")
-
-            reader = PdfReader(str(input_path))
-            return len(reader.pages)
-
-        except Exception as e:
-            logger.error(f"获取 PDF 页数失败: {e}")
-            raise ServiceError(f"获取 PDF 页数失败: {e}", "PDFService")
+    def parse_page_ranges(self, raw: str, total_pages: int) -> list[int]:
+        """解析页码范围"""
+        conv = self._get_converter()
+        return conv.parse_page_ranges(raw, total_pages)

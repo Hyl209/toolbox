@@ -2,13 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-_MP4_DIR = Path(__file__).resolve().parent
-
-
-def _load_mp4_converter():
-    from toolbox_app.loaders import load_module_once
-    return load_module_once('mp4_converter_module', _MP4_DIR / 'converter.py')
-
 
 _MP4_SUFFIXES = {'.mp4'}
 
@@ -100,12 +93,13 @@ def build_mp4_tab_class(deps: dict):
             self.log.appendPlainText(f'已保存输出目录: {output_dir}')
             self.progress.setMaximum(max(1, len(self.files)))
             self.progress.setValue(0)
-            mp4_module = _load_mp4_converter()
+            from toolbox_app.services.mp4_service import MP4Service
+            service = MP4Service()
 
             def do_convert():
                 success_count = 0
                 for idx, src in enumerate(self.files, start=1):
-                    out = mp4_module.convert_mp4_to_mp3(src, Path(output_dir) / f'{src.stem}.mp3')
+                    out = service.convert(src, Path(output_dir) / f'{src.stem}.mp3')
                     self.log.appendPlainText(f'OK {src} -> {out}')
                     success_count += 1
                     self.progress.setValue(idx)

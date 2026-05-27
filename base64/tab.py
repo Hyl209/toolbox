@@ -5,11 +5,11 @@ from pathlib import Path
 from toolbox_app.tab_utils import collect_inputs_by_suffix, format_drop_summary
 
 
+_BASE64_SUFFIXES = {'.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'}
+
+
 def collect_base64_image_inputs(paths: list[str]) -> list[Path]:
-    from toolbox_app.loaders import load_module_once
-    _dir = Path(__file__).resolve().parent
-    base64_module = load_module_once('base64_converter_module', _dir / 'converter.py')
-    return collect_inputs_by_suffix(paths, base64_module.SUPPORTED_IMAGE_SUFFIXES, recursive=False)
+    return collect_inputs_by_suffix(paths, _BASE64_SUFFIXES, recursive=False)
 
 
 def format_base64_drop_summary(files: list[Path]) -> str:
@@ -66,7 +66,6 @@ def build_base64_tab_class(deps: dict[str, object]):
     show_themed_warning = deps['show_themed_warning']
     show_themed_error = deps['show_themed_error']
     show_themed_success = deps['show_themed_success']
-    get_base64_module = deps['get_base64_module']
     ROOT = deps['ROOT']
     from toolbox_app.widgets import build_base_tool_tab_class
     BaseToolTab = build_base_tool_tab_class(
@@ -181,20 +180,19 @@ def build_base64_tab_class(deps: dict[str, object]):
             if errors:
                 show_themed_warning(self, '提示', '\n'.join(errors))
                 return
-            base64_module = get_base64_module()
             save_setting(self.settings, 'base64/output_dir', output_dir)
+            from toolbox_app.services.base64_service import Base64Service
+            service = Base64Service()
 
             def do_action():
                 if mode == 'encode':
                     image_path = self.files[0]
-                    encoded = base64_module.encode_image_to_base64(image_path)
-                    if self.data_url_checkbox.isChecked():
-                        encoded = base64_module.build_data_url(encoded, image_path.suffix)
+                    encoded = service.encode(image_path, data_url=self.data_url_checkbox.isChecked())
                     self.base64_edit.setPlainText(encoded)
-                    out = base64_module.save_base64_text(encoded, output_dir, output_name)
+                    out = service.save_text(encoded, output_dir, output_name)
                     self.log.appendPlainText(f'OK base64 -> {out}')
                 else:
-                    out = base64_module.decode_base64_to_file(base64_text, output_dir, output_name)
+                    out = service.decode(base64_text, output_dir, output_name)
                     self.log.appendPlainText(f'OK image -> {out}')
                 return True
 
