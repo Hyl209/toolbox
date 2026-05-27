@@ -189,80 +189,31 @@ def _load_registered_module(key: str):
     return _dynamic_modules.load(key)
 
 
-def _load_zip_module():
-    return _load_registered_module('zip')
+def _load_dynamic(key: str):
+    """Shorthand to load a registered dynamic module by key."""
+    return _load_registered_module(key)
 
 
-def _load_ncm_module():
-    return _load_registered_module('ncm')
-
-
-def _load_music_tab_module():
-    return _load_registered_module('music_tab')
-
-
-def _load_zip_tab_module():
-    return _load_registered_module('zip_tab')
-
-
-def _load_mp4_tab_module():
-    return _load_registered_module('mp4_tab')
-
-
-def _load_image_convert_tab_module():
-    return _load_registered_module('image_convert_tab')
-
-
-def _load_pdf_tools_tab_module():
-    return _load_registered_module('pdf_tools_tab')
-
-
-def _load_base64_tab_module():
-    return _load_registered_module('base64_tab')
-
-
-def _load_same_tab_module():
-    return _load_registered_module('same_tab')
-
-
-def _load_mp4_module():
-    return _load_registered_module('mp4')
-
-
-def _load_image_convert_module():
-    return _load_registered_module('image_convert')
-
-
-def _load_pdf_tools_module():
-    return _load_registered_module('pdf_tools')
-
-
-def _load_video_downloader_module():
-    return _load_registered_module('video_downloader')
-
-
-def _load_video_downloader_tab_module():
-    return _load_registered_module('video_downloader_tab')
-
-
-def _load_file_sorter_module():
-    return _load_registered_module('file_sorter')
-
-
-def _load_file_sorter_tab_module():
-    return _load_registered_module('file_sorter_tab')
-
-
-def _load_name_module():
-    return _load_registered_module('name')
-
-
-def _load_name_tab_module():
-    return _load_registered_module('name_tab')
-
-
-def _load_same_module():
-    return _load_registered_module('same')
+# Convenience aliases so existing callers don't break.
+_load_zip_module = lambda: _load_dynamic('zip')
+_load_ncm_module = lambda: _load_dynamic('ncm')
+_load_music_tab_module = lambda: _load_dynamic('music_tab')
+_load_zip_tab_module = lambda: _load_dynamic('zip_tab')
+_load_mp4_tab_module = lambda: _load_dynamic('mp4_tab')
+_load_image_convert_tab_module = lambda: _load_dynamic('image_convert_tab')
+_load_pdf_tools_tab_module = lambda: _load_dynamic('pdf_tools_tab')
+_load_base64_tab_module = lambda: _load_dynamic('base64_tab')
+_load_same_tab_module = lambda: _load_dynamic('same_tab')
+_load_mp4_module = lambda: _load_dynamic('mp4')
+_load_image_convert_module = lambda: _load_dynamic('image_convert')
+_load_pdf_tools_module = lambda: _load_dynamic('pdf_tools')
+_load_video_downloader_module = lambda: _load_dynamic('video_downloader')
+_load_video_downloader_tab_module = lambda: _load_dynamic('video_downloader_tab')
+_load_file_sorter_module = lambda: _load_dynamic('file_sorter')
+_load_file_sorter_tab_module = lambda: _load_dynamic('file_sorter_tab')
+_load_name_module = lambda: _load_dynamic('name')
+_load_name_tab_module = lambda: _load_dynamic('name_tab')
+_load_same_module = lambda: _load_dynamic('same')
 
 
 def make_settings(base_dir: str):
@@ -325,6 +276,13 @@ def get_tool_definitions() -> list[dict]:
         {'key': 'base64', 'title': '图片Base64'},
     ]
 
+
+# TODO: Proxy functions below exist solely for backward compatibility.
+# Callers (tests, tab builders) should import directly from sub-modules
+# (e.g. music/tab.py, mp4/tab.py) so these can be removed.
+# Two functions are NOT simple proxies and need manual migration:
+#   - format_video_download_task_summary: calls TWO modules
+#   - validate_video_downloader_form: passes extra kwargs
 
 def collect_music_inputs(paths): return _load_music_tab_module().collect_music_inputs(paths)
 
