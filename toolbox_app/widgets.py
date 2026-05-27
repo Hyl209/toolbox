@@ -222,20 +222,15 @@ def show_themed_message(parent, title: str, lines: list[str], button_text: str =
     if theme_owner is not None:
         theme_owner.setStyleSheet(get_theme_stylesheet(theme_owner.current_theme))
     dialog = ThemedMessageDialog(parent, title, lines, button_text)
-    if QEventLoop is None or QTimer is None:
-        dialog.exec()
-        return
-    loop = QEventLoop()
-    dialog.finished.connect(loop.quit)
-    dialog.show()
-    dialog.raise_()
-    dialog.activateWindow()
-    loop.exec()
+    dialog.exec()
 
 
 def show_themed_warning(parent, title: str, message: str):
     lines = [line for line in message.splitlines() if line.strip()] or [message]
     show_themed_message(parent, title, lines, '完成')
+
+
+_active_audio_players: list = []
 
 
 def show_themed_success(parent, title: str, lines: list[str]):
@@ -246,6 +241,12 @@ def show_themed_success(parent, title: str, lines: list[str]):
             player.setAudioOutput(audio)
             player.setSource(QUrl.fromLocalFile(str(SOUND_PATH.resolve())))
             player.play()
+            # Prevent GC while audio is playing
+            _active_audio_players.append((player, audio))
+            player.mediaStatusChanged.connect(
+                lambda status: _active_audio_players.clear()
+                if status == QMediaPlayer.MediaStatus.EndOfMedia else None
+            )
         except Exception:
             pass
     show_themed_message(parent, title, lines, '完成')
