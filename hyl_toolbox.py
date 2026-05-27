@@ -672,7 +672,7 @@ if QWidget is not None:
         'get_zip_module': get_zip_module,
         'ROOT': ROOT,
     })
-    Mp4ToMp3Tab = _load_mp4_tab_module().build_mp4_to_mp3_tab_class({
+    Mp4ToMp3Tab = _load_mp4_tab_module().build_mp4_tab_class({
         'QWidget': QWidget,
         'QVBoxLayout': QVBoxLayout,
         'QHBoxLayout': QHBoxLayout,
