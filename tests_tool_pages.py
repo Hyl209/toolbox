@@ -162,10 +162,12 @@ def test_image_convert_drop_summary_shows_selected_images_in_same_area():
 
 
 def test_image_convert_and_base64_drop_zones_preview_first_image_in_source():
-    source = MODULE_PATH.read_text(encoding='utf-8')
-    assert "self.drop_zone.set_preview_image(" in source
-    assert "body_text=picked.name" in source
-    assert source.count("body_text=picked.name") >= 2
+    ic_source = (ROOT / 'image-convert' / 'tab.py').read_text(encoding='utf-8')
+    b64_source = (ROOT / 'base64' / 'tab.py').read_text(encoding='utf-8')
+    assert "self.drop_zone.set_preview_image(" in ic_source
+    assert "self.drop_zone.set_preview_image(" in b64_source
+    assert "body_text=picked.name" in ic_source
+    assert "body_text=picked.name" in b64_source
 
 
 def test_validate_image_convert_form_requires_files_output_format_and_valid_numbers():

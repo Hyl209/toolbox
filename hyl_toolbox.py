@@ -677,6 +677,11 @@ _dynamic_modules = DynamicModuleLoader({
     'base64': ('base64_converter_module', BASE64_DIR / 'converter.py'),
     'music_tab': ('music_tab_module', MUSIC_DIR / 'tab.py'),
     'zip_tab': ('zip_tab_module', ZIP_DIR / 'tab.py'),
+    'base64_tab': ('base64_tab_module', BASE64_DIR / 'tab.py'),
+    'same_tab': ('same_tab_module', SAME_DIR / 'tab.py'),
+    'mp4_tab': ('mp4_tab_module', MP4_DIR / 'tab.py'),
+    'image_convert_tab': ('image_convert_tab_module', IMAGE_CONVERT_DIR / 'tab.py'),
+    'pdf_tools_tab': ('pdf_tools_tab_module', PDF_TOOLS_DIR / 'tab.py'),
 })
 
 
@@ -702,6 +707,26 @@ def _load_music_tab_module():
 
 def _load_zip_tab_module():
     return _load_registered_module('zip_tab')
+
+
+def _load_mp4_tab_module():
+    return _load_registered_module('mp4_tab')
+
+
+def _load_image_convert_tab_module():
+    return _load_registered_module('image_convert_tab')
+
+
+def _load_pdf_tools_tab_module():
+    return _load_registered_module('pdf_tools_tab')
+
+
+def _load_base64_tab_module():
+    return _load_registered_module('base64_tab')
+
+
+def _load_same_tab_module():
+    return _load_registered_module('same_tab')
 
 
 def _load_mp4_module():
@@ -1166,124 +1191,40 @@ def format_drop_card_text(path_text: str, empty_text: str) -> str:
     return Path(cleaned).name
 
 
-def collect_mp4_inputs(paths: list[str]) -> list[Path]:
-    unique: dict[Path, None] = {}
-    for raw in paths:
-        path = Path(raw).resolve()
-        if path.is_file() and path.suffix.lower() == '.mp4':
-            unique[path] = None
-        elif path.is_dir():
-            for item in sorted(path.rglob('*.mp4')):
-                if item.is_file():
-                    unique[item.resolve()] = None
-    return sorted(unique.keys())
+def collect_mp4_inputs(paths): return _load_mp4_tab_module().collect_mp4_inputs(paths)
 
 
-def format_mp4_drop_summary(files: list[Path]) -> str:
-    if not files:
-        return '拖入 .mp4 文件或文件夹'
-    names = [p.stem for p in files[:6]]
-    summary = '\n'.join(names)
-    if len(files) > 6:
-        summary += f'\n... 另有 {len(files) - 6} 个视频'
-    return f'已添加 {len(files)} 个视频\n\n{summary}'
+def format_mp4_drop_summary(files): return _load_mp4_tab_module().format_mp4_drop_summary(files)
 
 
-def validate_mp4_form(files: list[Path], output_dir: str) -> list[str]:
-    errors: list[str] = []
-    if not files:
-        errors.append('请先添加要转换的 .mp4 文件')
-    if not output_dir.strip():
-        errors.append('请选择输出目录')
-    return errors
+def validate_mp4_form(files, output_dir): return _load_mp4_tab_module().validate_mp4_form(files, output_dir)
 
 
 def validate_zipandpng_form(payload_path, cover_png_path, output_dir, output_name): return _load_zip_tab_module().validate_zipandpng_form(payload_path, cover_png_path, output_dir, output_name)
 
 
-def collect_image_convert_inputs(paths: list[str]) -> list[Path]:
-    image_module = get_image_convert_module()
-    return image_module.collect_image_inputs(paths)
+def collect_image_convert_inputs(paths): return _load_image_convert_tab_module().collect_image_convert_inputs(paths)
 
 
-def format_image_convert_drop_summary(files: list[Path]) -> str:
-    if not files:
-        return '拖入 JPG / PNG / WebP / HEIC 图片或文件夹'
-    names = [p.stem for p in files[:6]]
-    summary = '\n'.join(names)
-    if len(files) > 6:
-        summary += f'\n... 另有 {len(files) - 6} 张图片'
-    return f'已添加 {len(files)} 张图片\n\n{summary}'
+def format_image_convert_drop_summary(files): return _load_image_convert_tab_module().format_image_convert_drop_summary(files)
 
 
-def validate_image_convert_form(files: list[Path], output_dir: str, target_format: str, quality_text: str, target_size_text: str) -> list[str]:
-    errors: list[str] = []
-    if not files:
-        errors.append('请先添加要转换的图片')
-    if not output_dir.strip():
-        errors.append('请选择输出目录')
-    if not target_format.strip():
-        errors.append('请选择输出格式')
-    try:
-        quality = int(quality_text.strip())
-        if quality < 1 or quality > 100:
-            errors.append('质量必须在 1 到 100 之间')
-    except ValueError:
-        errors.append('质量必须是 1 到 100 的整数')
-    image_module = get_image_convert_module()
-    try:
-        image_module.validate_target_size_kb(target_size_text)
-    except ValueError as exc:
-        errors.append(str(exc))
-    return errors
+def validate_image_convert_form(files, output_dir, target_format, quality_text, target_size_text): return _load_image_convert_tab_module().validate_image_convert_form(files, output_dir, target_format, quality_text, target_size_text)
 
 
-def collect_pdf_tool_inputs(paths: list[str]) -> list[Path]:
-    pdf_module = get_pdf_tools_module()
-    return pdf_module.collect_pdf_inputs(paths)
+def collect_pdf_tool_inputs(paths): return _load_pdf_tools_tab_module().collect_pdf_tool_inputs(paths)
 
 
 def collect_base64_image_inputs(paths: list[str]) -> list[Path]:
-    base64_module = get_base64_module()
-    unique: dict[Path, None] = {}
-    for raw in paths:
-        path = Path(raw).resolve()
-        if path.is_file() and path.suffix.lower() in base64_module.SUPPORTED_IMAGE_SUFFIXES:
-            unique[path] = None
-        elif path.is_dir():
-            for item in sorted(path.iterdir()):
-                if item.is_file() and item.suffix.lower() in base64_module.SUPPORTED_IMAGE_SUFFIXES:
-                    unique[item.resolve()] = None
-    return sorted(unique.keys())
+    return _load_base64_tab_module().collect_base64_image_inputs(paths)
 
 
 def format_base64_drop_summary(files: list[Path]) -> str:
-    if not files:
-        return '拖入 PNG / JPG / JPEG / WebP / GIF / BMP 图片'
-    names = [p.name for p in files[:6]]
-    summary = '\n'.join(names)
-    if len(files) > 6:
-        summary += f'\n... 另有 {len(files) - 6} 张图片'
-    return f'已添加 {len(files)} 张图片\n\n{summary}'
+    return _load_base64_tab_module().format_base64_drop_summary(files)
 
 
 def validate_base64_form(mode: str, image_files: list[Path], base64_text: str, output_dir: str, output_name: str) -> list[str]:
-    errors: list[str] = []
-    if mode == 'encode':
-        if not image_files:
-            errors.append('请先添加要转换的图片')
-        elif len(image_files) != 1:
-            errors.append('图片转 Base64 仅支持单张图片')
-        if not output_dir.strip():
-            errors.append('请选择输出目录')
-    else:
-        if not base64_text.strip():
-            errors.append('请输入 Base64 内容')
-        if not output_dir.strip():
-            errors.append('请选择输出目录')
-    if not output_name.strip():
-        errors.append('请输入输出文件名')
-    return errors
+    return _load_base64_tab_module().validate_base64_form(mode, image_files, base64_text, output_dir, output_name)
 
 
 def format_video_download_task_summary(task_text: str) -> str:
@@ -1345,94 +1286,28 @@ def validate_batch_rename_form(folder_path: str, prefix: str) -> list[str]:
 
 
 def format_same_summary(result: dict[str, object]) -> str:
-    scanned_files = int(result.get('scanned_files', 0) or 0)
-    mode_text = '递归扫描' if result.get('recursive') else '仅第一层'
-    if scanned_files <= 0:
-        return f'{mode_text}: 当前范围没有可检测文件'
-    duplicate_group_count = int(result.get('duplicate_group_count', 0) or 0)
-    duplicate_file_count = int(result.get('duplicate_file_count', 0) or 0)
-    lines = [f'{mode_text}: 共扫描 {scanned_files} 个文件']
-    if duplicate_group_count <= 0:
-        lines.append('未发现重复文件')
-        return '\n'.join(lines)
-    lines.append(f'发现 {duplicate_group_count} 组重复文件')
-    lines.append(f'待移动 {duplicate_file_count} 个重复文件')
-    target_dir = result.get('target_dir')
-    if target_dir:
-        lines.append(f'目标目录: {target_dir}')
-    return '\n'.join(lines)
+    return _load_same_tab_module().format_same_summary(result)
 
 
 def validate_same_form(folder_path: str) -> list[str]:
-    errors: list[str] = []
-    cleaned = folder_path.strip()
-    if not cleaned:
-        errors.append('请选择需要检测的文件夹')
-        return errors
-    path = Path(cleaned)
-    if not path.exists():
-        errors.append('选择的文件夹不存在')
-    elif not path.is_dir():
-        errors.append('选择的路径不是文件夹')
-    return errors
+    return _load_same_tab_module().validate_same_form(folder_path)
 
 
 
-def format_pdf_drop_summary(files: list[Path]) -> str:
-    if not files:
-        return '拖入 PDF 文件或文件夹'
-    names = [p.stem for p in files[:6]]
-    summary = '\n'.join(names)
-    if len(files) > 6:
-        summary += f'\n... 另有 {len(files) - 6} 个PDF'
-    return f'已添加 {len(files)} 个PDF\n\n{summary}'
+def format_pdf_drop_summary(files): return _load_pdf_tools_tab_module().format_pdf_drop_summary(files)
 
 
-def validate_pdf_form(action: str, files: list[Path], output_dir: str, page_ranges_text: str, image_format: str, dpi_text: str, text_export_format: str = '') -> list[str]:
-    errors: list[str] = []
-    pdf_module = get_pdf_tools_module()
-    errors.extend(pdf_module.validate_pdf_action(action, files, page_ranges_text))
-    if not output_dir.strip():
-        errors.append('请选择输出目录')
-    if action == 'images':
-        if not image_format.strip():
-            errors.append('请选择图片格式')
-        try:
-            dpi = int(dpi_text.strip())
-            if dpi <= 0:
-                errors.append('DPI 必须大于 0')
-        except ValueError:
-            errors.append('DPI 必须是整数')
-    if action == 'text' and not text_export_format.strip():
-        errors.append('请选择文本导出格式')
-    return errors
+def validate_pdf_form(action, files, output_dir, page_ranges_text, image_format, dpi_text, text_export_format=''): return _load_pdf_tools_tab_module().validate_pdf_form(action, files, output_dir, page_ranges_text, image_format, dpi_text, text_export_format)
 
 
-def get_jpg_background_value(label: str) -> str:
-    mapping = {
-        '白色': 'white',
-        '黑色': 'black',
-        '透明': 'transparent',
-    }
-    return mapping.get(label, label)
+def get_jpg_background_value(label): return _load_image_convert_tab_module().get_jpg_background_value(label)
 
 
-def get_pdf_action_value(label: str) -> str:
-    mapping = {
-        '合并': 'merge',
-        '拆分': 'split',
-        '转图片': 'images',
-        '提取文本': 'text',
-    }
-    return mapping.get(label, label)
+def get_pdf_action_value(label): return _load_pdf_tools_tab_module().get_pdf_action_value(label)
 
 
 def get_base64_mode_value(label: str) -> str:
-    mapping = {
-        '图片转Base64': 'encode',
-        'Base64转图片': 'decode',
-    }
-    return mapping.get(label, label)
+    return _load_base64_tab_module().get_base64_mode_value(label)
 
 
 def build_global_scrollbar_style() -> str:
@@ -1946,767 +1821,6 @@ if QWidget is not None:
 
 
 
-    class Mp4ToMp3Tab(QWidget):
-        def __init__(self, settings):
-            super().__init__()
-            self.settings = settings
-            self.files: list[Path] = []
-            root = QVBoxLayout(self)
-            card, layout = make_card('MP4转MP3', '拖入 MP4 视频，输出 MP3 音频文件')
-            self.drop_zone = DropZoneCard('拖入 .mp4 文件或文件夹', self.add_paths)
-            layout.addWidget(self.drop_zone)
-            row = QHBoxLayout()
-            self.output_edit = QLineEdit(load_setting(settings, 'mp4mp3/output_dir'))
-            self.output_edit.setPlaceholderText('选择输出目录')
-            choose_btn = QPushButton('选择路径')
-            choose_btn.clicked.connect(self.choose_output_dir)
-            row.addWidget(self.output_edit)
-            row.addWidget(choose_btn)
-            layout.addLayout(row)
-            action_row = QHBoxLayout()
-            action_row.addStretch(1)
-            self.clear_files_button = QPushButton('清空文件')
-            self.clear_files_button.clicked.connect(self.clear_form)
-            action_row.addWidget(self.clear_files_button)
-            self.convert_button = QPushButton('开始转换')
-            self.convert_button.clicked.connect(self.convert_files)
-            action_row.addWidget(self.convert_button)
-            layout.addLayout(action_row)
-            self.progress = QProgressBar()
-            layout.addWidget(self.progress)
-            self.log = QPlainTextEdit()
-            self.log.setReadOnly(True)
-            self.log.setMinimumHeight(140)
-            self.log.setStyleSheet(build_global_scrollbar_style())
-            layout.addWidget(self.log)
-            root.addWidget(card)
-
-        def add_paths(self, paths: list[str]):
-            files = collect_mp4_inputs(paths)
-            existing = {p.resolve() for p in self.files}
-            new_files: list[Path] = []
-            for file in files:
-                resolved = file.resolve()
-                if resolved not in existing:
-                    self.files.append(resolved)
-                    existing.add(resolved)
-                    new_files.append(resolved)
-            if self.files:
-                self.drop_zone.set_preview_file_icon(
-                    str(self.files[0]),
-                    header_text=f'已添加 {len(self.files)} 个视频',
-                    body_text='\n'.join(p.stem for p in self.files[:3]) + (f'\n... 另有 {len(self.files) - 3} 个视频' if len(self.files) > 3 else ''),
-                )
-            else:
-                self.drop_zone.set_body_text(format_mp4_drop_summary(self.files))
-            if new_files:
-                self.log.appendPlainText('\n'.join(p.stem for p in new_files))
-            else:
-                self.log.appendPlainText('没有新增视频')
-
-        def choose_output_dir(self):
-            path = QFileDialog.getExistingDirectory(self, '选择输出目录', self.output_edit.text() or str(ROOT))
-            if path:
-                self.output_edit.setText(path)
-                save_setting(self.settings, 'mp4mp3/output_dir', path)
-
-        def clear_form(self):
-            had_files = bool(self.files)
-            self.files = []
-            self.drop_zone.set_body_text(format_mp4_drop_summary(self.files))
-            if had_files:
-                self.log.appendPlainText('已清空待转换视频')
-
-        def convert_files(self):
-            output_dir = self.output_edit.text().strip()
-            errors = validate_mp4_form(self.files, output_dir)
-            if errors:
-                show_themed_warning(self, '提示', '\n'.join(errors))
-                return
-            save_setting(self.settings, 'mp4mp3/output_dir', output_dir)
-            self.log.appendPlainText(f'已保存输出目录: {output_dir}')
-            self.progress.setMaximum(max(1, len(self.files)))
-            self.progress.setValue(0)
-            mp4_module = get_mp4_module()
-            success_count = 0
-            try:
-                for idx, src in enumerate(self.files, start=1):
-                    out = mp4_module.convert_mp4_to_mp3(src, Path(output_dir) / f'{src.stem}.mp3')
-                    self.log.appendPlainText(f'OK {src} -> {out}')
-                    success_count += 1
-                    self.progress.setValue(idx)
-                self.clear_form()
-                summary = f'转换完成: 成功{success_count} 个视频'
-                show_themed_success(self, '完成', [summary])
-                self.log.appendPlainText(summary)
-            except Exception as exc:
-                self.log.appendPlainText(f'ERROR {exc}')
-                show_themed_error(self, '转换失败', str(exc))
-
-
-    class ImageConvertTab(QWidget):
-        def __init__(self, settings):
-            super().__init__()
-            self.settings = settings
-            self.files: list[Path] = []
-            root = QVBoxLayout(self)
-            card, layout = make_card('图片格式互转', '拖入 JPG / PNG / WebP / HEIC 图片，支持批量转换与压缩')
-            self.drop_zone = DropZoneCard('拖入 JPG / PNG / WebP / HEIC 图片或文件夹', self.add_paths)
-            layout.addWidget(self.drop_zone)
-            format_row = QHBoxLayout()
-            format_row.addWidget(QLabel('输出格式'))
-            self.format_combo = QComboBox()
-            self.format_combo.addItems(['jpg', 'png', 'webp', 'heic'])
-            self.format_combo.setMinimumWidth(132)
-            format_row.addWidget(self.format_combo)
-            format_row.addWidget(QLabel('质量'))
-            self.quality_edit = QLineEdit('85')
-            format_row.addWidget(self.quality_edit)
-            format_row.addWidget(QLabel('目标大小（KB）'))
-            self.target_size_edit = QLineEdit('')
-            format_row.addWidget(self.target_size_edit)
-            layout.addLayout(format_row)
-            alpha_row_widget, alpha_row = make_transparent_row()
-            self.preserve_alpha_checkbox = QCheckBox('保留透明通道')
-            self.preserve_alpha_checkbox.setChecked(True)
-            alpha_row.addWidget(self.preserve_alpha_checkbox)
-            alpha_row.addWidget(QLabel('JPG 背景色'))
-            self.jpg_background_combo = QComboBox()
-            self.jpg_background_combo.addItems(['白色', '黑色', '透明'])
-            self.jpg_background_combo.setMinimumWidth(154)
-            style_combo_popup(self.jpg_background_combo, load_setting(settings, 'ui/theme', 'dark'))
-            alpha_row.addWidget(self.jpg_background_combo)
-            alpha_row.addStretch(1)
-            layout.addWidget(alpha_row_widget)
-            output_row = QHBoxLayout()
-            self.output_edit = QLineEdit(load_setting(settings, 'imageconvert/output_dir'))
-            self.output_edit.setPlaceholderText('选择输出目录')
-            choose_btn = QPushButton('选择路径')
-            choose_btn.clicked.connect(self.choose_output_dir)
-            output_row.addWidget(self.output_edit)
-            output_row.addWidget(choose_btn)
-            layout.addLayout(output_row)
-            action_row = QHBoxLayout()
-            action_row.addStretch(1)
-            self.clear_files_button = QPushButton('清空文件')
-            self.clear_files_button.clicked.connect(self.clear_form)
-            action_row.addWidget(self.clear_files_button)
-            self.convert_button = QPushButton('开始转换')
-            self.convert_button.clicked.connect(self.convert_files)
-            action_row.addWidget(self.convert_button)
-            layout.addLayout(action_row)
-            self.progress = QProgressBar()
-            layout.addWidget(self.progress)
-            self.log = QPlainTextEdit()
-            self.log.setReadOnly(True)
-            self.log.setMinimumHeight(140)
-            self.log.setStyleSheet(build_global_scrollbar_style())
-            layout.addWidget(self.log)
-            root.addWidget(card)
-
-        def add_paths(self, paths: list[str]):
-            files = collect_image_convert_inputs(paths)
-            if not files:
-                self.log.appendPlainText('没有新增图片')
-                return
-            picked = files[0].resolve()
-            self.files = [picked]
-            self.drop_zone.set_preview_image(
-                str(picked),
-                header_text='',
-                body_text=picked.name,
-            )
-            self.log.appendPlainText(picked.name)
-
-        def choose_output_dir(self):
-            path = QFileDialog.getExistingDirectory(self, '选择输出目录', self.output_edit.text() or str(ROOT))
-            if path:
-                self.output_edit.setText(path)
-                save_setting(self.settings, 'imageconvert/output_dir', path)
-
-        def clear_form(self):
-            had_files = bool(self.files)
-            self.files = []
-            self.drop_zone.set_body_text(format_image_convert_drop_summary(self.files))
-            if had_files:
-                self.log.appendPlainText('已清空待转换图片')
-
-        def convert_files(self):
-            target_format = self.format_combo.currentText()
-            output_dir = self.output_edit.text().strip()
-            quality_text = self.quality_edit.text()
-            target_size_text = self.target_size_edit.text()
-            errors = validate_image_convert_form(self.files, output_dir, target_format, quality_text, target_size_text)
-            if errors:
-                show_themed_warning(self, '提示', '\n'.join(errors))
-                return
-            image_module = get_image_convert_module()
-            available, message = image_module.probe_imagemagick()
-            if not available:
-                show_themed_warning(self, '缺少依赖', message)
-                self.log.appendPlainText(f'ERROR {message}')
-                return
-            save_setting(self.settings, 'imageconvert/output_dir', output_dir)
-            self.progress.setMaximum(max(1, len(self.files)))
-            self.progress.setValue(0)
-            quality = int(quality_text.strip())
-            target_size_kb = image_module.validate_target_size_kb(target_size_text)
-            success_count = 0
-            for idx, src in enumerate(self.files, start=1):
-                try:
-                    out = image_module.convert_image(
-                        input_path=src,
-                        output_dir=Path(output_dir),
-                        target_format=target_format,
-                        quality=quality,
-                        preserve_alpha=self.preserve_alpha_checkbox.isChecked(),
-                        jpg_background=get_jpg_background_value(self.jpg_background_combo.currentText()),
-                        target_size_kb=target_size_kb,
-                    )
-                    self.log.appendPlainText(f'OK {src} -> {out}')
-                    success_count += 1
-                    self.progress.setValue(idx)
-                except Exception as exc:
-                    self.log.appendPlainText(f'ERROR {src}: {exc}')
-                    show_themed_error(self, '转换失败', str(exc))
-                    return
-            self.clear_form()
-            summary = f'转换完成: 成功{success_count} 张图片'
-            self.log.appendPlainText(summary)
-            show_themed_success(self, '完成', [summary])
-
-
-    class PdfToolsTab(QWidget):
-        def __init__(self, settings):
-            super().__init__()
-            self.settings = settings
-            self.files: list[Path] = []
-            root = QVBoxLayout(self)
-            card, layout = make_card('PDF工具', '支持合并、拆分、转图片、导出 TXT / DOCX')
-            self.drop_zone = DropZoneCard('拖入 PDF 文件或文件夹', self.add_paths)
-            layout.addWidget(self.drop_zone)
-            action_row = QHBoxLayout()
-            action_row.addWidget(QLabel('操作'))
-            self.action_combo = QComboBox()
-            self.action_combo.addItems(['合并', '拆分', '转图片', '提取文本'])
-            self.action_combo.setMinimumWidth(132)
-            self.action_combo.currentTextChanged.connect(self.update_action_ui)
-            action_row.addWidget(self.action_combo)
-            style_combo_popup(self.action_combo, load_setting(settings, 'ui/theme', 'dark'))
-            action_row.addWidget(QLabel('页码范围'))
-            self.page_ranges_edit = QLineEdit('')
-            self.page_ranges_edit.setPlaceholderText('例如 1-3,5')
-            action_row.addWidget(self.page_ranges_edit)
-            action_row.addWidget(QLabel('图片格式'))
-            self.image_format_combo = QComboBox()
-            self.image_format_combo.addItems(['png', 'jpg', 'webp'])
-            self.image_format_combo.setMinimumWidth(132)
-            action_row.addWidget(self.image_format_combo)
-            style_combo_popup(self.image_format_combo, load_setting(settings, 'ui/theme', 'dark'))
-            action_row.addWidget(QLabel('DPI'))
-            self.dpi_edit = QLineEdit('150')
-            action_row.addWidget(self.dpi_edit)
-            layout.addLayout(action_row)
-            text_row_widget, text_row = make_transparent_row()
-            self.text_format_label = QLabel('文本格式')
-            text_row.addWidget(self.text_format_label)
-            self.text_format_combo = QComboBox()
-            self.text_format_combo.addItems(['txt', 'docx'])
-            text_row.addWidget(self.text_format_combo)
-            style_combo_popup(self.text_format_combo, load_setting(settings, 'ui/theme', 'dark'))
-            self.ocr_checkbox = QCheckBox('文字层为空时启用 OCR')
-            text_row.addWidget(self.ocr_checkbox)
-            text_row.addStretch(1)
-            layout.addWidget(text_row_widget)
-            output_row = QHBoxLayout()
-            self.output_edit = QLineEdit(load_setting(settings, 'pdftools/output_dir'))
-            self.output_edit.setPlaceholderText('选择输出目录')
-            choose_btn = QPushButton('选择路径')
-            choose_btn.clicked.connect(self.choose_output_dir)
-            output_row.addWidget(self.output_edit)
-            output_row.addWidget(choose_btn)
-            layout.addLayout(output_row)
-            button_row = QHBoxLayout()
-            button_row.addStretch(1)
-            self.clear_files_button = QPushButton('清空文件')
-            self.clear_files_button.clicked.connect(self.clear_form)
-            button_row.addWidget(self.clear_files_button)
-            self.run_button = QPushButton('开始处理')
-            self.run_button.clicked.connect(self.run_action)
-            button_row.addWidget(self.run_button)
-            layout.addLayout(button_row)
-            self.progress = QProgressBar()
-            layout.addWidget(self.progress)
-            self.log = QPlainTextEdit()
-            self.log.setReadOnly(True)
-            self.log.setMinimumHeight(140)
-            self.log.setStyleSheet(build_global_scrollbar_style())
-            layout.addWidget(self.log)
-            root.addWidget(card)
-            self.update_action_ui(self.action_combo.currentText())
-
-        def add_paths(self, paths: list[str]):
-            files = collect_pdf_tool_inputs(paths)
-            existing = {p.resolve() for p in self.files}
-            new_files: list[Path] = []
-            for file in files:
-                resolved = file.resolve()
-                if resolved not in existing:
-                    self.files.append(resolved)
-                    existing.add(resolved)
-                    new_files.append(resolved)
-            if self.files:
-                self.drop_zone.set_preview_file_icon(
-                    str(self.files[0]),
-                    header_text=f'已添加 {len(self.files)} 个PDF',
-                    body_text='\n'.join(p.stem for p in self.files[:3]) + (f'\n... 另有 {len(self.files) - 3} 个PDF' if len(self.files) > 3 else ''),
-                )
-            else:
-                self.drop_zone.set_body_text(format_pdf_drop_summary(self.files))
-            if new_files:
-                self.log.appendPlainText('\n'.join(p.name for p in new_files))
-            else:
-                self.log.appendPlainText('没有新增 PDF')
-
-        def choose_output_dir(self):
-            path = QFileDialog.getExistingDirectory(self, '选择输出目录', self.output_edit.text() or str(ROOT))
-            if path:
-                self.output_edit.setText(path)
-                save_setting(self.settings, 'pdftools/output_dir', path)
-
-        def clear_form(self):
-            had_files = bool(self.files)
-            self.files = []
-            self.drop_zone.set_body_text(format_pdf_drop_summary(self.files))
-            if had_files:
-                self.log.appendPlainText('已清空待处理 PDF')
-
-        def update_action_ui(self, action: str):
-            action_value = get_pdf_action_value(action)
-            is_split = action_value == 'split'
-            is_images = action_value == 'images'
-            is_text = action_value == 'text'
-            self.page_ranges_edit.setEnabled(is_split)
-            self.image_format_combo.setEnabled(is_images)
-            self.dpi_edit.setEnabled(is_images)
-            self.text_format_label.setVisible(is_text)
-            self.text_format_combo.setVisible(is_text)
-            self.ocr_checkbox.setVisible(is_text)
-
-        def run_action(self):
-            action = get_pdf_action_value(self.action_combo.currentText())
-            output_dir = self.output_edit.text().strip()
-            page_ranges_text = self.page_ranges_edit.text()
-            image_format = self.image_format_combo.currentText()
-            dpi_text = self.dpi_edit.text()
-            text_export_format = self.text_format_combo.currentText()
-            errors = validate_pdf_form(action, self.files, output_dir, page_ranges_text, image_format, dpi_text, text_export_format)
-            if errors:
-                show_themed_warning(self, '提示', '\n'.join(errors))
-                return
-            pdf_module = get_pdf_tools_module()
-            save_setting(self.settings, 'pdftools/output_dir', output_dir)
-            self.progress.setMaximum(max(1, len(self.files)))
-            self.progress.setValue(0)
-            try:
-                if action == 'merge':
-                    out = pdf_module.merge_pdfs(self.files, Path(output_dir) / 'merged.pdf')
-                    self.log.appendPlainText(f'OK merged -> {out}')
-                elif action == 'split':
-                    reader = pdf_module.PdfReader(str(self.files[0]))
-                    page_indexes = pdf_module.parse_page_ranges(page_ranges_text, len(reader.pages))
-                    outputs = pdf_module.split_pdf(self.files[0], Path(output_dir), page_indexes)
-                    self.log.appendPlainText(f'OK split -> {len(outputs)} files')
-                elif action == 'images':
-                    outputs = pdf_module.pdf_to_images(self.files[0], Path(output_dir), image_format, int(dpi_text.strip()))
-                    self.log.appendPlainText(f'OK images -> {len(outputs)} files')
-                else:
-                    out = pdf_module.export_pdf_text(
-                        self.files[0],
-                        Path(output_dir),
-                        text_export_format,
-                        ocr_fallback=self.ocr_checkbox.isChecked(),
-                    )
-                    self.log.appendPlainText(f'OK text -> {out}')
-                self.progress.setValue(self.progress.maximum())
-                self.clear_form()
-                show_themed_success(self, '完成', ['PDF 处理完成'])
-            except Exception as exc:
-                self.log.appendPlainText(f'ERROR {exc}')
-                show_themed_error(self, '处理失败', str(exc))
-
-
-    class Base64Tab(QWidget):
-        def __init__(self, settings):
-            super().__init__()
-            self.settings = settings
-            self.files: list[Path] = []
-            root = QVBoxLayout(self)
-            card, layout = make_card('图片Base64', '支持图片转 Base64 / Data URL，或把 Base64 还原为图片')
-            self.drop_zone = DropZoneCard('拖入 PNG / JPG / JPEG / WebP / GIF / BMP 图片', self.add_paths)
-            layout.addWidget(self.drop_zone)
-            mode_row_widget, mode_row = make_transparent_row()
-            mode_row.addWidget(QLabel('模式'))
-            self.mode_combo = QComboBox()
-            self.mode_combo.addItems(['图片转Base64', 'Base64转图片'])
-            self.mode_combo.setMinimumWidth(144)
-            style_combo_popup(self.mode_combo, load_setting(settings, 'ui/theme', 'dark'))
-            self.mode_combo.currentTextChanged.connect(self.update_mode_ui)
-            mode_row.addWidget(self.mode_combo)
-            self.data_url_checkbox = QCheckBox('输出 Data URL')
-            mode_row.addWidget(self.data_url_checkbox)
-            mode_row.addStretch(1)
-            layout.addWidget(mode_row_widget)
-            layout.addWidget(QLabel('Base64 编码内容'))
-            self.base64_edit = QPlainTextEdit()
-            self.base64_edit.setPlaceholderText('可直接粘贴 Base64 或 Data URL（data:image/...;base64,...）')
-            self.base64_edit.setMinimumHeight(150)
-            self.base64_edit.setStyleSheet(build_global_scrollbar_style())
-            layout.addWidget(self.base64_edit)
-            name_row = QHBoxLayout()
-            name_row.addWidget(QLabel('输出文件名'))
-            self.output_name_edit = QLineEdit('output')
-            name_row.addWidget(self.output_name_edit)
-            layout.addLayout(name_row)
-            output_row = QHBoxLayout()
-            self.output_edit = QLineEdit(load_setting(settings, 'base64/output_dir'))
-            self.output_edit.setPlaceholderText('选择输出目录')
-            choose_btn = QPushButton('选择路径')
-            choose_btn.clicked.connect(self.choose_output_dir)
-            output_row.addWidget(self.output_edit)
-            output_row.addWidget(choose_btn)
-            layout.addLayout(output_row)
-            action_row = QHBoxLayout()
-            action_row.addStretch(1)
-            self.clear_files_button = QPushButton('清空文件')
-            self.clear_files_button.clicked.connect(self.clear_form)
-            action_row.addWidget(self.clear_files_button)
-            self.run_button = QPushButton('开始处理')
-            self.run_button.clicked.connect(self.run_action)
-            action_row.addWidget(self.run_button)
-            layout.addLayout(action_row)
-            self.log = QPlainTextEdit()
-            self.log.setReadOnly(True)
-            self.log.setMinimumHeight(140)
-            self.log.setStyleSheet(build_global_scrollbar_style())
-            layout.addWidget(self.log)
-            root.addWidget(card)
-            self.update_mode_ui(self.mode_combo.currentText())
-
-        def add_paths(self, paths: list[str]):
-            files = collect_base64_image_inputs(paths)
-            if not files:
-                self.log.appendPlainText('没有新增图片')
-                return
-            picked = files[0].resolve()
-            self.files = [picked]
-            if not self.output_name_edit.text().strip() or self.output_name_edit.text().strip() == 'output':
-                self.output_name_edit.setText(picked.stem)
-            self.drop_zone.set_preview_image(
-                str(picked),
-                header_text='',
-                body_text=picked.name,
-            )
-            self.log.appendPlainText(picked.name)
-
-        def choose_output_dir(self):
-            path = QFileDialog.getExistingDirectory(self, '选择输出目录', self.output_edit.text() or str(ROOT))
-            if path:
-                self.output_edit.setText(path)
-                save_setting(self.settings, 'base64/output_dir', path)
-
-        def clear_form(self):
-            had_files = bool(self.files)
-            self.files = []
-            self.drop_zone.set_body_text(format_base64_drop_summary(self.files))
-            if self.mode_combo.currentText() == '图片转Base64':
-                self.base64_edit.clear()
-            if had_files:
-                self.log.appendPlainText('已清空待编码图片')
-
-        def update_mode_ui(self, label: str):
-            mode = get_base64_mode_value(label)
-            is_encode = mode == 'encode'
-            self.drop_zone.setEnabled(is_encode)
-            self.data_url_checkbox.setVisible(is_encode)
-            self.base64_edit.setReadOnly(is_encode)
-            if is_encode:
-                self.base64_edit.setPlaceholderText('编码结果会显示在这里，可继续保存为 TXT')
-                self.run_button.setText('生成 Base64 编码')
-            else:
-                self.base64_edit.setPlaceholderText('可直接粘贴 Base64 或 Data URL（data:image/...;base64,...）')
-                self.run_button.setText('还原图片')
-
-        def run_action(self):
-            mode = get_base64_mode_value(self.mode_combo.currentText())
-            base64_text = self.base64_edit.toPlainText()
-            output_dir = self.output_edit.text().strip()
-            output_name = self.output_name_edit.text().strip()
-            errors = validate_base64_form(mode, self.files, base64_text, output_dir, output_name)
-            if errors:
-                show_themed_warning(self, '提示', '\n'.join(errors))
-                return
-            base64_module = get_base64_module()
-            save_setting(self.settings, 'base64/output_dir', output_dir)
-            try:
-                if mode == 'encode':
-                    image_path = self.files[0]
-                    encoded = base64_module.encode_image_to_base64(image_path)
-                    if self.data_url_checkbox.isChecked():
-                        encoded = base64_module.build_data_url(encoded, image_path.suffix)
-                    self.base64_edit.setPlainText(encoded)
-                    out = base64_module.save_base64_text(encoded, output_dir, output_name)
-                    self.log.appendPlainText(f'OK base64 -> {out}')
-                    self.clear_form()
-                else:
-                    out = base64_module.decode_base64_to_file(base64_text, output_dir, output_name)
-                    self.log.appendPlainText(f'OK image -> {out}')
-                show_themed_success(self, '完成', ['Base64 处理完成'])
-            except Exception as exc:
-                self.log.appendPlainText(f'ERROR {exc}')
-                show_themed_error(self, '处理失败', str(exc))
-
-    class _FallbackSignal:
-        def __init__(self):
-            self._callbacks: list[object] = []
-
-        def connect(self, callback):
-            self._callbacks.append(callback)
-
-        def emit(self, *args):
-            for callback in list(self._callbacks):
-                callback(*args)
-
-
-    if QObject is not None and Signal is not None:
-        class SameDetectionWorker(QObject):
-            finished = Signal(object)
-            failed = Signal(str)
-
-            def __init__(self, module, folder_path: str, recursive: bool):
-                super().__init__()
-                self.module = module
-                self.folder_path = folder_path
-                self.recursive = recursive
-
-            def run(self):
-                try:
-                    self.finished.emit(self.module.find_duplicate_groups(self.folder_path, self.recursive))
-                except Exception as exc:
-                    self.failed.emit(str(exc))
-    else:
-        class SameDetectionWorker:
-            def __init__(self, module, folder_path: str, recursive: bool):
-                self.module = module
-                self.folder_path = folder_path
-                self.recursive = recursive
-                self.finished = _FallbackSignal()
-                self.failed = _FallbackSignal()
-
-            def run(self):
-                try:
-                    self.finished.emit(self.module.find_duplicate_groups(self.folder_path, self.recursive))
-                except Exception as exc:
-                    self.failed.emit(str(exc))
-
-
-    class SameTab(QWidget):
-        def __init__(self, settings):
-            super().__init__()
-            self.settings = settings
-            self.current_result: dict[str, object] | None = None
-            self.is_detecting = False
-            self.worker_thread = None
-            self.worker = None
-            root = QVBoxLayout(self)
-            card, layout = make_card('重复文件', '普通文件按字节完全一致判重，视频按 95% 内容相似度判重，保留首个文件并移动其余重复件')
-            path_row = QHBoxLayout()
-            self.folder_edit = QLineEdit(load_setting(settings, 'same/input_dir'))
-            self.folder_edit.setPlaceholderText('选择需要检测的文件夹')
-            self.folder_edit.editingFinished.connect(self.handle_input_changed)
-            self.choose_button = QPushButton('选择路径')
-            self.choose_button.clicked.connect(self.choose_folder)
-            path_row.addWidget(self.folder_edit)
-            path_row.addWidget(self.choose_button)
-            layout.addLayout(path_row)
-            option_row_widget, option_row = make_transparent_row()
-            self.recursive_checkbox = QCheckBox('递归扫描子目录')
-            self.recursive_checkbox.setChecked(load_setting(settings, 'same/recursive', '1') != '0')
-            self.recursive_checkbox.stateChanged.connect(self.handle_recursive_changed)
-            option_row.addWidget(self.recursive_checkbox)
-            option_row.addStretch(1)
-            layout.addWidget(option_row_widget)
-            tip_label = QLabel('普通文件仍是精确判重；视频会抽取多帧做 95% 平均相似度比较，移动目标固定为根目录下的“重复文件”')
-            tip_label.setProperty('cardSub', True)
-            tip_label.setWordWrap(True)
-            layout.addWidget(tip_label)
-            self.summary_label = QLabel('请选择文件夹并开始检测')
-            self.summary_label.setProperty('cardSub', True)
-            self.summary_label.setWordWrap(True)
-            layout.addWidget(self.summary_label)
-            button_row = QHBoxLayout()
-            button_row.addStretch(1)
-            self.detect_button = QPushButton('开始检测')
-            self.detect_button.clicked.connect(self.run_detection)
-            button_row.addWidget(self.detect_button)
-            self.move_button = QPushButton('移动重复件')
-            self.move_button.setEnabled(False)
-            self.move_button.clicked.connect(self.run_move)
-            button_row.addWidget(self.move_button)
-            layout.addLayout(button_row)
-            self.log = QPlainTextEdit()
-            self.log.setReadOnly(True)
-            self.log.setMinimumHeight(160)
-            self.log.setStyleSheet(build_global_scrollbar_style())
-            layout.addWidget(self.log)
-            root.addWidget(card)
-            self.handle_input_changed()
-
-        def clear_result(self, message: str):
-            self.current_result = None
-            self.summary_label.setText(message)
-            self.move_button.setEnabled(False)
-
-        def handle_input_changed(self):
-            folder_path = self.folder_edit.text().strip()
-            if folder_path:
-                save_setting(self.settings, 'same/input_dir', folder_path)
-            errors = validate_same_form(folder_path)
-            if errors:
-                self.clear_result(errors[0])
-                return
-            self.clear_result('点击开始检测')
-
-        def handle_recursive_changed(self):
-            save_setting(self.settings, 'same/recursive', '1' if self.recursive_checkbox.isChecked() else '0')
-            self.handle_input_changed()
-
-        def choose_folder(self):
-            path = QFileDialog.getExistingDirectory(self, '选择需要检测的文件夹', self.folder_edit.text() or str(ROOT))
-            if not path:
-                return
-            self.folder_edit.setText(path)
-            save_setting(self.settings, 'same/input_dir', path)
-            self.handle_input_changed()
-
-        def set_result(self, result: dict[str, object]):
-            self.current_result = result
-            self.summary_label.setText(format_same_summary(result))
-            self.move_button.setEnabled(int(result.get('duplicate_file_count', 0) or 0) > 0)
-
-        def set_detection_busy(self, busy: bool):
-            self.is_detecting = busy
-            self.folder_edit.setEnabled(not busy)
-            self.choose_button.setEnabled(not busy)
-            self.recursive_checkbox.setEnabled(not busy)
-            self.detect_button.setEnabled(not busy)
-            self.detect_button.setText('检测中...' if busy else '开始检测')
-            if busy:
-                self.move_button.setEnabled(False)
-            elif self.current_result is not None:
-                self.move_button.setEnabled(int(self.current_result.get('duplicate_file_count', 0) or 0) > 0)
-
-        def cleanup_detection_worker(self):
-            if self.worker_thread is not None:
-                self.worker_thread.quit()
-                self.worker_thread.wait()
-            self.worker_thread = None
-            self.worker = None
-
-        def handle_detection_finished(self, result: dict[str, object]):
-            self.cleanup_detection_worker()
-            self.set_detection_busy(False)
-            self.set_result(result)
-            self.log.appendPlainText(f'检测目录: {result["root"]}')
-            self.log.appendPlainText(format_same_summary(result))
-            groups = result.get('groups', [])
-            if isinstance(groups, list) and groups:
-                for index, group in enumerate(groups, start=1):
-                    keeper = Path(group['keeper']).relative_to(result['root'])
-                    duplicates = [str(Path(item).relative_to(result['root'])) for item in group.get('duplicates', [])]
-                    self.log.appendPlainText(
-                        f'GROUP {index} 保留 {keeper} | 移动 {len(duplicates)} 个: {", ".join(duplicates)}'
-                    )
-            else:
-                self.log.appendPlainText('未发现可移动的重复文件')
-            show_themed_success(self, '完成', ['重复文件检测完成'])
-
-        def handle_detection_error(self, message: str):
-            self.cleanup_detection_worker()
-            self.set_detection_busy(False)
-            self.log.appendPlainText(f'ERROR {message}')
-            self.summary_label.setText('检测失败，请查看日志')
-            show_themed_error(self, '检测失败', message)
-
-        def run_detection(self):
-            if self.is_detecting:
-                return
-            folder_path = self.folder_edit.text().strip()
-            errors = validate_same_form(folder_path)
-            if errors:
-                show_themed_warning(self, '提示', '\n'.join(errors))
-                return
-            recursive = self.recursive_checkbox.isChecked()
-            save_setting(self.settings, 'same/input_dir', folder_path)
-            save_setting(self.settings, 'same/recursive', '1' if recursive else '0')
-            same_module = get_same_module()
-            self.log.appendPlainText(f'开始检测: {folder_path}')
-            self.summary_label.setText('正在检测，请稍候...')
-            self.set_detection_busy(True)
-            self.worker = SameDetectionWorker(same_module, folder_path, recursive)
-            self.worker.finished.connect(self.handle_detection_finished)
-            self.worker.failed.connect(self.handle_detection_error)
-            if QThread is None:
-                self.worker.run()
-                return
-            self.worker_thread = QThread(self)
-            self.worker.moveToThread(self.worker_thread)
-            self.worker_thread.started.connect(self.worker.run)
-            self.worker_thread.start()
-
-        def run_move(self):
-            if not self.current_result or int(self.current_result.get('duplicate_file_count', 0) or 0) <= 0:
-                show_themed_warning(self, '提示', '当前没有可移动的重复文件')
-                return
-            same_module = get_same_module()
-            root_path = Path(self.current_result['root']).resolve()
-            recursive = bool(self.current_result.get('recursive'))
-            try:
-                results = same_module.move_duplicates(root_path, self.current_result)
-            except Exception as exc:
-                self.log.appendPlainText(f'ERROR {exc}')
-                show_themed_error(self, '移动失败', str(exc))
-                return
-            moved_count = 0
-            renamed_count = 0
-            failed_count = 0
-            for item in results:
-                source_relative = Path(item['source']).relative_to(root_path)
-                target_relative = Path(item['target_path']).relative_to(root_path)
-                if item.get('success'):
-                    moved_count += 1
-                    if item.get('renamed'):
-                        renamed_count += 1
-                        self.log.appendPlainText(f'RENAME {source_relative} -> {target_relative}')
-                    else:
-                        self.log.appendPlainText(f'OK {source_relative} -> {target_relative}')
-                else:
-                    failed_count += 1
-                    self.log.appendPlainText(f'ERROR {source_relative} -> {target_relative}: {item["error"]}')
-            refreshed = same_module.find_duplicate_groups(root_path, recursive)
-            self.set_result(refreshed)
-            self.log.appendPlainText(format_same_summary(refreshed))
-            show_themed_success(
-                self,
-                '完成',
-                [
-                    f'已移动 {moved_count} 个重复文件',
-                    f'已重命名 {renamed_count} 个文件',
-                    f'失败 {failed_count} 个文件',
-                ],
-            )
-
-
     AuthDialog = build_auth_dialog_class({
         'QDialog': QDialog,
         'QVBoxLayout': QVBoxLayout,
@@ -2820,6 +1934,130 @@ if QWidget is not None:
         'build_global_scrollbar_style': build_global_scrollbar_style,
         'show_themed_warning': show_themed_warning,
         'get_zip_module': get_zip_module,
+        'ROOT': ROOT,
+    })
+    Mp4ToMp3Tab = _load_mp4_tab_module().build_mp4_to_mp3_tab_class({
+        'QWidget': QWidget,
+        'QVBoxLayout': QVBoxLayout,
+        'QHBoxLayout': QHBoxLayout,
+        'QLineEdit': QLineEdit,
+        'QPushButton': QPushButton,
+        'QLabel': QLabel,
+        'QPlainTextEdit': QPlainTextEdit,
+        'QProgressBar': QProgressBar,
+        'QFileDialog': QFileDialog,
+        'Qt': Qt,
+        'DropZoneCard': DropZoneCard,
+        'load_setting': load_setting,
+        'save_setting': save_setting,
+        'make_card': make_card,
+        'build_global_scrollbar_style': build_global_scrollbar_style,
+        'show_themed_warning': show_themed_warning,
+        'show_themed_error': show_themed_error,
+        'show_themed_success': show_themed_success,
+        'ROOT': ROOT,
+    })
+    ImageConvertTab = _load_image_convert_tab_module().build_image_convert_tab_class({
+        'QWidget': QWidget,
+        'QVBoxLayout': QVBoxLayout,
+        'QHBoxLayout': QHBoxLayout,
+        'QLineEdit': QLineEdit,
+        'QPushButton': QPushButton,
+        'QLabel': QLabel,
+        'QPlainTextEdit': QPlainTextEdit,
+        'QProgressBar': QProgressBar,
+        'QCheckBox': QCheckBox,
+        'QComboBox': QComboBox,
+        'QFileDialog': QFileDialog,
+        'Qt': Qt,
+        'DropZoneCard': DropZoneCard,
+        'load_setting': load_setting,
+        'save_setting': save_setting,
+        'make_card': make_card,
+        'make_transparent_row': make_transparent_row,
+        'build_global_scrollbar_style': build_global_scrollbar_style,
+        'style_combo_popup': style_combo_popup,
+        'show_themed_warning': show_themed_warning,
+        'show_themed_error': show_themed_error,
+        'show_themed_success': show_themed_success,
+        'get_image_convert_module': get_image_convert_module,
+        'ROOT': ROOT,
+    })
+    PdfToolsTab = _load_pdf_tools_tab_module().build_pdf_tools_tab_class({
+        'QWidget': QWidget,
+        'QVBoxLayout': QVBoxLayout,
+        'QHBoxLayout': QHBoxLayout,
+        'QLineEdit': QLineEdit,
+        'QPushButton': QPushButton,
+        'QLabel': QLabel,
+        'QPlainTextEdit': QPlainTextEdit,
+        'QProgressBar': QProgressBar,
+        'QCheckBox': QCheckBox,
+        'QComboBox': QComboBox,
+        'QFileDialog': QFileDialog,
+        'Qt': Qt,
+        'DropZoneCard': DropZoneCard,
+        'load_setting': load_setting,
+        'save_setting': save_setting,
+        'make_card': make_card,
+        'make_transparent_row': make_transparent_row,
+        'build_global_scrollbar_style': build_global_scrollbar_style,
+        'style_combo_popup': style_combo_popup,
+        'show_themed_warning': show_themed_warning,
+        'show_themed_error': show_themed_error,
+        'show_themed_success': show_themed_success,
+        'get_pdf_tools_module': get_pdf_tools_module,
+        'ROOT': ROOT,
+    })
+    Base64Tab = _load_base64_tab_module().build_base64_tab_class({
+        'QWidget': QWidget,
+        'QVBoxLayout': QVBoxLayout,
+        'QHBoxLayout': QHBoxLayout,
+        'QLineEdit': QLineEdit,
+        'QPushButton': QPushButton,
+        'QLabel': QLabel,
+        'QPlainTextEdit': QPlainTextEdit,
+        'QCheckBox': QCheckBox,
+        'QComboBox': QComboBox,
+        'QFileDialog': QFileDialog,
+        'Qt': Qt,
+        'DropZoneCard': DropZoneCard,
+        'load_setting': load_setting,
+        'save_setting': save_setting,
+        'make_card': make_card,
+        'make_transparent_row': make_transparent_row,
+        'build_global_scrollbar_style': build_global_scrollbar_style,
+        'style_combo_popup': style_combo_popup,
+        'show_themed_warning': show_themed_warning,
+        'show_themed_error': show_themed_error,
+        'show_themed_success': show_themed_success,
+        'get_base64_module': get_base64_module,
+        'ROOT': ROOT,
+    })
+    SameTab = _load_same_tab_module().build_same_tab_class({
+        'QWidget': QWidget,
+        'QVBoxLayout': QVBoxLayout,
+        'QHBoxLayout': QHBoxLayout,
+        'QLineEdit': QLineEdit,
+        'QPushButton': QPushButton,
+        'QLabel': QLabel,
+        'QPlainTextEdit': QPlainTextEdit,
+        'QCheckBox': QCheckBox,
+        'QFileDialog': QFileDialog,
+        'Qt': Qt,
+        'QObject': QObject,
+        'QThread': QThread,
+        'Signal': Signal,
+        'DropZoneCard': DropZoneCard,
+        'load_setting': load_setting,
+        'save_setting': save_setting,
+        'make_card': make_card,
+        'make_transparent_row': make_transparent_row,
+        'build_global_scrollbar_style': build_global_scrollbar_style,
+        'show_themed_warning': show_themed_warning,
+        'show_themed_error': show_themed_error,
+        'show_themed_success': show_themed_success,
+        'get_same_module': get_same_module,
         'ROOT': ROOT,
     })
 
