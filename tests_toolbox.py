@@ -104,6 +104,17 @@ def test_get_same_module_loads_duplicate_helpers():
     assert hasattr(module, 'move_duplicates')
 
 
+def test_repeated_loader_calls_return_same_module_object():
+    toolbox = load_module()
+    ncm_a = toolbox._load_ncm_module()
+    ncm_b = toolbox._load_ncm_module()
+    assert ncm_a is ncm_b
+
+    vd_a = toolbox.get_video_downloader_module()
+    vd_b = toolbox.get_video_downloader_module()
+    assert vd_a is vd_b
+
+
 def test_validate_pdf_form_requires_output_and_extra_fields_for_text_actions():
     toolbox = load_module()
     errors = toolbox.validate_pdf_form('text', [], '', '', '', '150')
