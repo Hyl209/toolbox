@@ -5,11 +5,15 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
-from config_store import get_default_output_dir
-
 
 class ConvertError(Exception):
     pass
+
+
+def _get_default_output_dir():
+    """Lazy import to avoid bare 'from config_store' at module level."""
+    from config_store import get_default_output_dir
+    return get_default_output_dir()
 
 
 def ensure_ffmpeg() -> str:
@@ -35,7 +39,7 @@ def resolve_output_path(input_path: str | Path, output_path: str | Path | None =
                 out = out.with_suffix('.mp3')
         return out.resolve()
 
-    default_dir = get_default_output_dir()
+    default_dir = _get_default_output_dir()
     if default_dir:
         return (default_dir / f'{src.stem}.mp3').resolve()
 
