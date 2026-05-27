@@ -318,6 +318,531 @@ class TestPlugins:
         assert manager is not None
 
 
+# =========================================================================
+# Edge-case 测试
+# =========================================================================
+class TestConfigManagerEdgeCases:
+    """ConfigManager 边界测试"""
+
+    def test_empty_config_dir_returns_defaults(self):
+        from toolbox_app.core.config import ConfigManager
+        with tempfile.TemporaryDirectory() as tmp:
+            manager = ConfigManager(tmp)
+            assert manager.get("app", "version") == "1.0.0"
+            assert manager.get("app", "theme") == "dark"
+
+    def test_corrupted_json_handled_gracefully(self):
+        from toolbox_app.core.config import ConfigManager
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg_file = Path(tmp) / "app.json"
+            cfg_file.write_text("{bad json!!", encoding="utf-8")
+            manager = ConfigManager(tmp)
+            # 应该回退到默认配置
+            assert manager.get("app", "version") == "1.0.0"
+
+    def test_nonexistent_key_returns_none(self):
+        from toolbox_app.core.config import ConfigManager
+        with tempfile.TemporaryDirectory() as tmp:
+            manager = ConfigManager(tmp)
+            assert manager.get("app", "nonexistent_key") is None
+
+    def test_nonexistent_key_with_default(self):
+        from toolbox_app.core.config import ConfigManager
+        with tempfile.TemporaryDirectory() as tmp:
+            manager = ConfigManager(tmp)
+            assert manager.get("app", "missing", "fallback") == "fallback"
+
+    def test_nonexistent_config_name_returns_empty(self):
+        from toolbox_app.core.config import ConfigManager
+        with tempfile.TemporaryDirectory() as tmp:
+            manager = ConfigManager(tmp)
+            assert manager.get("no_such_config", "key") is None
+
+    def test_set_and_reload(self):
+        from toolbox_app.core.config import ConfigManager
+        with tempfile.TemporaryDirectory() as tmp:
+            manager = ConfigManager(tmp)
+            manager.set("app", "custom", 42)
+            assert manager.get("app", "custom") == 42
+            manager.reload("app")
+            assert manager.get("app", "custom") == 42
+
+    def test_update_batch(self):
+        from toolbox_app.core.config import ConfigManager
+        with tempfile.TemporaryDirectory() as tmp:
+            manager = ConfigManager(tmp)
+            manager.update("app", {"k1": "v1", "k2": "v2"})
+            assert manager.get("app", "k1") == "v1"
+            assert manager.get("app", "k2") == "v2"
+
+    def test_get_all_returns_copy(self):
+        from toolbox_app.core.config import ConfigManager
+        with tempfile.TemporaryDirectory() as tmp:
+            manager = ConfigManager(tmp)
+            all_cfg = manager.get_all("app")
+            all_cfg["injected"] = True
+            assert manager.get("app", "injected") is None
+
+
+class TestFileUtilsEdgeCases:
+    """FileUtils 边界测试"""
+
+    def test_read_empty_file(self):
+        from toolbox_app.core.file_utils import FileUtils
+        with tempfile.TemporaryDirectory() as tmp:
+            f = Path(tmp) / "empty.txt"
+            f.write_text("", encoding="utf-8")
+            assert FileUtils.read_text(f) == ""
+            assert FileUtils.get_file_size(f) == 0
+
+    def test_write_and_read_special_chars(self):
+        from toolbox_app.core.file_utils import FileUtils
+        with tempfile.TemporaryDirectory() as tmp:
+            f = Path(tmp) / "special.txt"
+            content = "中文\n日本語\n한국어\némojis 🎵"
+            assert FileUtils.write_text(f, content) is True
+            assert FileUtils.read_text(f) == content
+
+    def test_resolve_name_conflict_no_conflict(self):
+        from toolbox_app.core.file_utils import FileUtils
+        with tempfile.TemporaryDirectory() as tmp:
+            f = Path(tmp) / "unique.txt"
+            assert FileUtils.resolve_name_conflict(f) == f
+
+    def test_resolve_name_conflict_with_existing(self):
+        from toolbox_app.core.file_utils import FileUtils
+        with tempfile.TemporaryDirectory() as tmp:
+            f = Path(tmp) / "test.txt"
+            f.write_text("x", encoding="utf-8")
+            resolved = FileUtils.resolve_name_conflict(f)
+            assert resolved != f
+            assert "(1)" in resolved.name
+
+    def test_safe_delete_nonexistent(self):
+        from toolbox_app.core.file_utils import FileUtils
+        result = FileUtils.safe_delete("/nonexistent/path/xyz")
+        assert result is True  # safe_delete returns True even if not exists
+
+    def test_safe_copy_src_not_exist(self):
+        from toolbox_app.core.file_utils import FileUtils
+        result = FileUtils.safe_copy("/nonexistent/src", "/tmp/dst")
+        assert result is False
+
+    def test_safe_copy_no_overwrite(self):
+        from toolbox_app.core.file_utils import FileUtils
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "src.txt"
+            dst = Path(tmp) / "dst.txt"
+            src.write_text("a", encoding="utf-8")
+            dst.write_text("b", encoding="utf-8")
+            result = FileUtils.safe_copy(src, dst, overwrite=False)
+            assert result is False
+
+    def test_safe_move_src_not_exist(self):
+        from toolbox_app.core.file_utils import FileUtils
+        result = FileUtils.safe_move("/nonexistent/src", "/tmp/dst")
+        assert result is False
+
+    def test_get_file_extension(self):
+        from toolbox_app.core.file_utils import FileUtils
+        assert FileUtils.get_file_extension("photo.JPG") == ".jpg"
+        assert FileUtils.get_file_extension("noext") == ""
+
+    def test_format_size(self):
+        from toolbox_app.core.file_utils import FileUtils
+        assert "B" in FileUtils.format_size(500)
+        assert "KB" in FileUtils.format_size(2048)
+        assert "MB" in FileUtils.format_size(5 * 1024 * 1024)
+        assert "GB" in FileUtils.format_size(3 * 1024 * 1024 * 1024)
+
+    def test_list_files_empty_dir(self):
+        from toolbox_app.core.file_utils import FileUtils
+        with tempfile.TemporaryDirectory() as tmp:
+            assert FileUtils.list_files(tmp) == []
+
+    def test_get_directory_size(self):
+        from toolbox_app.core.file_utils import FileUtils
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "a.bin").write_bytes(b"x" * 100)
+            (Path(tmp) / "b.bin").write_bytes(b"y" * 200)
+            assert FileUtils.get_directory_size(tmp) == 300
+
+
+class TestTaskManagerEdgeCases:
+    """TaskManager 边界测试"""
+
+    def test_cancel_task(self):
+        from toolbox_app.core.task_manager import TaskManager
+        manager = TaskManager()
+        worker = manager.execute_task("cancel_test", lambda: 42)
+        import time
+        time.sleep(0.1)
+        worker.cancel()
+        assert worker.is_cancelled is True
+
+    def test_duplicate_task_id_raises(self):
+        from toolbox_app.core.task_manager import TaskManager
+        from toolbox_app.core.exceptions import TaskError
+        manager = TaskManager()
+        manager.create_worker("dup_id")
+        with pytest.raises(TaskError):
+            manager.create_worker("dup_id")
+
+    def test_remove_worker(self):
+        from toolbox_app.core.task_manager import TaskManager
+        manager = TaskManager()
+        manager.create_worker("to_remove")
+        assert manager.remove_worker("to_remove") is True
+        assert manager.get_worker("to_remove") is None
+
+    def test_remove_nonexistent_worker(self):
+        from toolbox_app.core.task_manager import TaskManager
+        manager = TaskManager()
+        assert manager.remove_worker("nope") is False
+
+    def test_get_task_status(self):
+        from toolbox_app.core.task_manager import TaskManager
+        manager = TaskManager()
+        worker = manager.execute_task("status_test", lambda: 99)
+        import time
+        time.sleep(0.1)
+        status = manager.get_task_status("status_test")
+        assert status is not None
+        assert status["task_id"] == "status_test"
+
+    def test_get_task_status_nonexistent(self):
+        from toolbox_app.core.task_manager import TaskManager
+        manager = TaskManager()
+        assert manager.get_task_status("nope") is None
+
+    def test_cancel_all(self):
+        from toolbox_app.core.task_manager import TaskManager
+        manager = TaskManager()
+        manager.execute_task("t1", lambda: 1)
+        manager.execute_task("t2", lambda: 2)
+        manager.cancel_all()
+        # 队列应该被清空
+        assert manager.get_queued_tasks() == []
+
+    def test_cleanup_completed(self):
+        from toolbox_app.core.task_manager import TaskManager
+        manager = TaskManager()
+        worker = manager.execute_task("cleanup_test", lambda: 42)
+        import time
+        time.sleep(0.2)
+        manager.cleanup_completed()
+        assert manager.get_worker("cleanup_test") is None
+
+
+class TestEventSystemEdgeCases:
+    """EventSystem 边界测试"""
+
+    def test_emit_with_no_listeners(self):
+        from toolbox_app.core.events import EventSystem
+        system = EventSystem()
+        event = system.emit("no_one_listening", {"data": 1})
+        assert event.name == "no_one_listening"
+        assert event.data == {"data": 1}
+
+    def test_listener_exception_does_not_propagate(self):
+        from toolbox_app.core.events import EventSystem
+        system = EventSystem()
+
+        def bad_handler(event):
+            raise ValueError("boom")
+
+        def good_handler(event):
+            good_handler.called = True
+        good_handler.called = False
+
+        system.on("evt", bad_handler)
+        system.on("evt", good_handler)
+        system.emit("evt")
+        # good_handler 仍然应该被调用
+        assert good_handler.called is True
+
+    def test_nested_event_emit(self):
+        from toolbox_app.core.events import EventSystem
+        system = EventSystem()
+        call_order = []
+
+        def outer_handler(event):
+            call_order.append("outer")
+            system.emit("inner_event")
+
+        def inner_handler(event):
+            call_order.append("inner")
+
+        system.on("outer_event", outer_handler)
+        system.on("inner_event", inner_handler)
+        system.emit("outer_event")
+        assert call_order == ["outer", "inner"]
+
+    def test_once_listener_fires_only_once(self):
+        from toolbox_app.core.events import EventSystem
+        system = EventSystem()
+        count = {"n": 0}
+
+        def handler(event):
+            count["n"] += 1
+
+        system.once("evt", handler)
+        system.emit("evt")
+        system.emit("evt")
+        assert count["n"] == 1
+
+    def test_off_specific_callback(self):
+        from toolbox_app.core.events import EventSystem
+        system = EventSystem()
+        count = {"n": 0}
+
+        def handler(event):
+            count["n"] += 1
+
+        system.on("evt", handler)
+        system.emit("evt")
+        system.off("evt", handler)
+        system.emit("evt")
+        assert count["n"] == 1
+
+    def test_off_all_callbacks(self):
+        from toolbox_app.core.events import EventSystem
+        system = EventSystem()
+        count = {"n": 0}
+
+        def handler(event):
+            count["n"] += 1
+
+        system.on("evt", handler)
+        system.off("evt")
+        system.emit("evt")
+        assert count["n"] == 0
+
+    def test_event_stop_propagation(self):
+        from toolbox_app.core.events import EventSystem
+        system = EventSystem()
+        call_order = []
+
+        def first(event):
+            call_order.append("first")
+            event.stop()
+
+        def second(event):
+            call_order.append("second")
+
+        system.on("evt", first)
+        system.on("evt", second)
+        system.emit("evt")
+        assert call_order == ["first"]
+
+    def test_has_listeners(self):
+        from toolbox_app.core.events import EventSystem
+        system = EventSystem()
+        assert system.has_listeners("evt") is False
+        system.on("evt", lambda e: None)
+        assert system.has_listeners("evt") is True
+
+    def test_clear(self):
+        from toolbox_app.core.events import EventSystem
+        system = EventSystem()
+        system.on("a", lambda e: None)
+        system.on("b", lambda e: None)
+        system.clear()
+        assert system.has_listeners("a") is False
+        assert system.has_listeners("b") is False
+
+
+class TestWorkerEdgeCases:
+    """Worker 边界测试"""
+
+    def test_worker_callbacks(self):
+        from toolbox_app.core.worker import Worker
+        worker = Worker()
+        results = {"progress": [], "completed": None, "error": None, "cancelled": False}
+
+        worker.on_progress(lambda p: results["progress"].append(p))
+        worker.on_completed(lambda r: results.__setitem__("completed", r))
+        worker.on_error(lambda e: results.__setitem__("error", e))
+        worker.on_cancelled(lambda: results.__setitem__("cancelled", True))
+
+        worker.execute(lambda: 42)
+        assert results["completed"] == 42
+        assert results["cancelled"] is False
+
+    def test_worker_execute_raises(self):
+        from toolbox_app.core.worker import Worker
+        worker = Worker()
+        error_caught = {"value": None}
+        worker.on_error(lambda e: error_caught.__setitem__("value", e))
+
+        with pytest.raises(ValueError):
+            worker.execute(lambda: (_ for _ in ()).throw(ValueError("fail")))
+        assert error_caught["value"] is not None
+
+    def test_worker_cancel_triggers_callback(self):
+        from toolbox_app.core.worker import Worker
+        worker = Worker()
+        cancelled = {"flag": False}
+        worker.on_cancelled(lambda: cancelled.__setitem__("flag", True))
+        worker.cancel()
+        assert cancelled["flag"] is True
+        assert worker.is_cancelled is True
+
+
+# =========================================================================
+# 插件系统测试
+# =========================================================================
+class TestPluginRegistryEdgeCases:
+    """PluginRegistry 边界测试"""
+
+    def _make_plugin(self, name="test_plugin", version="1.0.0"):
+        from toolbox_app.plugins.base import PluginBase, PluginInfo
+
+        class _Plugin(PluginBase):
+            def get_plugin_info(self):
+                return PluginInfo(name=name, version=version, description="desc", author="auth")
+            def initialize(self):
+                self._is_initialized = True
+                return True
+            def cleanup(self):
+                pass
+        return _Plugin()
+
+    def test_register_and_unregister(self):
+        from toolbox_app.plugins.registry import PluginRegistry
+        registry = PluginRegistry()
+        plugin = self._make_plugin()
+        assert registry.register(plugin) is True
+        assert registry.has_plugin("test_plugin") is True
+        assert registry.unregister("test_plugin") is True
+        assert registry.has_plugin("test_plugin") is False
+
+    def test_duplicate_register_returns_false(self):
+        from toolbox_app.plugins.registry import PluginRegistry
+        registry = PluginRegistry()
+        p1 = self._make_plugin()
+        p2 = self._make_plugin()
+        assert registry.register(p1) is True
+        assert registry.register(p2) is False
+
+    def test_unregister_nonexistent(self):
+        from toolbox_app.plugins.registry import PluginRegistry
+        registry = PluginRegistry()
+        assert registry.unregister("nope") is False
+
+    def test_enable_disable_plugin(self):
+        from toolbox_app.plugins.registry import PluginRegistry
+        registry = PluginRegistry()
+        plugin = self._make_plugin()
+        registry.register(plugin)
+        assert registry.disable_plugin("test_plugin") is True
+        assert plugin.is_enabled is False
+        assert registry.enable_plugin("test_plugin") is True
+        assert plugin.is_enabled is True
+
+    def test_enable_disable_nonexistent(self):
+        from toolbox_app.plugins.registry import PluginRegistry
+        registry = PluginRegistry()
+        assert registry.enable_plugin("nope") is False
+        assert registry.disable_plugin("nope") is False
+
+    def test_initialize_plugin(self):
+        from toolbox_app.plugins.registry import PluginRegistry
+        registry = PluginRegistry()
+        plugin = self._make_plugin()
+        registry.register(plugin)
+        assert registry.initialize_plugin("test_plugin") is True
+        assert plugin.is_initialized is True
+
+    def test_initialize_nonexistent(self):
+        from toolbox_app.plugins.registry import PluginRegistry
+        registry = PluginRegistry()
+        assert registry.initialize_plugin("nope") is False
+
+    def test_get_plugin_count(self):
+        from toolbox_app.plugins.registry import PluginRegistry
+        registry = PluginRegistry()
+        assert registry.get_plugin_count() == 0
+        registry.register(self._make_plugin("p1"))
+        registry.register(self._make_plugin("p2"))
+        assert registry.get_plugin_count() == 2
+
+    def test_get_enabled_plugins(self):
+        from toolbox_app.plugins.registry import PluginRegistry
+        registry = PluginRegistry()
+        p1 = self._make_plugin("p1")
+        p2 = self._make_plugin("p2")
+        registry.register(p1)
+        registry.register(p2)
+        registry.disable_plugin("p2")
+        enabled = registry.get_enabled_plugins()
+        assert "p1" in enabled
+        assert "p2" not in enabled
+
+
+class TestPluginDiscoveryEdgeCases:
+    """PluginDiscovery 边界测试"""
+
+    def test_discover_empty_directory(self):
+        from toolbox_app.plugins.discovery import PluginDiscovery
+        with tempfile.TemporaryDirectory() as tmp:
+            discovery = PluginDiscovery(tmp)
+            result = discovery.discover_plugins()
+            assert result == {}
+
+    def test_discover_invalid_manifest(self):
+        from toolbox_app.plugins.discovery import PluginDiscovery
+        with tempfile.TemporaryDirectory() as tmp:
+            plugin_dir = Path(tmp) / "bad_plugin"
+            plugin_dir.mkdir()
+            manifest = plugin_dir / "manifest.json"
+            manifest.write_text('{"name": "bad"}', encoding="utf-8")  # 缺少必需字段
+            discovery = PluginDiscovery(tmp)
+            result = discovery.discover_plugins()
+            # 应该跳过无效 manifest，不崩溃
+            assert isinstance(result, dict)
+
+    def test_discover_corrupted_manifest(self):
+        from toolbox_app.plugins.discovery import PluginDiscovery
+        with tempfile.TemporaryDirectory() as tmp:
+            plugin_dir = Path(tmp) / "corrupt"
+            plugin_dir.mkdir()
+            manifest = plugin_dir / "manifest.json"
+            manifest.write_text("{not json!!!", encoding="utf-8")
+            discovery = PluginDiscovery(tmp)
+            result = discovery.discover_plugins()
+            assert isinstance(result, dict)
+
+    def test_get_plugin_info_not_found(self):
+        from toolbox_app.plugins.discovery import PluginDiscovery
+        with tempfile.TemporaryDirectory() as tmp:
+            discovery = PluginDiscovery(tmp)
+            discovery.discover_plugins()
+            assert discovery.get_plugin_info("nonexistent") is None
+
+    def test_validate_plugin_not_found(self):
+        from toolbox_app.plugins.discovery import PluginDiscovery
+        with tempfile.TemporaryDirectory() as tmp:
+            discovery = PluginDiscovery(tmp)
+            discovery.discover_plugins()
+            assert discovery.validate_plugin("nonexistent") is False
+
+    def test_discover_valid_manifest(self):
+        from toolbox_app.plugins.discovery import PluginDiscovery
+        with tempfile.TemporaryDirectory() as tmp:
+            plugin_dir = Path(tmp) / "good_plugin"
+            plugin_dir.mkdir()
+            manifest = plugin_dir / "manifest.json"
+            manifest.write_text(
+                '{"name": "good", "version": "1.0", "description": "ok", "author": "me", "entry": "main.py"}',
+                encoding="utf-8"
+            )
+            discovery = PluginDiscovery(tmp)
+            result = discovery.discover_plugins()
+            assert "good" in result
+            assert result["good"].version == "1.0"
+
+
 # 运行测试
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
