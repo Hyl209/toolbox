@@ -5,7 +5,16 @@ import time
 import tempfile
 from pathlib import Path
 
+try:
+    import pytest_timeout  # noqa: F401
+    _has_timeout = True
+except ImportError:
+    _has_timeout = False
+
+timeout_10s = pytest.mark.timeout(10) if _has_timeout else lambda f: f
+
 # 测试性能监控
+@timeout_10s
 class TestPerformance:
     """测试性能监控"""
 

@@ -176,8 +176,9 @@ def build_image_convert_tab_class(deps: dict):
             if errors:
                 show_themed_warning(self, '提示', '\n'.join(errors))
                 return
-            image_module = get_image_convert_module()
-            available, message = image_module.probe_imagemagick()
+            from toolbox_app.services.image_service import ImageService
+            image_svc = ImageService()
+            available, message = image_svc.check_imagemagick()
             if not available:
                 show_themed_warning(self, '缺少依赖', message)
                 self.log.appendPlainText(f'ERROR {message}')
@@ -186,11 +187,11 @@ def build_image_convert_tab_class(deps: dict):
             self.progress.setMaximum(max(1, len(self.files)))
             self.progress.setValue(0)
             quality = int(quality_text.strip())
-            target_size_kb = image_module.validate_target_size_kb(target_size_text)
+            target_size_kb = image_svc.validate_target_size(target_size_text)
             success_count = 0
             for idx, src in enumerate(self.files, start=1):
                 try:
-                    out = image_module.convert_image(
+                    out = image_svc.convert(
                         input_path=src,
                         output_dir=Path(output_dir),
                         target_format=target_format,

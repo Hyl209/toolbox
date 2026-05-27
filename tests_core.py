@@ -5,6 +5,15 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock
 
+# 如果安装了 pytest-timeout，为含 time.sleep 的测试类加超时保护
+try:
+    import pytest_timeout  # noqa: F401
+    _has_timeout = True
+except ImportError:
+    _has_timeout = False
+
+timeout_10s = pytest.mark.timeout(10) if _has_timeout else lambda f: f
+
 # 测试 core 模块
 class TestCoreModules:
     """测试核心模块"""
@@ -468,6 +477,7 @@ class TestFileUtilsEdgeCases:
             assert FileUtils.get_directory_size(tmp) == 300
 
 
+@timeout_10s
 class TestTaskManagerEdgeCases:
     """TaskManager 边界测试"""
 
@@ -846,6 +856,7 @@ class TestPluginDiscoveryEdgeCases:
 # =========================================================================
 # 回归测试
 # =========================================================================
+@timeout_10s
 class TestRegression:
     """回归测试 — 验证核心功能不退化"""
 

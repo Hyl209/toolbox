@@ -193,25 +193,27 @@ def build_pdf_tools_tab_class(deps: dict):
             if errors:
                 show_themed_warning(self, '提示', '\n'.join(errors))
                 return
-            pdf_module = get_pdf_tools_module()
+            from toolbox_app.services.pdf_service import PDFService
+            pdf_svc = PDFService()
             save_setting(self.settings, 'pdftools/output_dir', output_dir)
             self.progress.setMaximum(max(1, len(self.files)))
             self.progress.setValue(0)
 
             def do_action():
                 if action == 'merge':
-                    out = pdf_module.merge_pdfs(self.files, Path(output_dir) / 'merged.pdf')
+                    out = pdf_svc.merge(self.files, Path(output_dir) / 'merged.pdf')
                     self.log.appendPlainText(f'OK merged -> {out}')
                 elif action == 'split':
-                    reader = pdf_module.PdfReader(str(self.files[0]))
-                    page_indexes = pdf_module.parse_page_ranges(page_ranges_text, len(reader.pages))
-                    outputs = pdf_module.split_pdf(self.files[0], Path(output_dir), page_indexes)
+                    from pypdf import PdfReader
+                    reader = PdfReader(str(self.files[0]))
+                    page_indexes = pdf_svc.parse_page_ranges(page_ranges_text, len(reader.pages))
+                    outputs = pdf_svc.split(self.files[0], Path(output_dir), page_indexes)
                     self.log.appendPlainText(f'OK split -> {len(outputs)} files')
                 elif action == 'images':
-                    outputs = pdf_module.pdf_to_images(self.files[0], Path(output_dir), image_format, int(dpi_text.strip()))
+                    outputs = pdf_svc.to_images(self.files[0], Path(output_dir), image_format, int(dpi_text.strip()))
                     self.log.appendPlainText(f'OK images -> {len(outputs)} files')
                 else:
-                    out = pdf_module.export_pdf_text(
+                    out = pdf_svc.export_text(
                         self.files[0],
                         Path(output_dir),
                         text_export_format,
