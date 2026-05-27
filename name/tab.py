@@ -113,6 +113,7 @@ def build_batch_rename_tab_class(deps: dict[str, object]):
         def __init__(self, settings):
             super().__init__()
             self.settings = settings
+            self.current_theme = load_setting(settings, 'ui/theme', 'dark')
             self.current_summary: dict[str, object] | None = None
             self.is_running = False
 
@@ -189,6 +190,13 @@ def build_batch_rename_tab_class(deps: dict[str, object]):
 
             root.addWidget(card)
             self.refresh_summary()
+
+        def apply_theme(self, theme_name: str) -> None:
+            self.current_theme = theme_name
+            safe = theme_name if theme_name in {'dark', 'light'} else 'dark'
+            style_combo_popup(self.group_combo, safe)
+            style_combo_popup(self.sort_combo, safe)
+            style_combo_popup(self.order_combo, safe)
 
         def set_busy(self, busy: bool) -> None:
             self.is_running = busy

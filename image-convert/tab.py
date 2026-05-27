@@ -93,6 +93,7 @@ def build_image_convert_tab_class(deps: dict):
         def __init__(self, settings):
             super().__init__()
             self.settings = settings
+            self.current_theme = load_setting(settings, 'ui/theme', 'dark')
             self.files: list[Path] = []
             root = QVBoxLayout(self)
             card, layout = make_card('图片格式互转', '拖入 JPG / PNG / WebP / HEIC 图片，支持批量转换与压缩')
@@ -148,6 +149,10 @@ def build_image_convert_tab_class(deps: dict):
             self.log.setStyleSheet(build_global_scrollbar_style())
             layout.addWidget(self.log)
             root.addWidget(card)
+
+        def apply_theme(self, theme_name: str) -> None:
+            self.current_theme = theme_name
+            style_combo_popup(self.jpg_background_combo, theme_name if theme_name in {'dark', 'light'} else 'dark')
 
         def add_paths(self, paths: list[str]):
             files = collect_image_convert_inputs(paths)

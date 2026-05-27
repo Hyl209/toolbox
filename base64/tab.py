@@ -92,6 +92,7 @@ def build_base64_tab_class(deps: dict[str, object]):
         def __init__(self, settings):
             super().__init__()
             self.settings = settings
+            self.current_theme = load_setting(settings, 'ui/theme', 'dark')
             self.files: list[Path] = []
             root = QVBoxLayout(self)
             card, layout = make_card('图片Base64', '支持图片转 Base64 / Data URL，或把 Base64 还原为图片')
@@ -144,6 +145,10 @@ def build_base64_tab_class(deps: dict[str, object]):
             layout.addWidget(self.log)
             root.addWidget(card)
             self.update_mode_ui(self.mode_combo.currentText())
+
+        def apply_theme(self, theme_name: str) -> None:
+            self.current_theme = theme_name
+            style_combo_popup(self.mode_combo, theme_name if theme_name in {'dark', 'light'} else 'dark')
 
         def add_paths(self, paths: list[str]):
             files = collect_base64_image_inputs(paths)

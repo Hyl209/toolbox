@@ -341,19 +341,13 @@ def build_toolbox_window_class(deps: dict):
             self.current_theme = 'light' if self.current_theme == 'dark' else 'dark'
             save_setting(self.settings, 'ui/theme', self.current_theme)
             self.theme_button.setText('☀️' if self.current_theme == 'dark' else '🌙')
-            style_combo_popup(self.image_convert_tab.jpg_background_combo, self.current_theme)
-            style_combo_popup(self.base64_tab.mode_combo, self.current_theme)
-            style_combo_popup(self.pdf_tools_tab.action_combo, self.current_theme)
-            style_combo_popup(self.pdf_tools_tab.image_format_combo, self.current_theme)
-            style_combo_popup(self.pdf_tools_tab.text_format_combo, self.current_theme)
+            # Generic: iterate all tabs, call apply_theme if available
+            for i in range(self.stack.count()):
+                page = self.stack.widget(i)
+                if hasattr(page, 'apply_theme'):
+                    page.apply_theme(self.current_theme)
             self.setStyleSheet(get_theme_stylesheet(self.current_theme))
             self.content_surface.setGraphicsEffect(None)
-            if hasattr(self.file_sorter_tab, 'apply_theme'):
-                self.file_sorter_tab.apply_theme(self.current_theme)
-            if hasattr(self.tg_downloader_tab, 'apply_theme'):
-                self.tg_downloader_tab.apply_theme(self.current_theme)
-            if hasattr(self.web_video_downloader_tab, 'apply_theme'):
-                self.web_video_downloader_tab.apply_theme(self.current_theme)
             self.update_window_controls()
             self.update_user_menu_ui()
             if hasattr(self, 'user_menu') and self.user_menu.isVisible():

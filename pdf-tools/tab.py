@@ -92,6 +92,7 @@ def build_pdf_tools_tab_class(deps: dict):
         def __init__(self, settings):
             super().__init__()
             self.settings = settings
+            self.current_theme = load_setting(settings, 'ui/theme', 'dark')
             self.files: list[Path] = []
             root = QVBoxLayout(self)
             card, layout = make_card('PDF工具', '支持合并、拆分、转图片、导出 TXT / DOCX')
@@ -156,6 +157,13 @@ def build_pdf_tools_tab_class(deps: dict):
             layout.addWidget(self.log)
             root.addWidget(card)
             self.update_action_ui(self.action_combo.currentText())
+
+        def apply_theme(self, theme_name: str) -> None:
+            self.current_theme = theme_name
+            safe = theme_name if theme_name in {'dark', 'light'} else 'dark'
+            style_combo_popup(self.action_combo, safe)
+            style_combo_popup(self.image_format_combo, safe)
+            style_combo_popup(self.text_format_combo, safe)
 
         def add_paths(self, paths: list[str]):
             files = collect_pdf_tool_inputs(paths)
