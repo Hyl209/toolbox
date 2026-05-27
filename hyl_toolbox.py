@@ -669,6 +669,8 @@ if QWidget is not None:
         'make_card': make_card,
         'build_global_scrollbar_style': build_global_scrollbar_style,
         'show_themed_warning': show_themed_warning,
+        'show_themed_error': show_themed_error,
+        'show_themed_success': show_themed_success,
         'get_zip_module': get_zip_module,
         'ROOT': ROOT,
     })

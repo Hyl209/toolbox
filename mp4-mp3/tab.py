@@ -10,27 +10,17 @@ def _load_mp4_converter():
     return load_module_once('mp4_converter_module', _MP4_DIR / 'converter.py')
 
 
+_MP4_SUFFIXES = {'.mp4'}
+
+
 def collect_mp4_inputs(paths: list[str]) -> list[Path]:
-    unique: dict[Path, None] = {}
-    for raw in paths:
-        path = Path(raw).resolve()
-        if path.is_file() and path.suffix.lower() == '.mp4':
-            unique[path] = None
-        elif path.is_dir():
-            for item in sorted(path.rglob('*.mp4')):
-                if item.is_file():
-                    unique[item.resolve()] = None
-    return sorted(unique.keys())
+    from toolbox_app.tab_utils import collect_inputs_by_suffix
+    return collect_inputs_by_suffix(paths, _MP4_SUFFIXES)
 
 
 def format_mp4_drop_summary(files: list[Path]) -> str:
-    if not files:
-        return '拖入 .mp4 文件或文件夹'
-    names = [p.stem for p in files[:6]]
-    summary = '\n'.join(names)
-    if len(files) > 6:
-        summary += f'\n... 另有 {len(files) - 6} 个视频'
-    return f'已添加 {len(files)} 个视频\n\n{summary}'
+    from toolbox_app.tab_utils import format_drop_summary
+    return format_drop_summary(files, '视频')
 
 
 def validate_mp4_form(files: list[Path], output_dir: str) -> list[str]:
@@ -94,34 +84,11 @@ def build_mp4_tab_class(deps: dict):
             root.addWidget(card)
 
         def add_paths(self, paths: list[str]):
-            files = collect_mp4_inputs(paths)
-            existing = {p.resolve() for p in self.files}
-            new_files: list[Path] = []
-            for file in files:
-                resolved = file.resolve()
-                if resolved not in existing:
-                    self.files.append(resolved)
-                    existing.add(resolved)
-                    new_files.append(resolved)
-            if self.files:
-                self.drop_zone.set_preview_file_icon(
-                    str(self.files[0]),
-                    header_text=f'已添加 {len(self.files)} 个视频',
-                    body_text='\n'.join(p.stem for p in self.files[:3]) + (f'\n... 另有 {len(self.files) - 3} 个视频' if len(self.files) > 3 else ''),
-                )
-            else:
-                self.drop_zone.set_body_text(format_mp4_drop_summary(self.files))
-            if new_files:
-                self.log.appendPlainText('\n'.join(p.stem for p in new_files))
-            else:
-                self.log.appendPlainText('没有新增视频')
+            new_files = collect_mp4_inputs(paths)
+            self.add_files_with_dedup(new_files, self.drop_zone)
 
         def clear_form(self):
-            had_files = bool(self.files)
-            self.files = []
-            self.drop_zone.set_body_text(format_mp4_drop_summary(self.files))
-            if had_files:
-                self.log.appendPlainText('已清空待转换视频')
+            self.clear_files(self.drop_zone, format_mp4_drop_summary([]))
 
         def convert_files(self):
             output_dir = self.output_edit.text().strip()
@@ -134,19 +101,22 @@ def build_mp4_tab_class(deps: dict):
             self.progress.setMaximum(max(1, len(self.files)))
             self.progress.setValue(0)
             mp4_module = _load_mp4_converter()
-            success_count = 0
-            try:
+
+            def do_convert():
+                success_count = 0
                 for idx, src in enumerate(self.files, start=1):
                     out = mp4_module.convert_mp4_to_mp3(src, Path(output_dir) / f'{src.stem}.mp3')
                     self.log.appendPlainText(f'OK {src} -> {out}')
                     success_count += 1
                     self.progress.setValue(idx)
-                self.clear_form()
-                summary = f'转换完成: 成功{success_count} 个视频'
-                show_themed_success(self, '完成', [summary])
-                self.log.appendPlainText(summary)
-            except Exception as exc:
-                self.log.appendPlainText(f'ERROR {exc}')
-                show_themed_error(self, '转换失败', str(exc))
+                return success_count
+
+            count = self.run_action_with_error_handling(
+                '转换', do_convert,
+                f'转换完成: 成功{len(self.files)} 个视频',
+                clear_on_success=True,
+                drop_zone=self.drop_zone,
+                summary_text=format_mp4_drop_summary([]),
+            )
 
     return Mp4ToMp3Tab

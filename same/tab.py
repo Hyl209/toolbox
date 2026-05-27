@@ -264,39 +264,30 @@ def build_same_tab_class(deps: dict[str, object]):
             same_module = get_same_module()
             root_path = Path(self.current_result['root']).resolve()
             recursive = bool(self.current_result.get('recursive'))
-            try:
+
+            def do_move():
                 results = same_module.move_duplicates(root_path, self.current_result)
-            except Exception as exc:
-                self.log.appendPlainText(f'ERROR {exc}')
-                show_themed_error(self, '移动失败', str(exc))
-                return
-            moved_count = 0
-            renamed_count = 0
-            failed_count = 0
-            for item in results:
-                source_relative = Path(item['source']).relative_to(root_path)
-                target_relative = Path(item['target_path']).relative_to(root_path)
-                if item.get('success'):
-                    moved_count += 1
-                    if item.get('renamed'):
-                        renamed_count += 1
-                        self.log.appendPlainText(f'RENAME {source_relative} -> {target_relative}')
+                moved_count = 0
+                renamed_count = 0
+                failed_count = 0
+                for item in results:
+                    source_relative = Path(item['source']).relative_to(root_path)
+                    target_relative = Path(item['target_path']).relative_to(root_path)
+                    if item.get('success'):
+                        moved_count += 1
+                        if item.get('renamed'):
+                            renamed_count += 1
+                            self.log.appendPlainText(f'RENAME {source_relative} -> {target_relative}')
+                        else:
+                            self.log.appendPlainText(f'OK {source_relative} -> {target_relative}')
                     else:
-                        self.log.appendPlainText(f'OK {source_relative} -> {target_relative}')
-                else:
-                    failed_count += 1
-                    self.log.appendPlainText(f'ERROR {source_relative} -> {target_relative}: {item["error"]}')
-            refreshed = same_module.find_duplicate_groups(root_path, recursive)
-            self.set_result(refreshed)
-            self.log.appendPlainText(format_same_summary(refreshed))
-            show_themed_success(
-                self,
-                '完成',
-                [
-                    f'已移动 {moved_count} 个重复文件',
-                    f'已重命名 {renamed_count} 个文件',
-                    f'失败 {failed_count} 个文件',
-                ],
-            )
+                        failed_count += 1
+                        self.log.appendPlainText(f'ERROR {source_relative} -> {target_relative}: {item["error"]}')
+                refreshed = same_module.find_duplicate_groups(root_path, recursive)
+                self.set_result(refreshed)
+                self.log.appendPlainText(format_same_summary(refreshed))
+                self.log.appendPlainText(f'已移动 {moved_count} 个, 已重命名 {renamed_count} 个, 失败 {failed_count} 个')
+
+            self.run_action_with_error_handling('移动', do_move, '重复文件移动完成', clear_on_success=False)
 
     return SameTab

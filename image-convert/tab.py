@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from toolbox_app.tab_utils import format_drop_summary
+
 _IMAGE_CONVERT_DIR = Path(__file__).resolve().parent
 
 
@@ -16,13 +18,7 @@ def collect_image_convert_inputs(paths: list[str]) -> list[Path]:
 
 
 def format_image_convert_drop_summary(files: list[Path]) -> str:
-    if not files:
-        return '拖入 JPG / PNG / WebP / HEIC 图片或文件夹'
-    names = [p.stem for p in files[:6]]
-    summary = '\n'.join(names)
-    if len(files) > 6:
-        summary += f'\n... 另有 {len(files) - 6} 张图片'
-    return f'已添加 {len(files)} 张图片\n\n{summary}'
+    return format_drop_summary(files, 'JPG / PNG / WebP / HEIC 图片')
 
 
 def validate_image_convert_form(files: list[Path], output_dir: str, target_format: str, quality_text: str, target_size_text: str) -> list[str]:
@@ -169,11 +165,7 @@ def build_image_convert_tab_class(deps: dict):
             self.log.appendPlainText(picked.name)
 
         def clear_form(self):
-            had_files = bool(self.files)
-            self.files = []
-            self.drop_zone.set_body_text(format_image_convert_drop_summary(self.files))
-            if had_files:
-                self.log.appendPlainText('已清空待转换图片')
+            self.clear_files(self.drop_zone, format_image_convert_drop_summary([]))
 
         def convert_files(self):
             target_format = self.format_combo.currentText()

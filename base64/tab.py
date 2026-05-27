@@ -2,31 +2,18 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from toolbox_app.tab_utils import collect_inputs_by_suffix, format_drop_summary
+
 
 def collect_base64_image_inputs(paths: list[str]) -> list[Path]:
     from toolbox_app.loaders import load_module_once
     _dir = Path(__file__).resolve().parent
     base64_module = load_module_once('base64_converter_module', _dir / 'converter.py')
-    unique: dict[Path, None] = {}
-    for raw in paths:
-        path = Path(raw).resolve()
-        if path.is_file() and path.suffix.lower() in base64_module.SUPPORTED_IMAGE_SUFFIXES:
-            unique[path] = None
-        elif path.is_dir():
-            for item in sorted(path.iterdir()):
-                if item.is_file() and item.suffix.lower() in base64_module.SUPPORTED_IMAGE_SUFFIXES:
-                    unique[item.resolve()] = None
-    return sorted(unique.keys())
+    return collect_inputs_by_suffix(paths, base64_module.SUPPORTED_IMAGE_SUFFIXES, recursive=False)
 
 
 def format_base64_drop_summary(files: list[Path]) -> str:
-    if not files:
-        return '拖入 PNG / JPG / JPEG / WebP / GIF / BMP 图片'
-    names = [p.name for p in files[:6]]
-    summary = '\n'.join(names)
-    if len(files) > 6:
-        summary += f'\n... 另有 {len(files) - 6} 张图片'
-    return f'已添加 {len(files)} 张图片\n\n{summary}'
+    return format_drop_summary(files, 'PNG / JPG / JPEG / WebP / GIF / BMP 图片')
 
 
 def validate_base64_form(mode: str, image_files: list[Path], base64_text: str, output_dir: str, output_name: str) -> list[str]:
@@ -168,13 +155,9 @@ def build_base64_tab_class(deps: dict[str, object]):
             self.log.appendPlainText(picked.name)
 
         def clear_form(self):
-            had_files = bool(self.files)
-            self.files = []
-            self.drop_zone.set_body_text(format_base64_drop_summary(self.files))
+            self.clear_files(self.drop_zone, format_base64_drop_summary([]))
             if self.mode_combo.currentText() == '图片转Base64':
                 self.base64_edit.clear()
-            if had_files:
-                self.log.appendPlainText('已清空待编码图片')
 
         def update_mode_ui(self, label: str):
             mode = get_base64_mode_value(label)
@@ -200,7 +183,8 @@ def build_base64_tab_class(deps: dict[str, object]):
                 return
             base64_module = get_base64_module()
             save_setting(self.settings, 'base64/output_dir', output_dir)
-            try:
+
+            def do_action():
                 if mode == 'encode':
                     image_path = self.files[0]
                     encoded = base64_module.encode_image_to_base64(image_path)
@@ -209,13 +193,13 @@ def build_base64_tab_class(deps: dict[str, object]):
                     self.base64_edit.setPlainText(encoded)
                     out = base64_module.save_base64_text(encoded, output_dir, output_name)
                     self.log.appendPlainText(f'OK base64 -> {out}')
-                    self.clear_form()
                 else:
                     out = base64_module.decode_base64_to_file(base64_text, output_dir, output_name)
                     self.log.appendPlainText(f'OK image -> {out}')
-                show_themed_success(self, '完成', ['Base64 处理完成'])
-            except Exception as exc:
-                self.log.appendPlainText(f'ERROR {exc}')
-                show_themed_error(self, '处理失败', str(exc))
+                return True
+
+            result = self.run_action_with_error_handling('处理', do_action, 'Base64 处理完成', clear_on_success=False)
+            if result is not None and mode == 'encode':
+                self.clear_form()
 
     return Base64Tab

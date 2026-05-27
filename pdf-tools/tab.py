@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from toolbox_app.tab_utils import format_drop_summary
+
 _PDF_TOOLS_DIR = Path(__file__).resolve().parent
 
 
@@ -16,13 +18,7 @@ def collect_pdf_tool_inputs(paths: list[str]) -> list[Path]:
 
 
 def format_pdf_drop_summary(files: list[Path]) -> str:
-    if not files:
-        return '拖入 PDF 文件或文件夹'
-    names = [p.stem for p in files[:6]]
-    summary = '\n'.join(names)
-    if len(files) > 6:
-        summary += f'\n... 另有 {len(files) - 6} 个PDF'
-    return f'已添加 {len(files)} 个PDF\n\n{summary}'
+    return format_drop_summary(files, 'PDF 文件')
 
 
 def validate_pdf_form(action: str, files: list[Path], output_dir: str, page_ranges_text: str, image_format: str, dpi_text: str, text_export_format: str = '') -> list[str]:
@@ -169,33 +165,10 @@ def build_pdf_tools_tab_class(deps: dict):
 
         def add_paths(self, paths: list[str]):
             files = collect_pdf_tool_inputs(paths)
-            existing = {p.resolve() for p in self.files}
-            new_files: list[Path] = []
-            for file in files:
-                resolved = file.resolve()
-                if resolved not in existing:
-                    self.files.append(resolved)
-                    existing.add(resolved)
-                    new_files.append(resolved)
-            if self.files:
-                self.drop_zone.set_preview_file_icon(
-                    str(self.files[0]),
-                    header_text=f'已添加 {len(self.files)} 个PDF',
-                    body_text='\n'.join(p.stem for p in self.files[:3]) + (f'\n... 另有 {len(self.files) - 3} 个PDF' if len(self.files) > 3 else ''),
-                )
-            else:
-                self.drop_zone.set_body_text(format_pdf_drop_summary(self.files))
-            if new_files:
-                self.log.appendPlainText('\n'.join(p.name for p in new_files))
-            else:
-                self.log.appendPlainText('没有新增 PDF')
+            self.add_files_with_dedup(files, self.drop_zone)
 
         def clear_form(self):
-            had_files = bool(self.files)
-            self.files = []
-            self.drop_zone.set_body_text(format_pdf_drop_summary(self.files))
-            if had_files:
-                self.log.appendPlainText('已清空待处理 PDF')
+            self.clear_files(self.drop_zone, format_pdf_drop_summary([]))
 
         def update_action_ui(self, action: str):
             action_value = get_pdf_action_value(action)
@@ -224,7 +197,8 @@ def build_pdf_tools_tab_class(deps: dict):
             save_setting(self.settings, 'pdftools/output_dir', output_dir)
             self.progress.setMaximum(max(1, len(self.files)))
             self.progress.setValue(0)
-            try:
+
+            def do_action():
                 if action == 'merge':
                     out = pdf_module.merge_pdfs(self.files, Path(output_dir) / 'merged.pdf')
                     self.log.appendPlainText(f'OK merged -> {out}')
@@ -245,10 +219,10 @@ def build_pdf_tools_tab_class(deps: dict):
                     )
                     self.log.appendPlainText(f'OK text -> {out}')
                 self.progress.setValue(self.progress.maximum())
-                self.clear_form()
-                show_themed_success(self, '完成', ['PDF 处理完成'])
-            except Exception as exc:
-                self.log.appendPlainText(f'ERROR {exc}')
-                show_themed_error(self, '处理失败', str(exc))
+
+            self.run_action_with_error_handling(
+                '处理', do_action, 'PDF 处理完成',
+                clear_on_success=True, drop_zone=self.drop_zone,
+                summary_text=format_pdf_drop_summary([]))
 
     return PdfToolsTab

@@ -69,6 +69,8 @@ def build_zipandpng_tab_class(deps: dict[str, object]):
     make_card = deps['make_card']
     build_global_scrollbar_style = deps['build_global_scrollbar_style']
     show_themed_warning = deps['show_themed_warning']
+    show_themed_error = deps['show_themed_error']
+    show_themed_success = deps['show_themed_success']
     get_zip_module = deps['get_zip_module']
     ROOT = deps['ROOT']
     from toolbox_app.widgets import build_base_tool_tab_class
@@ -179,19 +181,24 @@ def build_zipandpng_tab_class(deps: dict[str, object]):
                 show_themed_warning(self, '提示', '\n'.join(errors))
                 return
             save_setting(self.settings, 'zipandpng/output_dir', self.output_dir_edit.text().strip())
-            out_name = normalize_output_name(
-                self.output_name_edit.text(),
-                self.cover_path,
-                self.payload_path,
-            )
-            out_path = Path(self.output_dir_edit.text().strip()) / out_name
-            zip_module = get_zip_module()
-            zip_module.disguise_file(
-                Path(self.cover_path),
-                Path(self.payload_path),
-                out_path,
-            )
-            self.log.appendPlainText(f'伪装完成: {out_path}')
-            self.clear_form()
+            try:
+                out_name = normalize_output_name(
+                    self.output_name_edit.text(),
+                    self.cover_path,
+                    self.payload_path,
+                )
+                out_path = Path(self.output_dir_edit.text().strip()) / out_name
+                zip_module = get_zip_module()
+                zip_module.disguise_file(
+                    Path(self.cover_path),
+                    Path(self.payload_path),
+                    out_path,
+                )
+                self.log.appendPlainText(f'伪装完成: {out_path}')
+                show_themed_success(self, '完成', [f'伪装完成: {out_path}'])
+                self.clear_form()
+            except Exception as exc:
+                self.log.appendPlainText(f'ERROR {exc}')
+                show_themed_error(self, '伪装失败', str(exc))
 
     return ZipAndPngTab
