@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
 import os
 import shutil
 import subprocess
+import threading
 from pathlib import Path
 
 from toolbox_app.utils import _build_cache_key, resolve_name_conflict
@@ -40,9 +42,51 @@ VIDEO_ASPECT_RATIO_TOLERANCE = 0.12
 VIDEO_SIMILARITY_THRESHOLD = 0.95
 MEDIA_COMMAND_TIMEOUT_SECONDS = 20
 VIDEO_PARALLEL_WORKERS = max(2, min(6, os.cpu_count() or 4))
-_FILE_HASH_CACHE: dict[tuple[str, int, int], str] = {}
-_VIDEO_METADATA_CACHE: dict[tuple[str, int, int], dict[str, object] | None] = {}
-_VIDEO_SIGNATURE_CACHE: dict[tuple[str, int, int], dict[str, object] | None] = {}
+_CACHE_MAX_SIZE = 2048
+
+
+class _BoundedCache:
+    """Thread-safe bounded dict with LRU-like eviction.
+
+    Evicts the oldest half of entries when the cache exceeds *max_size*.
+    """
+
+    def __init__(self, max_size: int = _CACHE_MAX_SIZE) -> None:
+        self._max_size = max_size
+        self._data: OrderedDict = OrderedDict()
+        self._lock = threading.Lock()
+
+    def get(self, key, default=None):
+        with self._lock:
+            if key in self._data:
+                self._data.move_to_end(key)
+            return self._data.get(key, default)
+
+    def __contains__(self, key):
+        with self._lock:
+            if key in self._data:
+                self._data.move_to_end(key)
+            return key in self._data
+
+    def __getitem__(self, key):
+        with self._lock:
+            value = self._data[key]
+            self._data.move_to_end(key)
+            return value
+
+    def __setitem__(self, key, value):
+        with self._lock:
+            self._data[key] = value
+            self._data.move_to_end(key)
+            if len(self._data) > self._max_size:
+                keep = self._max_size // 2
+                while len(self._data) > keep:
+                    self._data.popitem(last=False)
+
+
+_FILE_HASH_CACHE = _BoundedCache()
+_VIDEO_METADATA_CACHE = _BoundedCache()
+_VIDEO_SIGNATURE_CACHE = _BoundedCache()
 
 
 def _ensure_root(root: str | Path) -> Path:

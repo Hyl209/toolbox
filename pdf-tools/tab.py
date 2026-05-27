@@ -128,6 +128,8 @@ def build_pdf_tools_tab_class(deps: dict):
             text_row.addWidget(self.text_format_combo)
             style_combo_popup(self.text_format_combo, load_setting(settings, 'ui/theme', 'dark'))
             self.ocr_checkbox = QCheckBox('文字层为空时启用 OCR')
+            self.ocr_checkbox.setEnabled(False)
+            self.ocr_checkbox.setToolTip('OCR 功能暂未开放')
             text_row.addWidget(self.ocr_checkbox)
             text_row.addStretch(1)
             layout.addWidget(text_row_widget)
