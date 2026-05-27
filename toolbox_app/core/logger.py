@@ -1,3 +1,9 @@
+"""Public logging API — ``get_logger(name)``.
+
+Backend implementation: ``logs.manager.LogManager`` provides richer handlers
+(Crash, GUI, Task). This module is the stable public interface; all callers
+should import ``get_logger`` from here.
+"""
 from __future__ import annotations
 
 import logging

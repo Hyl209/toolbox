@@ -1,3 +1,10 @@
+"""Legacy v1 config manager (simple JSON key-value).
+
+Authoritative implementation: ``config.manager.ConfigManager`` (v2) with
+per-user/per-plugin configs, version migration, and backup support.
+This module is kept for backward compatibility with existing callers
+that use the simple ``get``/``set`` API.
+"""
 from __future__ import annotations
 
 import json
@@ -9,7 +16,7 @@ logger = get_logger(__name__)
 
 
 class ConfigManager:
-    """统一配置管理器"""
+    """Legacy v1 config manager — use ``config.manager.ConfigManager`` for new code."""
 
     def __init__(self, config_dir: str | Path = "config"):
         self.config_dir = Path(config_dir)

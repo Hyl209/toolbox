@@ -1,3 +1,9 @@
+"""Legacy task manager (Worker-based).
+
+Authoritative implementation: ``toolbox_app.task_framework.manager.TaskManager``
+with proper queue, signals, pause/resume, and Task abstraction.
+This module is kept for backward compatibility with existing tests.
+"""
 from __future__ import annotations
 
 from typing import Any, Callable, Optional
@@ -9,7 +15,7 @@ logger = get_logger(__name__)
 
 
 class TaskManager:
-    """任务管理器"""
+    """Legacy task manager — use ``task_framework.manager.TaskManager`` for new code."""
 
     def __init__(self, max_concurrent: int = 5):
         self.max_concurrent = max_concurrent
