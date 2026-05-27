@@ -64,6 +64,7 @@ def build_base64_tab_class(deps: dict[str, object]):
     QPushButton = deps['QPushButton']
     QLabel = deps['QLabel']
     QPlainTextEdit = deps['QPlainTextEdit']
+    QProgressBar = deps['QProgressBar']
     QCheckBox = deps['QCheckBox']
     QComboBox = deps['QComboBox']
     QFileDialog = deps['QFileDialog']

@@ -44,6 +44,7 @@ def build_same_tab_class(deps: dict[str, object]):
     QPushButton = deps['QPushButton']
     QLabel = deps['QLabel']
     QPlainTextEdit = deps['QPlainTextEdit']
+    QProgressBar = deps['QProgressBar']
     QCheckBox = deps['QCheckBox']
     QFileDialog = deps['QFileDialog']
     Qt = deps['Qt']
