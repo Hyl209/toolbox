@@ -196,134 +196,74 @@ class TestFileService:
 # ImageService (mock, no Pillow dependency)
 # ---------------------------------------------------------------------------
 class TestImageService:
-    """ImageService mock 测试 — 不依赖 Pillow"""
+    """ImageService 测试 — 包装 ImageMagick converter"""
 
     def _make_service(self):
         from toolbox_app.services.image_service import ImageService
         return ImageService()
 
-    def test_initialize_success(self):
+    def test_check_imagemagick_returns_tuple(self):
         svc = self._make_service()
-        svc.initialize()
-        assert svc._initialized is True
+        result = svc.check_imagemagick()
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+        assert isinstance(result[0], bool)
 
-    def test_initialize_without_pillow(self):
+    def test_convert_file_not_exist(self):
         svc = self._make_service()
-        # 直接设置 _initialized 绕过 import
-        svc._initialized = True
-        assert svc._initialized is True
-
-    def test_convert_format_file_not_exist(self):
-        svc = self._make_service()
-        svc._initialized = True
         with pytest.raises(Exception):
-            svc.convert_format("/nonexistent/img.jpg", "/tmp/out.png")
+            svc.convert(Path("/nonexistent/img.jpg"), Path("/tmp"), "png")
 
-    def test_resize_image_file_not_exist(self):
+    def test_validate_target_size_empty(self):
         svc = self._make_service()
-        svc._initialized = True
-        with pytest.raises(Exception):
-            svc.resize_image("/nonexistent/img.jpg", "/tmp/out.png", (100, 100))
-
-    def test_rotate_image_file_not_exist(self):
-        svc = self._make_service()
-        svc._initialized = True
-        with pytest.raises(Exception):
-            svc.rotate_image("/nonexistent/img.jpg", "/tmp/out.png", 90)
-
-    def test_crop_image_file_not_exist(self):
-        svc = self._make_service()
-        svc._initialized = True
-        with pytest.raises(Exception):
-            svc.crop_image("/nonexistent/img.jpg", "/tmp/out.png", (0, 0, 100, 100))
-
-    def test_get_image_info_file_not_exist(self):
-        svc = self._make_service()
-        svc._initialized = True
-        result = svc.get_image_info("/nonexistent/img.jpg")
+        result = svc.validate_target_size("")
         assert result is None
 
-    @patch("PIL.Image")
-    def test_convert_format_success(self, mock_image):
+    def test_validate_target_size_valid(self):
         svc = self._make_service()
-        svc._initialized = True
+        result = svc.validate_target_size("100")
+        assert result == 100
 
-        mock_img = MagicMock()
-        mock_image.open.return_value = mock_img
-
-        with tempfile.TemporaryDirectory() as tmp:
-            src = Path(tmp) / "input.jpg"
-            dst = Path(tmp) / "output.png"
-            src.write_bytes(b"fake jpg data")
-
-            result = svc.convert_format(src, dst, format="PNG")
-            assert result is True
-            mock_image.open.assert_called_once_with(src)
-            mock_img.save.assert_called_once()
-
-    @patch("PIL.Image")
-    def test_resize_image_success(self, mock_image):
+    def test_validate_target_size_invalid(self):
         svc = self._make_service()
-        svc._initialized = True
-
-        mock_img = MagicMock()
-        mock_image.open.return_value = mock_img
-        mock_image.Resampling.LANCZOS = "lanczos"
-
-        with tempfile.TemporaryDirectory() as tmp:
-            src = Path(tmp) / "input.jpg"
-            dst = Path(tmp) / "output.jpg"
-            src.write_bytes(b"fake jpg data")
-
-            result = svc.resize_image(src, dst, (100, 100), maintain_aspect=True)
-            assert result is True
-            mock_img.thumbnail.assert_called_once()
+        with pytest.raises(ValueError):
+            svc.validate_target_size("abc")
 
 
 # ---------------------------------------------------------------------------
 # PDFService (mock, no PyPDF2 dependency)
 # ---------------------------------------------------------------------------
 class TestPDFService:
-    """PDFService mock 测试 — 不依赖 PyPDF2"""
+    """PDFService 测试 — 包装 pdf-tools/converter.py"""
 
     def _make_service(self):
         from toolbox_app.services.pdf_service import PDFService
         return PDFService()
 
-    def test_initialize_without_pypdf2(self):
+    def test_merge_file_not_exist(self):
         svc = self._make_service()
-        svc._initialized = True
-        assert svc._initialized is True
-
-    def test_merge_pdfs_file_not_exist(self):
-        svc = self._make_service()
-        svc._initialized = True
         with pytest.raises(Exception):
-            svc.merge_pdfs(["/nonexistent/a.pdf"], "/tmp/out.pdf")
+            svc.merge([Path("/nonexistent/a.pdf")], Path("/tmp/out.pdf"))
 
-    def test_split_pdf_file_not_exist(self):
+    def test_split_file_not_exist(self):
         svc = self._make_service()
-        svc._initialized = True
         with pytest.raises(Exception):
-            svc.split_pdf("/nonexistent/input.pdf", "/tmp/out")
+            svc.split(Path("/nonexistent/input.pdf"), Path("/tmp/out"), [0])
 
     def test_extract_text_file_not_exist(self):
         svc = self._make_service()
-        svc._initialized = True
         with pytest.raises(Exception):
-            svc.extract_text("/nonexistent/input.pdf")
+            svc.extract_text(Path("/nonexistent/input.pdf"))
 
-    def test_add_password_file_not_exist(self):
+    def test_to_images_file_not_exist(self):
         svc = self._make_service()
-        svc._initialized = True
         with pytest.raises(Exception):
-            svc.add_password("/nonexistent/input.pdf", "/tmp/out.pdf", "pass")
+            svc.to_images(Path("/nonexistent/input.pdf"), Path("/tmp/out"))
 
-    def test_get_page_count_file_not_exist(self):
+    def test_export_text_file_not_exist(self):
         svc = self._make_service()
-        svc._initialized = True
         with pytest.raises(Exception):
-            svc.get_page_count("/nonexistent/input.pdf")
+            svc.export_text(Path("/nonexistent/input.pdf"), Path("/tmp/out"))
 
 
 if __name__ == "__main__":

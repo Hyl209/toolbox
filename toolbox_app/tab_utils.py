@@ -16,13 +16,20 @@ def collect_inputs_by_suffix(paths: list[str], suffixes: set[str],
     unique: dict[Path, None] = {}
     for raw in paths:
         path = Path(raw).resolve()
-        if path.is_file() and path.suffix.lower() in suffixes:
+        try:
+            is_file = path.is_file()
+        except OSError:
+            continue
+        if is_file and path.suffix.lower() in suffixes:
             unique[path] = None
         elif path.is_dir():
             items = path.rglob('*') if recursive else path.iterdir()
             for item in sorted(items):
-                if item.is_file() and item.suffix.lower() in suffixes:
-                    unique[item.resolve()] = None
+                try:
+                    if item.is_file() and item.suffix.lower() in suffixes:
+                        unique[item.resolve()] = None
+                except OSError:
+                    continue
     return sorted(unique.keys())
 
 
