@@ -918,6 +918,71 @@ class TestRegression:
         assert manager.get_worker("regression_cleanup") is None
 
 
+class TestTaskFrameworkRegression:
+    """Task framework regression tests — cancel, failure, concurrency."""
+
+    def test_submit_and_complete(self):
+        from toolbox_app.task_framework.manager import TaskManager
+        import time
+
+        manager = TaskManager(max_workers=2)
+        results = []
+
+        def work(x):
+            time.sleep(0.05)
+            return x * 2
+
+        task = manager.submit(work, 5, name="double")
+        time.sleep(0.3)
+        assert task.result == 10
+        assert task.status.name == 'COMPLETED'
+
+    def test_submit_failure(self):
+        from toolbox_app.task_framework.manager import TaskManager
+        import time
+
+        manager = TaskManager(max_workers=2)
+
+        def fail():
+            raise ValueError("boom")
+
+        task = manager.submit(fail, name="fail_task")
+        time.sleep(0.3)
+        assert task.error is not None
+        assert "boom" in str(task.error)
+
+    def test_concurrency_limit(self):
+        from toolbox_app.task_framework.manager import TaskManager
+        import time
+
+        manager = TaskManager(max_workers=1)
+        running = []
+
+        def slow(n):
+            running.append(n)
+            time.sleep(0.1)
+            running.remove(n)
+            return n
+
+        tasks = [manager.submit(slow, i, name=f"task_{i}") for i in range(3)]
+        time.sleep(0.05)
+        # With max_workers=1, only 1 should be running at a time
+        assert len(running) <= 1
+        time.sleep(0.5)
+        # All should eventually complete
+        assert all(t.result is not None for t in tasks)
+
+    def test_queue_history(self):
+        from toolbox_app.task_framework.manager import TaskManager
+        import time
+
+        manager = TaskManager(max_workers=2)
+        manager.submit(lambda: 1, name="h1")
+        manager.submit(lambda: 2, name="h2")
+        time.sleep(0.3)
+        assert len(manager._task_history) == 2
+
+
 # 运行测试
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

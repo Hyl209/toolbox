@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import subprocess
-import sys
 from pathlib import Path
 
 from same._common import (
@@ -15,12 +14,15 @@ from same._common import (
     VIDEO_FRAME_WIDTH,
     VIDEO_MIN_FRAME_COUNT,
     VIDEO_SAMPLE_COUNT,
+    VIDEO_SIMILARITY_THRESHOLD,
     MEDIA_COMMAND_TIMEOUT_SECONDS,
     _BoundedCache,
     _build_cache_key,
     _build_group,
     _map_parallel,
     _safe_float,
+    probe_video_ref,
+    build_video_signature_ref,
 )
 
 
@@ -146,9 +148,7 @@ def _build_video_signature(path: Path) -> dict[str, object] | None:
     cache_key = _build_cache_key(path)
     if cache_key in _VIDEO_SIGNATURE_CACHE:
         return _VIDEO_SIGNATURE_CACHE[cache_key]
-    converter = sys.modules.get('same.converter')
-    probe_fn = getattr(converter, '_probe_video', _probe_video)
-    metadata = probe_fn(path)
+    metadata = probe_video_ref(path)
     if metadata is None:
         _VIDEO_SIGNATURE_CACHE[cache_key] = None
         return None
@@ -199,10 +199,7 @@ def _video_similarity_score(left: dict[str, object], right: dict[str, object]) -
 def _build_video_similarity_groups(files: list[Path]) -> tuple[list[dict[str, object]], list[Path]]:
     fallback_files: list[Path] = []
     metadata_entries: list[dict[str, object]] = []
-    converter = sys.modules.get('same.converter')
-    probe_fn = getattr(converter, '_probe_video', _probe_video)
-    build_sig_fn = getattr(converter, '_build_video_signature', _build_video_signature)
-    metadata_results = _map_parallel(probe_fn, files)
+    metadata_results = _map_parallel(probe_video_ref, files)
     for file, metadata in zip(files, metadata_results):
         if metadata is None:
             fallback_files.append(file)
@@ -232,7 +229,7 @@ def _build_video_similarity_groups(files: list[Path]) -> tuple[list[dict[str, ob
         return [], fallback_files
 
     candidate_paths = [metadata_entries[index]['path'] for index in sorted(candidate_indexes)]
-    signature_results = _map_parallel(_build_video_signature, candidate_paths)
+    signature_results = _map_parallel(build_video_signature_ref, candidate_paths)
     signature_by_path = {
         path: signature
         for path, signature in zip(candidate_paths, signature_results)
@@ -302,3 +299,8 @@ def _build_video_similarity_groups(files: list[Path]) -> tuple[list[dict[str, ob
         if path not in grouped_video_files:
             fallback_files.append(path)
     return duplicate_groups, fallback_files
+
+
+# Register function references for monkey-patching support
+probe_video_ref.fn = _probe_video
+build_video_signature_ref.fn = _build_video_signature

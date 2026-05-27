@@ -190,3 +190,33 @@ def _build_group(
         group['similarity'] = similarity
         group['similarity_threshold'] = VIDEO_SIMILARITY_THRESHOLD
     return group
+
+
+def _split_video_and_other_files(files: list[Path]) -> tuple[list[Path], list[Path]]:
+    video_files: list[Path] = []
+    other_files: list[Path] = []
+    for file in files:
+        if _is_video_file(file):
+            video_files.append(file)
+        else:
+            other_files.append(file)
+    return video_files, other_files
+
+
+class _FnRef:
+    """Mutable function reference holder.
+
+    Allows monkey-patching from the re-export layer (converter.py) to propagate
+    into sub-modules at call time without circular imports.
+    """
+    __slots__ = ('fn',)
+
+    def __init__(self, fn=None):
+        self.fn = fn
+
+    def __call__(self, *args, **kwargs):
+        return self.fn(*args, **kwargs)
+
+
+probe_video_ref = _FnRef()
+build_video_signature_ref = _FnRef()
