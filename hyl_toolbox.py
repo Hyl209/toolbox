@@ -660,6 +660,7 @@ if QWidget is not None:
         'QPushButton': QPushButton,
         'QLabel': QLabel,
         'QPlainTextEdit': QPlainTextEdit,
+        'QProgressBar': QProgressBar,
         'QFileDialog': QFileDialog,
         'Qt': Qt,
         'DropZoneCard': DropZoneCard,
