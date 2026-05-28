@@ -24,11 +24,10 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pytest
-          pip install PySide6 || echo "PySide6 install skipped (GUI dependency)"
+          pip install -r requirements-dev.txt
 
       - name: Run tests
         run: |
-          python -m pytest tests_*.py -x --tb=short -q
+          python -m pytest tests -x --tb=short -q --basetemp="$env:RUNNER_TEMP/pytest-hyl"
         env:
           QT_QPA_PLATFORM: offscreen
