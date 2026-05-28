@@ -1,9 +1,9 @@
-﻿import importlib.util
+import importlib.util
 import pathlib
 import tempfile
 import sys
 
-ROOT = pathlib.Path('PROJECT_ROOT')
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 MODULE_PATH = ROOT / 'hyl_toolbox.py'
 
 
@@ -44,11 +44,11 @@ def test_collect_drop_paths_gathers_ncm_files():
 def test_build_music_item_text_prefers_title_and_artist():
     ncm_gui = load_module()
     item = {
-        'title': '灏忕尗涔嬫瓕',
+        'title': '小猫之歌',
         'artist': 'daddy',
         'file_path': '/tmp/test_song.ncm',
     }
-    assert ncm_gui.build_music_item_text(item) == '灏忕尗涔嬫瓕\ndaddy'
+    assert ncm_gui.build_music_item_text(item) == '小猫之歌\ndaddy'
 
 
 def test_build_music_item_text_falls_back_to_file_stem():
@@ -63,14 +63,14 @@ def test_build_music_item_text_falls_back_to_file_stem():
 
 def test_format_music_drop_summary_matches_unified_drop_area_copy():
     ncm_gui = load_module()
-    assert ncm_gui.format_music_drop_summary([]) == '鎷栧叆ncm鏂囦欢'
+    assert ncm_gui.format_music_drop_summary([]) == '拖入ncm文件'
     files = [
         pathlib.Path('/tmp/alpha.ncm'),
         pathlib.Path('/tmp/beta.ncm'),
         pathlib.Path('/tmp/gamma.ncm'),
         pathlib.Path('/tmp/delta.ncm'),
     ]
-    assert ncm_gui.format_music_drop_summary(files) == '鎷栧叆ncm鏂囦欢'
+    assert ncm_gui.format_music_drop_summary(files) == '拖入ncm文件'
 
 
 def test_enrich_song_info_from_mp3_keeps_existing_values_when_file_missing():
@@ -78,8 +78,8 @@ def test_enrich_song_info_from_mp3_keeps_existing_values_when_file_missing():
     module = ncm_gui._load_ncm_module()
     base_item = {
         'file_path': '/tmp/test_song.ncm',
-        'title': '鍘熸瓕鍚?,
-        'artist': '鍘熸瓕鎵?,
+        'title': '原歌名',
+        'artist': '原歌手',
         'cover_data_url': 'data:image/png;base64,abc',
     }
     enriched = module.enrich_song_info_from_mp3(base_item, pathlib.Path('/tmp/not_found.mp3'))
@@ -101,7 +101,7 @@ def test_music_tab_rendered_song_item_uses_cover_pixmap_when_available():
         window, app = ncm_gui.build_main_window_for_test(tmp)
         item = {
             'file_path': '/tmp/demo_song.ncm',
-            'title': '灏侀潰娴嬭瘯',
+            'title': '封面测试',
             'artist': 'Daddy',
             'cover_data_url': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wn8n0cAAAAASUVORK5CYII=',
         }
@@ -131,15 +131,14 @@ def test_music_tab_add_paths_collects_cover_data_from_real_ncm_sample():
 
 def test_music_tab_clear_and_remove_hooks_exist_in_source():
     source = MODULE_PATH.read_text(encoding='utf-8')
-    assert "self.clear_files_button = QPushButton('娓呯┖鏂囦欢')" in source
+    assert "self.clear_files_button = QPushButton('清空文件')" in source
     assert "self.clear_files_button.clicked.connect(self.clear_selected_files)" in source
     assert "def clear_selected_files(self):" in source
     assert "def remove_song_item(self, file_path: str):" in source
-    assert "remove_button = QPushButton('鉁?)" in source
+    assert "remove_button = QPushButton('✕')" in source
     assert "remove_button.setFlat(True)" in source
     assert "background: transparent" in source
     assert "cover_data_url" in source
     assert "cover_label.setPixmap" in source
-    assert "self.log.appendPlainText(f'宸叉竻绌?{cleared_count} 涓緟杞崲鏂囦欢')" in source
-    assert "self.log.appendPlainText(f'宸茬Щ闄? {target.stem}')" in source
-
+    assert "self.log.appendPlainText(f'已清空 {cleared_count} 个待转换文件')" in source
+    assert "self.log.appendPlainText(f'已移除: {target.stem}')" in source

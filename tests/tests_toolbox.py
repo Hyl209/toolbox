@@ -1,9 +1,9 @@
-﻿import importlib.util
+import importlib.util
 import pathlib
 import tempfile
 import sys
 
-ROOT = pathlib.Path('PROJECT_ROOT')
+ROOT = pathlib.Path(__file__).resolve().parents[1]
 MODULE_PATH = ROOT / 'hyl_toolbox.py'
 
 
@@ -19,14 +19,14 @@ def load_module():
 def test_tool_definitions_include_image_convert_pdf_split_video_downloaders_base64_file_sorter_same_and_batch_rename_tools():
     toolbox = load_module()
     titles = [item['title'] for item in toolbox.get_tool_definitions()]
-    assert '鍥剧墖鏍煎紡浜掕浆' in titles
-    assert 'PDF宸ュ叿' in titles
-    assert 'TG涓嬭浇' in titles
-    assert '缃戦〉瑙嗛涓嬭浇' in titles
-    assert '鎵归噺鍛藉悕' in titles
-    assert '鏂囦欢鍒嗙被' in titles
-    assert '閲嶅鏂囦欢' in titles
-    assert '鍥剧墖Base64' in titles
+    assert '图片格式互转' in titles
+    assert 'PDF工具' in titles
+    assert 'TG下载' in titles
+    assert '网页视频下载' in titles
+    assert '批量命名' in titles
+    assert '文件分类' in titles
+    assert '重复文件' in titles
+    assert '图片Base64' in titles
 
 
 def test_get_image_convert_module_loads_converter_helpers():
@@ -118,8 +118,8 @@ def test_repeated_loader_calls_return_same_module_object():
 def test_validate_pdf_form_requires_output_and_extra_fields_for_text_actions():
     toolbox = load_module()
     errors = toolbox.validate_pdf_form('text', [], '', '', '', '150')
-    assert '璇ュ姛鑳藉彧鏀寔鍗曚釜 PDF' in errors
-    assert '璇烽€夋嫨杈撳嚭鐩綍' in errors
+    assert '该功能只支持单个 PDF' in errors
+    assert '请选择输出目录' in errors
 
 
 def test_password_hash_roundtrip_and_verify_user_credentials():
@@ -132,18 +132,18 @@ def test_password_hash_roundtrip_and_verify_user_credentials():
 
 def test_password_policy_basic_rules():
     toolbox = load_module()
-    # 姝ｅ父瀵嗙爜閫氳繃
+    # 正常密码通过
     assert toolbox.validate_password_policy('abc123') == []
     assert toolbox.validate_password_policy('MyP@ss1') == []
-    # 澶煭
+    # 太短
     errors = toolbox.validate_password_policy('a1')
-    assert any('鑷冲皯 6 浣? in item for item in errors)
-    # 娌℃湁瀛楁瘝
+    assert any('至少 6 位' in item for item in errors)
+    # 没有字母
     errors = toolbox.validate_password_policy('123456')
-    assert any('瀛楁瘝' in item for item in errors)
-    # 娌℃湁鏁板瓧
+    assert any('字母' in item for item in errors)
+    # 没有数字
     errors = toolbox.validate_password_policy('abcdef')
-    assert any('鏁板瓧' in item for item in errors)
+    assert any('数字' in item for item in errors)
 
 
 def test_ensure_default_admin_user_creates_admin_account_once():
@@ -163,18 +163,18 @@ def test_register_user_rejects_weak_password_for_all_users():
     toolbox = load_module()
     with tempfile.TemporaryDirectory() as tmp:
         store = pathlib.Path(tmp) / 'users.json'
-        # admin 涔熶笉鑳界敤寮卞瘑鐮?
+        # admin 也不能用弱密码
         try:
             toolbox.register_user(store, 'admin', '123')
         except ValueError as exc:
-            assert '鑷冲皯 6 浣? in str(exc)
+            assert '至少 6 位' in str(exc)
         else:
             raise AssertionError('expected password policy error for admin with weak password')
-        # alice 鍚屾牱涓嶈兘
+        # alice 同样不能
         try:
             toolbox.register_user(store, 'alice', '123')
         except ValueError as exc:
-            assert '鑷冲皯 6 浣? in str(exc)
+            assert '至少 6 位' in str(exc)
         else:
             raise AssertionError('expected password policy error for non-admin user')
 
@@ -192,7 +192,7 @@ def test_register_user_persists_multiple_accounts_and_rejects_duplicate_names():
         try:
             toolbox.register_user(store, 'alice', 'Cc33##Dd44%5')
         except ValueError as exc:
-            assert '宸插瓨鍦? in str(exc)
+            assert '已存在' in str(exc)
         else:
             raise AssertionError('expected duplicate username error')
 
@@ -200,13 +200,13 @@ def test_register_user_persists_multiple_accounts_and_rejects_duplicate_names():
 def test_validate_auth_form_requires_username_and_password_lengths():
     toolbox = load_module()
     login_errors = toolbox.validate_auth_form('', '')
-    assert '璇疯緭鍏ョ敤鎴峰悕' in login_errors
-    assert '璇疯緭鍏ュ瘑鐮? in login_errors
+    assert '请输入用户名' in login_errors
+    assert '请输入密码' in login_errors
     assert toolbox.validate_auth_form('admin', '123') == []
     register_errors = toolbox.validate_auth_form('ab', '123', confirm_password='12', is_register=True)
-    assert any('鐢ㄦ埛鍚? in item for item in register_errors)
-    assert any('涓ユ牸绛変簬 12 浣? in item or '瀵嗙爜闀垮害' in item for item in register_errors)
-    assert '涓ゆ杈撳叆鐨勫瘑鐮佷笉涓€鑷? in register_errors
+    assert any('用户名' in item for item in register_errors)
+    assert any('严格等于 12 位' in item or '密码长度' in item for item in register_errors)
+    assert '两次输入的密码不一致' in register_errors
 
 
 def test_build_auth_state_reports_registration_requirement_until_user_exists():
@@ -225,22 +225,22 @@ def test_build_auth_state_reports_registration_requirement_until_user_exists():
 def test_format_music_log_added_uses_pretty_sections():
     toolbox = load_module()
     text = toolbox.format_music_log_added([
-        {'title': '灏忕尗涔嬫瓕', 'artist': 'daddy', 'file_path': '/tmp/a.ncm'},
+        {'title': '小猫之歌', 'artist': 'daddy', 'file_path': '/tmp/a.ncm'},
         {'title': '', 'artist': '', 'file_path': '/tmp/b.ncm'},
     ])
-    assert '馃幍 宸叉坊鍔犳瓕鏇? in text
-    assert '鈥?01锝滃皬鐚箣姝? in text
-    assert '馃懁 daddy' in text
-    assert '鈥?02锝渂' in text
+    assert '🎵 已添加歌曲' in text
+    assert '• 01｜小猫之歌' in text
+    assert '👤 daddy' in text
+    assert '• 02｜b' in text
 
 
 def test_format_music_log_summary_uses_emoji_layout():
     toolbox = load_module()
     text = toolbox.format_music_log_summary(3, 1, 2)
-    assert '鉁?杞崲瀹屾垚' in text
-    assert '鉁?鎴愬姛锛?' in text
-    assert '鉂?澶辫触锛?' in text
-    assert '馃棏 鍒犻櫎锛?' in text
+    assert '✨ 转换完成' in text
+    assert '✅ 成功：3' in text
+    assert '❌ 失败：1' in text
+    assert '🗑 删除：2' in text
 
 
 def test_music_backend_module_supports_mp3_tag_enrichment():
@@ -310,7 +310,7 @@ def test_frozen_app_prefers_source_dir_when_user_store_exists_next_to_script():
         exe_dir.mkdir()
         (source_dir / 'users.json').write_text('[]', encoding='utf-8')
         toolbox.__file__ = str(source_dir / 'hyl_toolbox.py')
-        toolbox.sys.executable = str(exe_dir / '鏍煎紡杞崲宸ュ叿.exe')
+        toolbox.sys.executable = str(exe_dir / '格式转换工具.exe')
         toolbox.sys.frozen = True
         try:
             source_dir_detected = pathlib.Path(toolbox.__file__).resolve().parent
@@ -380,7 +380,7 @@ def test_update_user_password_requires_current_password_and_persists_new_hash():
         try:
             toolbox.update_user_password(store, 'alice', 'badpass', 'Cc33##Dd44%5')
         except ValueError as exc:
-            assert '褰撳墠瀵嗙爜' in str(exc)
+            assert '当前密码' in str(exc)
         else:
             raise AssertionError('expected current password validation error')
         toolbox.update_user_password(store, 'alice', 'Aa11!!Bb22@1', 'Cc33##Dd44%5')
@@ -557,7 +557,7 @@ def test_build_user_menu_state_exposes_username_and_logout_action():
     state = toolbox.build_user_menu_state('admin')
     assert state['username'] == 'admin'
     assert state['avatar_text'] == 'A'
-    assert state['logout_text'] == '閫€鍑鸿处鍙?
+    assert state['logout_text'] == '退出账号'
 
 
 def test_build_user_menu_state_exposes_username_and_logout_action():
@@ -565,7 +565,7 @@ def test_build_user_menu_state_exposes_username_and_logout_action():
     state = toolbox.build_user_menu_state('admin')
     assert state['username'] == 'admin'
     assert state['avatar_text'] == 'A'
-    assert state['logout_text'] == '閫€鍑鸿处鍙?
+    assert state['logout_text'] == '退出账号'
 
 
 def test_help_popup_state_uses_weixin_png_and_hides_on_main_area_click():
@@ -576,7 +576,7 @@ def test_help_popup_state_uses_weixin_png_and_hides_on_main_area_click():
     assert state['frameless'] is True
     assert state['max_width'] == 420
     assert state['max_height'] == 560
-    assert state['caption'] == '鎰熻阿鎵撹祻'
+    assert state['caption'] == '感谢打赏'
     assert state['caption_font_size'] == 18
     assert state['caption_font_weight'] == 700
 
@@ -589,7 +589,7 @@ def test_help_popup_state_falls_back_to_embedded_image_when_file_is_missing():
         assert state['image_path'] is None
         assert state['has_image'] is True
         assert state['image_bytes']
-        assert state['caption'] == '鎰熻阿鎵撹祻'
+        assert state['caption'] == '感谢打赏'
 
 
 def test_toolbox_window_help_popup_toggles_and_hides_on_main_area_click_when_pyside_available():
@@ -603,7 +603,7 @@ def test_toolbox_window_help_popup_toggles_and_hides_on_main_area_click_when_pys
         assert window.help_image_label.pixmap() is not None
         assert window.help_image_label.pixmap().width() <= 420
         assert window.help_image_label.pixmap().height() <= 560
-        assert window.help_caption_label.text() == '鎰熻阿鎵撹祻'
+        assert window.help_caption_label.text() == '感谢打赏'
         assert window.help_caption_label.alignment() == toolbox.Qt.AlignCenter
         assert 'font-size: 18px' in window.help_caption_label.styleSheet()
         assert 'font-weight: 700' in window.help_caption_label.styleSheet()
@@ -669,7 +669,7 @@ def test_bottom_left_button_order_places_avatar_theme_and_hint_buttons():
         assert bottom_layout.itemAt(0).widget() is window.user_avatar_button
         assert bottom_layout.itemAt(1).widget() is window.theme_button
         assert bottom_layout.itemAt(2).widget() is window.hint_button
-        assert window.hint_button.text() == '鉂?
+        assert window.hint_button.text() == '❕'
 
 
 def test_build_user_menu_state_exposes_avatar_button_and_roomier_popup_style():
@@ -677,7 +677,7 @@ def test_build_user_menu_state_exposes_avatar_button_and_roomier_popup_style():
     state = toolbox.build_user_menu_state('admin')
     assert state['username'] == 'admin'
     assert state['avatar_text'] == 'A'
-    assert state['logout_text'] == '閫€鍑鸿处鍙?
+    assert state['logout_text'] == '退出账号'
     assert state['avatar_button_size'] == 38
     assert state['avatar_border_radius'] == 19
     assert state['avatar_uses_theme_toggle_style'] is True
@@ -694,14 +694,14 @@ def test_build_main_window_sidebar_includes_image_convert_pdf_split_video_downlo
     with tempfile.TemporaryDirectory() as tmp:
         window, app = toolbox.build_main_window_for_test(tmp)
         sidebar_titles = [window.sidebar.item(i).text() for i in range(window.sidebar.count())]
-        assert '鍥剧墖鏍煎紡浜掕浆' in sidebar_titles
-        assert 'PDF宸ュ叿' in sidebar_titles
-        assert 'TG涓嬭浇' in sidebar_titles
-        assert '缃戦〉瑙嗛涓嬭浇' in sidebar_titles
-        assert '鎵归噺鍛藉悕' in sidebar_titles
-        assert '鏂囦欢鍒嗙被' in sidebar_titles
-        assert '閲嶅鏂囦欢' in sidebar_titles
-        assert '鍥剧墖Base64' in sidebar_titles
+        assert '图片格式互转' in sidebar_titles
+        assert 'PDF工具' in sidebar_titles
+        assert 'TG下载' in sidebar_titles
+        assert '网页视频下载' in sidebar_titles
+        assert '批量命名' in sidebar_titles
+        assert '文件分类' in sidebar_titles
+        assert '重复文件' in sidebar_titles
+        assert '图片Base64' in sidebar_titles
         assert window.stack.count() == 11
         assert bool(window.windowFlags() & toolbox.Qt.FramelessWindowHint)
         assert window.drag_bar.minimumHeight() == 34
@@ -716,14 +716,14 @@ def test_build_main_window_sidebar_includes_image_convert_pdf_split_video_downlo
         assert window.window_controls_layout.count() == 3
         assert hasattr(window, 'max_button')
         assert window.max_button is not None
-        assert window.min_button.toolTip() == '鏈€灏忓寲'
-        assert window.max_button.toolTip() in {'鏈€澶у寲', '杩樺師'}
-        assert window.close_button.toolTip() == '鍏抽棴'
+        assert window.min_button.toolTip() == '最小化'
+        assert window.max_button.toolTip() in {'最大化', '还原'}
+        assert window.close_button.toolTip() == '关闭'
         assert window.min_button.width() == 24
         assert window.min_button.height() == 24
         assert window.sidebar.width() == 196
         labels = window.findChildren(toolbox.QLabel)
-        assert any('浣滆€咃細HhhYl' in label.text() for label in labels)
+        assert any('作者：HhhYl' in label.text() for label in labels)
         stylesheet = toolbox.get_theme_stylesheet(window.current_theme)
         assert 'background-color: #1b1f25;' in toolbox.DARK_STYLESHEET
         assert 'background-color: #e5e9ef;' in toolbox.LIGHT_STYLESHEET
@@ -755,8 +755,8 @@ def test_build_main_window_sidebar_includes_image_convert_pdf_split_video_downlo
         assert 'border: 1px solid #d9dfe7;' in toolbox.LIGHT_STYLESHEET
         assert window.image_convert_tab.format_combo.minimumWidth() == 132
         assert window.image_convert_tab.jpg_background_combo.minimumWidth() == 154
-        assert window.image_convert_tab.jpg_background_combo.itemText(0) == '鐧借壊'
-        assert window.image_convert_tab.jpg_background_combo.itemText(1) == '榛戣壊'
+        assert window.image_convert_tab.jpg_background_combo.itemText(0) == '白色'
+        assert window.image_convert_tab.jpg_background_combo.itemText(1) == '黑色'
         assert window.image_convert_tab.jpg_background_combo.view().objectName() == 'comboPopupView'
         assert window.image_convert_tab.jpg_background_combo.view().frameShape() == toolbox.QFrame.NoFrame
         assert window.image_convert_tab.jpg_background_combo.view().property('comboPopupTheme') == window.current_theme
@@ -767,34 +767,34 @@ def test_build_main_window_sidebar_includes_image_convert_pdf_split_video_downlo
         assert not window.image_convert_tab.jpg_background_combo.isEditable()
         assert window.pdf_tools_tab.action_combo.minimumWidth() == 132
         assert window.pdf_tools_tab.image_format_combo.minimumWidth() == 132
-        assert window.pdf_tools_tab.action_combo.itemText(0) == '鍚堝苟'
-        assert window.pdf_tools_tab.action_combo.itemText(2) == '杞浘鐗?
+        assert window.pdf_tools_tab.action_combo.itemText(0) == '合并'
+        assert window.pdf_tools_tab.action_combo.itemText(2) == '转图片'
         assert not window.pdf_tools_tab.action_combo.isEditable()
         assert not window.pdf_tools_tab.image_format_combo.isEditable()
-        assert window.tg_downloader_tab.output_edit.placeholderText() == '閫夋嫨瑙嗛杈撳嚭鐩綍'
-        assert window.tg_downloader_tab.run_button.text() == '寮€濮嬩笅杞?
-        assert window.tg_downloader_tab.send_code_button.text() == '鍙戦€侀獙璇佺爜'
-        assert window.tg_downloader_tab.check_status_button.text() == '妫€鏌ョ姸鎬?
+        assert window.tg_downloader_tab.output_edit.placeholderText() == '选择视频输出目录'
+        assert window.tg_downloader_tab.run_button.text() == '开始下载'
+        assert window.tg_downloader_tab.send_code_button.text() == '发送验证码'
+        assert window.tg_downloader_tab.check_status_button.text() == '检查状态'
         assert window.tg_downloader_tab.progress_bar.value() == 0
         assert window.tg_downloader_tab.task_edit.minimumHeight() == 150
         assert window.tg_downloader_tab.log.minimumHeight() == 150
-        assert window.tg_downloader_tab.progress_label.text() == '绛夊緟寮€濮?
+        assert window.tg_downloader_tab.progress_label.text() == '等待开始'
         assert window.tg_downloader_tab.overwrite_checkbox.parentWidget().styleSheet() == 'background: transparent;'
-        assert window.web_video_downloader_tab.output_edit.placeholderText() == '閫夋嫨瑙嗛杈撳嚭鐩綍'
-        assert window.web_video_downloader_tab.run_button.text() == '寮€濮嬩笅杞?
+        assert window.web_video_downloader_tab.output_edit.placeholderText() == '选择视频输出目录'
+        assert window.web_video_downloader_tab.run_button.text() == '开始下载'
         assert window.web_video_downloader_tab.progress_bar.value() == 0
         assert window.web_video_downloader_tab.task_edit.minimumHeight() == 110
         assert window.web_video_downloader_tab.log.minimumHeight() == 110
-        assert window.web_video_downloader_tab.progress_label.text() == '绛夊緟寮€濮?
+        assert window.web_video_downloader_tab.progress_label.text() == '等待开始'
         assert window.web_video_downloader_tab.web_candidate_index_edit is not None
         assert window.web_video_downloader_tab.send_code_button is None
         assert window.web_video_downloader_tab.refresh_status_button is None
         assert window.web_video_downloader_tab.backend_status_label is None
-        assert window.file_sorter_tab.folder_edit.placeholderText() == '閫夋嫨闇€瑕佸垎绫荤殑鏂囦欢澶?
-        assert window.file_sorter_tab.run_button.text() == '寮€濮嬪垎绫?
+        assert window.file_sorter_tab.folder_edit.placeholderText() == '选择需要分类的文件夹'
+        assert window.file_sorter_tab.run_button.text() == '开始分类'
         assert window.file_sorter_tab.mode_combo.minimumWidth() == 144
-        assert window.file_sorter_tab.mode_combo.itemText(0) == '鎸夊ぇ绫诲垎绫?
-        assert window.file_sorter_tab.mode_combo.itemText(1) == '鎸夊垎杈ㄧ巼鍒嗙被'
+        assert window.file_sorter_tab.mode_combo.itemText(0) == '按大类分类'
+        assert window.file_sorter_tab.mode_combo.itemText(1) == '按分辨率分类'
         assert window.file_sorter_tab.mode_combo.view().objectName() == 'comboPopupView'
         assert window.file_sorter_tab.mode_combo.view().frameShape() == toolbox.QFrame.NoFrame
         assert window.file_sorter_tab.mode_combo.view().property('comboPopupTheme') == window.current_theme
@@ -802,14 +802,14 @@ def test_build_main_window_sidebar_includes_image_convert_pdf_split_video_downlo
         assert window.file_sorter_tab.mode_combo.view().sizeHintForRow(0) == 34
         assert 'comboPopupTheme' in window.file_sorter_tab.mode_combo.view().styleSheet()
         assert not window.file_sorter_tab.mode_combo.isEditable()
-        assert window.same_tab.folder_edit.placeholderText() == '閫夋嫨闇€瑕佹娴嬬殑鏂囦欢澶?
-        assert window.same_tab.detect_button.text() == '寮€濮嬫娴?
-        assert window.same_tab.move_button.text() == '绉诲姩閲嶅浠?
+        assert window.same_tab.folder_edit.placeholderText() == '选择需要检测的文件夹'
+        assert window.same_tab.detect_button.text() == '开始检测'
+        assert window.same_tab.move_button.text() == '移动重复件'
         assert window.same_tab.move_button.isEnabled() is False
         assert window.same_tab.recursive_checkbox.isChecked() is True
         assert window.base64_tab.mode_combo.minimumWidth() == 144
-        assert window.base64_tab.mode_combo.itemText(0) == '鍥剧墖杞珺ase64'
-        assert window.base64_tab.mode_combo.itemText(1) == 'Base64杞浘鐗?
+        assert window.base64_tab.mode_combo.itemText(0) == '图片转Base64'
+        assert window.base64_tab.mode_combo.itemText(1) == 'Base64转图片'
         assert window.base64_tab.mode_combo.view().objectName() == 'comboPopupView'
         assert window.base64_tab.mode_combo.view().frameShape() == toolbox.QFrame.NoFrame
         assert window.base64_tab.mode_combo.view().property('comboPopupTheme') == window.current_theme
@@ -857,7 +857,7 @@ def test_file_sorter_tab_exposes_choose_button_and_idle_state_when_pyside_availa
 
 
 def test_toolbox_window_sidebar_navigation():
-    """娴嬭瘯渚ц竟鏍忕偣鍑诲垏鎹㈤〉闈?""
+    """测试侧边栏点击切换页面"""
     toolbox = load_module()
     if toolbox.QWidget is None:
         return
@@ -880,7 +880,7 @@ def test_toolbox_window_sidebar_navigation():
 
 
 def test_theme_toggle_switches_dark_light():
-    """娴嬭瘯涓婚鍒囨崲 dark <-> light"""
+    """测试主题切换 dark <-> light"""
     toolbox = load_module()
     if toolbox.QWidget is None:
         return
@@ -894,7 +894,7 @@ def test_theme_toggle_switches_dark_light():
             window.toggle_theme()
             app.processEvents()
             assert window.current_theme == initial
-            expected_icon = '鈽€锔? if window.current_theme == 'dark' else '馃寵'
+            expected_icon = '☀️' if window.current_theme == 'dark' else '🌙'
             assert window.theme_button.text() == expected_icon
         finally:
             window.close()
@@ -902,18 +902,18 @@ def test_theme_toggle_switches_dark_light():
 
 
 def test_drop_zone_accepts_files():
-    """娴嬭瘯鎷栨斁鍖哄煙鎺ュ彈鏂囦欢"""
+    """测试拖放区域接受文件"""
     toolbox = load_module()
     if toolbox.QWidget is None:
         return
     from unittest.mock import MagicMock
 
     received = []
-    drop_zone = toolbox.DropZoneCard('鎷栧叆鏂囦欢', lambda paths: received.extend(paths))
+    drop_zone = toolbox.DropZoneCard('拖入文件', lambda paths: received.extend(paths))
     assert drop_zone.acceptDrops() is True
     assert drop_zone.property('dropzone') is True
 
-    # 妯℃嫙 dropEvent
+    # 模拟 dropEvent
     mock_url_1 = MagicMock()
     mock_url_1.toLocalFile.return_value = '/tmp/a.png'
     mock_url_1.isLocalFile.return_value = True
@@ -930,4 +930,3 @@ def test_drop_zone_accepts_files():
     drop_zone.dropEvent(mock_event)
     assert received == ['/tmp/a.png', '/tmp/b.jpg']
     mock_event.acceptProposedAction.assert_called_once()
-

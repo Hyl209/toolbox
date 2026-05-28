@@ -1,11 +1,11 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import importlib.util
 import pathlib
 import sys
 import tempfile
 
-ROOT = pathlib.Path('PROJECT_ROOT')
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 MODULE_PATH = ROOT / 'modules' / 'image-converter' / 'converter.py'
 
 
@@ -46,7 +46,7 @@ def test_choose_image_output_suffix_rejects_unknown_format():
     try:
         mod.choose_image_output_suffix('gif')
     except ValueError as exc:
-        assert '涓嶆敮鎸? in str(exc)
+        assert '不支持' in str(exc)
     else:
         raise AssertionError('expected ValueError for unsupported format')
 
@@ -71,7 +71,7 @@ def test_validate_target_size_kb_rejects_zero_or_invalid():
         try:
             mod.validate_target_size_kb(raw)
         except ValueError as exc:
-            assert '鐩爣澶у皬' in str(exc)
+            assert '目标大小' in str(exc)
         else:
             raise AssertionError(f'expected ValueError for {raw!r}')
 
@@ -208,7 +208,6 @@ def test_compress_to_target_size_raises_when_all_attempts_exceed_target():
                 target_size_kb=100,
             )
         except mod.ImageConvertError as exc:
-            assert '鏈兘鍘嬬缉鍒扮洰鏍囧ぇ灏? in str(exc)
+            assert '未能压缩到目标大小' in str(exc)
         else:
             raise AssertionError('expected ImageConvertError when all attempts exceed target')
-

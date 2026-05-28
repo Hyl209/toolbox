@@ -1,11 +1,11 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import importlib.util
 import pathlib
 import sys
 import tempfile
 
-ROOT = pathlib.Path('PROJECT_ROOT')
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 MODULE_PATH = ROOT / 'modules' / 'pdf-tools' / 'converter.py'
 
 
@@ -42,7 +42,7 @@ def test_parse_page_ranges_rejects_invalid_values():
         try:
             mod.parse_page_ranges(raw, total_pages=5)
         except ValueError as exc:
-            assert '椤电爜' in str(exc)
+            assert '页码' in str(exc)
         else:
             raise AssertionError(f'expected ValueError for {raw!r}')
 
@@ -80,7 +80,7 @@ def test_merge_pdfs_requires_at_least_two_inputs():
         try:
             mod.merge_pdfs([one], pathlib.Path(tmp) / 'merged.pdf')
         except mod.PdfToolsError as exc:
-            assert '鑷冲皯' in str(exc)
+            assert '至少' in str(exc)
         else:
             raise AssertionError('expected PdfToolsError for single input merge')
 
@@ -106,9 +106,9 @@ def test_validate_pdf_action_rejects_wrong_input_counts():
         two = pathlib.Path(tmp) / 'b.pdf'
         one.write_bytes(b'%PDF-1.4')
         two.write_bytes(b'%PDF-1.4')
-        assert '璇烽€夋嫨鑷冲皯涓や釜 PDF 鏂囦欢' in mod.validate_pdf_action('merge', [one], '')
-        assert '鎷嗗垎鍔熻兘鍙敮鎸佸崟涓?PDF' in mod.validate_pdf_action('split', [one, two], '1-2')
-        assert '璇疯緭鍏ユ媶鍒嗛〉鐮佽寖鍥? in mod.validate_pdf_action('split', [one], '')
+        assert '请选择至少两个 PDF 文件' in mod.validate_pdf_action('merge', [one], '')
+        assert '拆分功能只支持单个 PDF' in mod.validate_pdf_action('split', [one, two], '1-2')
+        assert '请输入拆分页码范围' in mod.validate_pdf_action('split', [one], '')
 
 
 def test_merge_pdfs_writes_output_via_writer_when_inputs_valid():
@@ -236,7 +236,7 @@ def test_export_text_writes_txt_when_text_layer_available():
 
     class FakePage:
         def get_text(self, mode='text'):
-            return '绗竴椤垫枃瀛?
+            return '第一页文字'
 
     class FakeDocument:
         def __iter__(self):
@@ -255,7 +255,7 @@ def test_export_text_writes_txt_when_text_layer_available():
         source.write_bytes(b'%PDF-1.4')
         output = mod.export_pdf_text(source, pathlib.Path(tmp), 'txt')
         assert output.name == 'input.txt'
-        assert output.read_text(encoding='utf-8') == '绗竴椤垫枃瀛?
+        assert output.read_text(encoding='utf-8') == '第一页文字'
 
 
 def test_export_text_uses_ocr_fallback_when_enabled_and_text_blank():
@@ -291,12 +291,12 @@ def test_export_text_uses_ocr_fallback_when_enabled_and_text_blank():
 
     mod.fitz = FakeFitz
     mod.probe_tesseract = lambda: (True, '')
-    mod.run_ocr_on_image = lambda _path: 'OCR鏂囧瓧'
+    mod.run_ocr_on_image = lambda _path: 'OCR文字'
     with tempfile.TemporaryDirectory() as tmp:
         source = pathlib.Path(tmp) / 'input.pdf'
         source.write_bytes(b'%PDF-1.4')
         output = mod.export_pdf_text(source, pathlib.Path(tmp), 'txt', ocr_fallback=True)
-        assert output.read_text(encoding='utf-8') == 'OCR鏂囧瓧'
+        assert output.read_text(encoding='utf-8') == 'OCR文字'
 
 
 def test_export_text_requires_docx_dependency_for_word_output():
@@ -305,7 +305,7 @@ def test_export_text_requires_docx_dependency_for_word_output():
 
     class FakePage:
         def get_text(self, mode='text'):
-            return '绗竴椤垫枃瀛?
+            return '第一页文字'
 
     class FakeDocument:
         def __iter__(self):
@@ -328,4 +328,3 @@ def test_export_text_requires_docx_dependency_for_word_output():
             assert 'python-docx' in str(exc)
         else:
             raise AssertionError('expected PdfToolsError when python-docx missing')
-
