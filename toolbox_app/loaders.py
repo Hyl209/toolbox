@@ -6,6 +6,7 @@ from pathlib import Path
 from threading import RLock
 from types import ModuleType
 
+_MAX_MODULE_CACHE = 32
 
 _MODULE_CACHE: dict[tuple[str, str], ModuleType] = {}
 _MODULE_CACHE_LOCK = RLock()

@@ -331,12 +331,14 @@ def build_toolbox_window_class(deps: dict):
         def closeEvent(self, event):
             """Clean up tabs (threads, timers) before window closes."""
             for tab in self._tabs.values():
-                cleanup = getattr(tab, 'cleanup_worker', None) or getattr(tab, 'cleanup_detection_worker', None)
-                if cleanup:
-                    try:
-                        cleanup()
-                    except Exception:
-                        pass
+                for attr in ('cleanup_worker', 'cleanup_scan_worker',
+                             'cleanup_thumbnail_worker', 'cleanup_detection_worker'):
+                    cleanup = getattr(tab, attr, None)
+                    if cleanup:
+                        try:
+                            cleanup()
+                        except Exception:
+                            pass
             super().closeEvent(event)
 
         def logout(self):

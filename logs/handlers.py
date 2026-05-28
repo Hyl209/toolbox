@@ -181,9 +181,9 @@ class MemoryHandler(logging.Handler):
         """缓冲日志"""
         self.buffer.append(record)
 
-    def get_buffer(self) -> list[logging.LogRecord]:
+    def get_buffer(self):
         """获取缓冲区"""
-        return self.buffer.copy()
+        return list(self.buffer)
 
     def clear_buffer(self):
         """清空缓冲区"""

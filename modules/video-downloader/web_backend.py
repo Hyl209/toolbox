@@ -1417,6 +1417,7 @@ def _extract_video_frame_thumbnail(video_path: Path, thumb_dir: Path, stem: str,
         ],
         capture_output=True,
         check=True,
+        timeout=300,
     )
     return thumb_path
 
@@ -1435,6 +1436,7 @@ def _video_has_embedded_thumbnail(video_path: Path, ffmpeg_path: str) -> bool:
             ],
             capture_output=True,
             check=True,
+            timeout=30,
         )
     except Exception:
         return False
@@ -1740,6 +1742,7 @@ def embed_thumbnail(
             subprocess.run(
                 [ffmpeg, '-y', '-i', str(thumb_file), str(jpg_thumb)],
                 capture_output=True, check=True,
+                timeout=300,
             )
             thumb_file.unlink(missing_ok=True)
             thumb_file = jpg_thumb
@@ -1759,6 +1762,7 @@ def embed_thumbnail(
                 str(tmp_out),
             ],
             capture_output=True, check=True,
+            timeout=300,
         )
         # Replace original
         video_path.unlink()

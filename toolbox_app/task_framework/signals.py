@@ -25,7 +25,7 @@ class Signal:
 
     def emit(self, *args, **kwargs):
         """发射信号"""
-        for callback in self._callbacks:
+        for callback in self._callbacks[:]:
             try:
                 callback(*args, **kwargs)
             except Exception as e:

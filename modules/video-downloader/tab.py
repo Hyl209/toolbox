@@ -269,15 +269,11 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                     cursor.movePosition(cursor.MoveOperation.StartOfBlock, cursor.MoveMode.KeepAnchor)
                     cursor.removeSelectedText()
                     cursor.insertText(text)
-                    if QApplication is not None:
-                        QApplication.processEvents()
                     return
                 self._last_log_is_progress = True
             else:
                 self._last_log_is_progress = False
             self.log.appendPlainText(text)
-            if QApplication is not None:
-                QApplication.processEvents()
 
         def set_busy(self, busy: bool):
             self.is_running = busy
@@ -320,8 +316,6 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                 self.cancel_button.setVisible(busy)
             if self.reconnect_button is not None:
                 self.reconnect_button.setVisible(busy)
-            if QApplication is not None:
-                QApplication.processEvents()
 
         def handle_all_messages_changed(self):
             if self.recent_count_edit is None or self.all_messages_checkbox is None:
