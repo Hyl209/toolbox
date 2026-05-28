@@ -229,8 +229,6 @@ def get_user_store_path(base_dir: str | Path) -> Path:
 
 # Auth functions moved to toolbox_app/auth.py — proxy imports for backward compatibility
 from toolbox_app.auth import (
-    ALLOWED_PASSWORD_SYMBOLS,
-    FORBIDDEN_PASSWORD_FRAGMENTS,
     DEFAULT_ADMIN_USERNAME,
     DEFAULT_ADMIN_PASSWORD,
     load_users,

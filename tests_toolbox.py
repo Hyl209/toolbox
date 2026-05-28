@@ -130,25 +130,20 @@ def test_password_hash_roundtrip_and_verify_user_credentials():
     assert not toolbox.verify_password('wrong', hashed)
 
 
-def test_password_policy_enforces_exact_12_chars_and_pattern_rules():
+def test_password_policy_basic_rules():
     toolbox = load_module()
-    assert toolbox.validate_password_policy('Aa11!!Bb22@1') == []
-    errors = toolbox.validate_password_policy('Aa11!!Bb22@12')
-    assert any('涓ユ牸绛変簬 12 浣? in item for item in errors)
-    errors = toolbox.validate_password_policy('aA11!!Bb22@1')
-    assert any('棣栧瓧绗﹀繀椤绘槸澶у啓瀛楁瘝' in item for item in errors)
-    errors = toolbox.validate_password_policy('Aa11!!Bb22@A')
-    assert any('灏惧瓧绗﹀繀椤绘槸鏁板瓧' in item for item in errors)
-    errors = toolbox.validate_password_policy('Aa!!BcdeFg@1')
-    assert any('鍚勮嚦灏?2 涓? in item for item in errors)
-    errors = toolbox.validate_password_policy('Aa111!Bb22@1')
-    assert any('杩炵画 3 浣嶇浉鍚屽瓧绗? in item for item in errors)
-    errors = toolbox.validate_password_policy('Abc123!!De@1')
-    assert any('杩炵画 3 浣嶉『搴忓瓧绗? in item for item in errors)
-    errors = toolbox.validate_password_policy('Aa!!Bb2024C1')
-    assert any('涓嶈兘鍖呭惈' in item for item in errors)
-    errors = toolbox.validate_password_policy('Aa11!!Bb22?1')
-    assert any('鐗规畩绗﹀彿鍙兘浠? in item for item in errors)
+    # 姝ｅ父瀵嗙爜閫氳繃
+    assert toolbox.validate_password_policy('abc123') == []
+    assert toolbox.validate_password_policy('MyP@ss1') == []
+    # 澶煭
+    errors = toolbox.validate_password_policy('a1')
+    assert any('鑷冲皯 6 浣? in item for item in errors)
+    # 娌℃湁瀛楁瘝
+    errors = toolbox.validate_password_policy('123456')
+    assert any('瀛楁瘝' in item for item in errors)
+    # 娌℃湁鏁板瓧
+    errors = toolbox.validate_password_policy('abcdef')
+    assert any('鏁板瓧' in item for item in errors)
 
 
 def test_ensure_default_admin_user_creates_admin_account_once():
@@ -168,18 +163,18 @@ def test_register_user_rejects_weak_password_for_all_users():
     toolbox = load_module()
     with tempfile.TemporaryDirectory() as tmp:
         store = pathlib.Path(tmp) / 'users.json'
-        # admin 涔熶笉鑳界敤寮卞瘑鐮佷簡
+        # admin 涔熶笉鑳界敤寮卞瘑鐮?
         try:
             toolbox.register_user(store, 'admin', '123')
         except ValueError as exc:
-            assert '涓ユ牸绛変簬 12 浣? in str(exc)
+            assert '鑷冲皯 6 浣? in str(exc)
         else:
             raise AssertionError('expected password policy error for admin with weak password')
         # alice 鍚屾牱涓嶈兘
         try:
             toolbox.register_user(store, 'alice', '123')
         except ValueError as exc:
-            assert '涓ユ牸绛変簬 12 浣? in str(exc)
+            assert '鑷冲皯 6 浣? in str(exc)
         else:
             raise AssertionError('expected password policy error for non-admin user')
 
