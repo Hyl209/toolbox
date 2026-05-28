@@ -569,6 +569,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
         def scan_web_candidates(self):
             if self.source_mode != 'web':
                 return
+            self.cleanup_scan_worker()
             urls = self.module.parse_task_lines(self.task_edit.toPlainText())
             web_urls = [url for url in urls if _guess_source_kind(url) == 'web']
             if not web_urls:
@@ -732,6 +733,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             if QThread is None:
                 self.thumbnail_worker.run()
                 return
+            self.cleanup_thumbnail_worker()
             self.thumbnail_worker_thread = QThread(self)
             self.thumbnail_worker.moveToThread(self.thumbnail_worker_thread)
             self.thumbnail_worker_thread.started.connect(self.thumbnail_worker.run)
@@ -781,6 +783,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             self.thumbnail_worker = None
 
         def run_download(self):
+            self.cleanup_worker()
             self.save_form_settings()
             module = self.module
             web_all_candidates = self._is_checked(self.web_all_candidates_checkbox)

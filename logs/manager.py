@@ -9,6 +9,8 @@ from .formatters import LogFormatter
 
 logger = logging.getLogger(__name__)
 
+_MAX_LOGGERS = 64
+
 
 class LogManager:
     """日志管理器"""
@@ -72,6 +74,13 @@ class LogManager:
         """获取或创建日志记录器"""
         if name in self._loggers:
             return self._loggers[name]
+
+        # Evict oldest task loggers if at capacity
+        if len(self._loggers) >= _MAX_LOGGERS:
+            _RESERVED = {'gui', 'crash'}
+            evict_keys = [k for k in self._loggers if k.startswith('task.') and k not in _RESERVED]
+            for k in evict_keys[:len(evict_keys) // 2]:
+                self._loggers.pop(k, None)
 
         logger = logging.getLogger(name)
         logger.setLevel(logging.DEBUG)

@@ -60,6 +60,11 @@ class Worker:
         """注册取消回调"""
         self._callbacks['cancelled'].append(callback)
 
+    def clear_callbacks(self):
+        """清空所有回调，释放引用"""
+        for key in self._callbacks:
+            self._callbacks[key].clear()
+
     def _emit_progress(self, progress: int):
         """触发进度回调"""
         self._progress = progress
@@ -121,6 +126,7 @@ class Worker:
             raise
         finally:
             self._is_running = False
+            self.clear_callbacks()
 
     def execute_async(self, func: Callable, *args, **kwargs):
         """异步执行任务"""

@@ -2,17 +2,21 @@ from __future__ import annotations
 
 import time
 import functools
+from collections import deque
 from typing import Any, Callable
 from .logger import get_logger
 
 logger = get_logger(__name__)
+
+_MAX_METRICS_PER_TIMER = 1000
+_MAX_SNAPSHOTS = 200
 
 
 class PerformanceMonitor:
     """性能监控器"""
 
     def __init__(self):
-        self._metrics: dict[str, list[float]] = {}
+        self._metrics: dict[str, deque[float]] = {}
         self._start_times: dict[str, float] = {}
 
     def start_timer(self, name: str):
@@ -27,7 +31,7 @@ class PerformanceMonitor:
         elapsed = time.time() - self._start_times.pop(name)
 
         if name not in self._metrics:
-            self._metrics[name] = []
+            self._metrics[name] = deque(maxlen=_MAX_METRICS_PER_TIMER)
         self._metrics[name].append(elapsed)
 
         return elapsed
@@ -143,7 +147,7 @@ class MemoryMonitor:
     """内存监控器"""
 
     def __init__(self):
-        self._snapshots: list[dict[str, Any]] = []
+        self._snapshots: deque[dict[str, Any]] = deque(maxlen=_MAX_SNAPSHOTS)
 
     def take_snapshot(self, label: str = None):
         """获取内存快照"""

@@ -55,8 +55,9 @@ class TaskQueue:
         worker = TaskWorker(task, self._signals)
         self._workers[task.task_id] = worker
 
-        # 连接完成信号以清理 worker
+        # 连接完成信号以清理 worker，完成后自动断开防止泄漏
         def on_finished(t: Task):
+            self._signals.task_finished.disconnect(on_finished)
             self._remove_worker(t.task_id)
             self._process_queue()
 

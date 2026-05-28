@@ -52,6 +52,12 @@ def animate_stack_switch(stack: QStackedWidget, index: int):
         return
     if QPropertyAnimation is None:
         return
+    # Stop previous slide animation if still running
+    prev = getattr(page, '_slide_animation', None)
+    if prev is not None:
+        for anim in prev:
+            if anim is not None and anim.state() == QPropertyAnimation.State.Running:
+                anim.stop()
     end_pos = page.pos()
     offset = 100 if index > current_index else -100
     start_pos = QPoint(end_pos.x(), end_pos.y() + offset)

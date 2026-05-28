@@ -246,6 +246,7 @@ def build_same_tab_class(deps: dict[str, object]):
             self.log.appendPlainText(f'开始检测: {folder_path}')
             self.summary_label.setText('正在检测，请稍候...')
             self.set_detection_busy(True)
+            self.cleanup_detection_worker()
             self.worker = SameDetectionWorker(same_module, folder_path, recursive)
             self.worker.finished.connect(self.handle_detection_finished)
             self.worker.failed.connect(self.handle_detection_error)

@@ -174,13 +174,12 @@ class MemoryHandler(logging.Handler):
     def __init__(self, capacity: int = 1000):
         super().__init__()
         self.capacity = capacity
-        self.buffer = []
+        from collections import deque
+        self.buffer = deque(maxlen=capacity)
 
     def emit(self, record):
         """缓冲日志"""
         self.buffer.append(record)
-        if len(self.buffer) > self.capacity:
-            self.buffer.pop(0)
 
     def get_buffer(self) -> list[logging.LogRecord]:
         """获取缓冲区"""

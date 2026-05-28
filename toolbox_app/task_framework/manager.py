@@ -9,6 +9,8 @@ from ..core.exceptions import TaskError
 
 logger = get_logger(__name__)
 
+_MAX_TASK_HISTORY = 200
+
 
 class SimpleTask(Task):
     """简单任务实现"""
@@ -39,15 +41,26 @@ class TaskManager:
     def signals(self) -> TaskSignals:
         return self._queue.signals
 
+    def _evict_old_history(self):
+        """清理已完成的旧任务历史，防止无限增长"""
+        if len(self._task_history) <= _MAX_TASK_HISTORY:
+            return
+        finished = [tid for tid, t in self._task_history.items() if t.is_finished]
+        # Remove oldest half of finished tasks
+        for tid in finished[:len(finished) // 2]:
+            self._task_history.pop(tid, None)
+
     def submit(self, func: Callable, *args, name: str = None, **kwargs) -> Task:
         """提交任务"""
         task = SimpleTask(func, *args, name=name, **kwargs)
+        self._evict_old_history()
         self._task_history[task.task_id] = task
         self._queue.add_task(task)
         return task
 
     def submit_task(self, task: Task) -> Task:
         """提交自定义任务"""
+        self._evict_old_history()
         self._task_history[task.task_id] = task
         self._queue.add_task(task)
         return task

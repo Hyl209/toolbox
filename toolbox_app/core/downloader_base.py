@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from abc import ABC, abstractmethod
+from collections import deque
 from pathlib import Path
 from typing import Optional, Callable
 from .logger import get_logger
@@ -19,7 +20,7 @@ class DownloadProgress:
         self.downloaded = downloaded
         self.start_time = time.time()
         self._last_update = self.start_time
-        self._speed_samples: list[float] = []
+        self._speed_samples: deque[float] = deque(maxlen=10)
 
     @property
     def percentage(self) -> float:
@@ -50,8 +51,6 @@ class DownloadProgress:
             bytes_diff = downloaded - self.downloaded
             speed = bytes_diff / time_diff
             self._speed_samples.append(speed)
-            if len(self._speed_samples) > 10:
-                self._speed_samples.pop(0)
 
         self.downloaded = downloaded
         self._last_update = now
@@ -93,6 +92,11 @@ class DownloaderBase(ABC):
     def on_completion(self, callback: Callable[[bool, str], None]):
         """注册完成回调"""
         self._completion_callbacks.append(callback)
+
+    def clear_callbacks(self):
+        """清空所有回调，释放引用"""
+        self._progress_callbacks.clear()
+        self._completion_callbacks.clear()
 
     def _emit_progress(self, progress: DownloadProgress):
         """触发进度回调"""

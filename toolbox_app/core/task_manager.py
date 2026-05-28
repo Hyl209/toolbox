@@ -50,6 +50,7 @@ class TaskManager:
 
     def execute_task(self, task_id: str, func: Callable, *args, **kwargs) -> Worker:
         """执行任务"""
+        self.cleanup_completed()
         worker = self.create_worker(task_id)
 
         if self._running_count >= self.max_concurrent:
