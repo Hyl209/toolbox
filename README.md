@@ -134,10 +134,12 @@ def build_xxx_tab_class(deps: dict):
 
 ### 认证系统
 
-- `password_policy.py`：密码策略 (12 位、大小写+数字+符号)
+- `password_policy.py`：密码策略 (6-64 位 + 含字母 + 含数字)
 - `auth_store.py`：SHA-256 哈希 + salt 存储
 - `auth_preferences.py`：记住密码、自动登录
-- 默认账号 `admin`，首次登录后必须修改密码
+- 默认账号 `admin`，默认密码 `123`
+
+> **注意**：现阶段密码模块纯属练手玩一下，安全性不做强要求，后续有需要再加强。
 
 ### 主题系统
 

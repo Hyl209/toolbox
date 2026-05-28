@@ -1,5 +1,6 @@
 [tool.pytest.ini_options]
 python_files = ["tests_*.py", "test_*.py"]
+testpaths = ["tests"]
 addopts = "--basetemp=E:/tmp/pytest-hyl"
 filterwarnings = [
     "ignore:__package__ != __spec__.parent:DeprecationWarning",

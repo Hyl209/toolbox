@@ -5,7 +5,7 @@ import pathlib
 
 from toolbox_app.tool_registry import TOOL_DEFINITIONS, get_tool_definitions, get_packaging_datas, SIDEBAR_LABELS
 
-ROOT = pathlib.Path(__file__).resolve().parent
+ROOT = pathlib.Path(__file__).resolve().parent.parent
 SPEC_PATH = ROOT / 'HylToolbox.spec'
 
 

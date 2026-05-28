@@ -6,7 +6,7 @@ import sys
 import tempfile
 
 
-ROOT = pathlib.Path(__file__).resolve().parent
+ROOT = pathlib.Path(__file__).resolve().parent.parent
 MODULE_PATH = ROOT / 'same' / 'converter.py'
 
 
