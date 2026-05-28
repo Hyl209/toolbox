@@ -73,7 +73,7 @@ class PluginRegistry:
             if plugin.is_enabled
         }
 
-    def initialize_plugin(self, plugin_name: str) -> bool:
+    def initialize_plugin(self, plugin_name: str, deps: dict = None) -> bool:
         """初始化插件"""
         plugin = self._plugins.get(plugin_name)
         if plugin is None:
@@ -83,8 +83,9 @@ class PluginRegistry:
             return True
 
         try:
-            result = plugin.initialize()
+            result = plugin.initialize(deps)
             if result:
+                plugin._is_initialized = True
                 logger.info(f"插件初始化成功: {plugin_name}")
             else:
                 logger.warning(f"插件初始化失败: {plugin_name}")
@@ -93,11 +94,11 @@ class PluginRegistry:
             logger.error(f"插件初始化异常 {plugin_name}: {e}")
             return False
 
-    def initialize_all(self) -> dict[str, bool]:
+    def initialize_all(self, deps: dict = None) -> dict[str, bool]:
         """初始化所有插件"""
         results = {}
         for plugin_name in self._plugins:
-            results[plugin_name] = self.initialize_plugin(plugin_name)
+            results[plugin_name] = self.initialize_plugin(plugin_name, deps)
         return results
 
     def cleanup_plugin(self, plugin_name: str):
@@ -113,9 +114,9 @@ class PluginRegistry:
             logger.error(f"插件清理失败 {plugin_name}: {e}")
 
     def cleanup_all(self):
-        """清理所有插件"""
+        """清理并注销所有插件"""
         for plugin_name in list(self._plugins.keys()):
-            self.cleanup_plugin(plugin_name)
+            self.unregister(plugin_name)
 
     def enable_plugin(self, plugin_name: str) -> bool:
         """启用插件"""

@@ -18,6 +18,9 @@ class PluginInfo:
     dependencies: list[str] = None
     enabled: bool = True
     priority: int = 0
+    plugin_type: str = "gui"  # "gui" or "hook"
+    entry: str = ""  # "file.py:ClassName" for manifest plugins
+    plugin_path: str = ""  # absolute path to plugin dir or .py file
 
     def __post_init__(self):
         if self.dependencies is None:
@@ -61,8 +64,13 @@ class PluginBase(ABC):
         pass
 
     @abstractmethod
-    def initialize(self) -> bool:
-        """初始化插件（子类实现）"""
+    def initialize(self, deps: dict = None) -> bool:
+        """初始化插件（子类实现）
+
+        Args:
+            deps: 依赖注入字典，包含 Qt 类和工具函数。
+                  GUI 插件可用 deps 中的 Qt 类构建界面。
+        """
         pass
 
     @abstractmethod
@@ -105,8 +113,12 @@ class PluginBase(ABC):
         pass
 
     def get_tab_widget(self) -> Optional[Any]:
-        """获取插件提供的 Tab 控件"""
+        """获取插件提供的 Tab 控件（GUI 插件实现）"""
         return None
+
+    def get_sidebar_label(self) -> str:
+        """获取侧边栏显示文字（GUI 插件可覆盖）"""
+        return self.plugin_info.name
 
     def get_menu_items(self) -> list[dict[str, Any]]:
         """获取插件提供的菜单项"""

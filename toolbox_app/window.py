@@ -31,6 +31,7 @@ def build_toolbox_window_class(deps: dict):
     animate_stack_switch = deps['animate_stack_switch']
     LOGO_PATH = deps['LOGO_PATH']
     WEIXIN_IMAGE_PATH = deps['WEIXIN_IMAGE_PATH']
+    plugin_manager = deps.get('plugin_manager')
     MusicTab = deps['MusicTab']
     ZipAndPngTab = deps['ZipAndPngTab']
     Mp4ToMp3Tab = deps['Mp4ToMp3Tab']
@@ -155,6 +156,34 @@ def build_toolbox_window_class(deps: dict):
             self.file_sorter_tab = self._tabs['filesorter']
             self.same_tab = self._tabs['same']
             self.base64_tab = self._tabs['base64']
+            # --- 加载插件 ---
+            self._plugin_tabs = []
+            self._plugin_manager = plugin_manager
+            if plugin_manager is not None:
+                try:
+                    # 从 settings 读取禁用列表
+                    disabled_str = load_setting(settings, 'plugins/disabled', '')
+                    disabled_names = set(disabled_str.split(',')) if disabled_str.strip() else set()
+                    plugin_manager.load_all_plugins(disabled_names)
+                    plugin_deps = {k: v for k, v in deps.items()}
+                    plugin_deps['settings'] = settings
+                    plugin_manager.initialize_all_plugins(plugin_deps)
+                    for name, plugin in plugin_manager.get_enabled_plugins().items():
+                        if plugin.plugin_info.plugin_type == 'gui':
+                            tab_widget = plugin.get_tab_widget()
+                            if tab_widget is not None:
+                                label = plugin.get_sidebar_label()
+                                self.sidebar.addItem(label)
+                                self.stack.addWidget(tab_widget)
+                                self._tabs[f'plugin:{name}'] = tab_widget
+                                self._plugin_tabs.append((name, tab_widget))
+                    for name, plugin in plugin_manager.get_enabled_plugins().items():
+                        try:
+                            plugin.on_app_start()
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
             shell.addWidget(self.stack, 1)
             self.sidebar.currentRowChanged.connect(self.switch_tool_page)
             content_layout.addWidget(central, 1)
@@ -330,6 +359,21 @@ def build_toolbox_window_class(deps: dict):
 
         def closeEvent(self, event):
             """Clean up tabs (threads, timers) before window closes."""
+            # 清理插件
+            if hasattr(self, '_plugin_manager') and self._plugin_manager is not None:
+                try:
+                    for name, plugin in self._plugin_manager.get_enabled_plugins().items():
+                        try:
+                            plugin.on_app_close()
+                        except Exception:
+                            pass
+                    # 保存禁用插件列表
+                    disabled = self._plugin_manager.get_disabled_plugin_names()
+                    save_setting(self.settings, 'plugins/disabled', ','.join(sorted(disabled)))
+                    self._plugin_manager.cleanup_all_plugins()
+                except Exception:
+                    pass
+            # 清理内置 Tab 线程
             for tab in self._tabs.values():
                 for attr in ('cleanup_worker', 'cleanup_scan_worker',
                              'cleanup_thumbnail_worker', 'cleanup_detection_worker'):
@@ -367,6 +411,13 @@ def build_toolbox_window_class(deps: dict):
             self.content_surface.setGraphicsEffect(None)
             self.update_window_controls()
             self.update_user_menu_ui()
+            # 通知插件主题变更
+            if hasattr(self, '_plugin_manager') and self._plugin_manager is not None:
+                for name, plugin in self._plugin_manager.get_enabled_plugins().items():
+                    try:
+                        plugin.on_theme_change(self.current_theme)
+                    except Exception:
+                        pass
             if hasattr(self, 'user_menu') and self.user_menu.isVisible():
                 self.user_menu.hide()
             if hasattr(self, 'help_popup') and self.help_popup.isVisible():

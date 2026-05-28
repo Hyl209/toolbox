@@ -63,6 +63,9 @@ class PluginDiscovery:
             # 用正则提取 plugin_info（name/version/description/author）
             info = self._extract_info_from_source(source, module_name)
             if info:
+                info.plugin_path = str(plugin_path)
+                # entry 格式: 文件名:类名 (用第一个匹配的 PluginBase 子类)
+                info.entry = f"{plugin_path.name}:{matches[0]}"
                 self._discovered_plugins[info.name] = info
 
         except Exception as e:
@@ -71,10 +74,17 @@ class PluginDiscovery:
     @staticmethod
     def _extract_info_from_source(source: str, fallback_name: str) -> Optional[PluginInfo]:
         """Try to extract PluginInfo fields from source text via regex."""
-        name_match = re.search(r"""['"]name['"]\s*:\s*['"]([^'"]+)['"]""", source)
-        version_match = re.search(r"""['"]version['"]\s*:\s*['"]([^'"]+)['"]""", source)
-        desc_match = re.search(r"""['"]description['"]\s*:\s*['"]([^'"]+)['"]""", source)
-        author_match = re.search(r"""['"]author['"]\s*:\s*['"]([^'"]+)['"]""", source)
+        # Match both dict style ("name": "val") and keyword arg style (name="val")
+        def _field_re(field: str) -> re.Pattern:
+            return re.compile(
+                rf"""(?:['"]{field}['"]\s*:\s*|{field}\s*=\s*)['"]([^'"]+)['"]"""
+            )
+
+        name_match = _field_re('name').search(source)
+        version_match = _field_re('version').search(source)
+        desc_match = _field_re('description').search(source)
+        author_match = _field_re('author').search(source)
+        type_match = _field_re('plugin_type').search(source)
         if not (name_match and version_match):
             return None
         return PluginInfo(
@@ -82,6 +92,7 @@ class PluginDiscovery:
             version=version_match.group(1) if version_match else '0.0.0',
             description=desc_match.group(1) if desc_match else '',
             author=author_match.group(1) if author_match else '',
+            plugin_type=type_match.group(1) if type_match else 'gui',
         )
 
     def _load_manifest(self, plugin_path: Path, manifest_path: Path):
@@ -104,7 +115,10 @@ class PluginDiscovery:
                 author=manifest['author'],
                 dependencies=manifest.get('dependencies', []),
                 enabled=manifest.get('enabled', True),
-                priority=manifest.get('priority', 0)
+                priority=manifest.get('priority', 0),
+                plugin_type=manifest.get('type', 'gui'),
+                entry=manifest.get('entry', ''),
+                plugin_path=str(plugin_path),
             )
 
             self._discovered_plugins[plugin_info.name] = plugin_info

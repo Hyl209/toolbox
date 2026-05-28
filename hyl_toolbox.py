@@ -10,6 +10,7 @@ from toolbox_app.dynamic_modules import DynamicModuleLoader
 from toolbox_app.tool_tabs import build_external_tab_classes
 from toolbox_app.auth_dialog import build_auth_dialog_class
 from toolbox_app.window import build_toolbox_window_class
+from toolbox_app.plugins.manager import get_plugin_manager
 
 
 _WEIXIN_B64_FILE = Path(__file__).resolve().parent / "modules" / "ncm-converter" / "weixin_base64.txt"
@@ -90,6 +91,7 @@ except ModuleNotFoundError:
 ROOT = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
 SOURCE_DIR = Path(__file__).resolve().parent
 APP_DIR = SOURCE_DIR if getattr(sys, 'frozen', False) and (SOURCE_DIR / 'users.json').exists() else (Path(sys.executable).resolve().parent if getattr(sys, 'frozen', False) else SOURCE_DIR)
+PLUGINS_DIR = APP_DIR / 'plugins'
 MUSIC_DIR = ROOT / 'modules' / 'ncm-converter'
 ZIP_DIR = ROOT / 'modules' / 'file-disguise'
 MP4_DIR = ROOT / 'modules' / 'audio-extractor'
@@ -783,6 +785,10 @@ if QWidget is not None:
         'ROOT': ROOT,
     })
 
+    def _get_or_create_plugin_manager():
+        PLUGINS_DIR.mkdir(parents=True, exist_ok=True)
+        return get_plugin_manager(PLUGINS_DIR)
+
     ToolboxWindow = build_toolbox_window_class({
         'QMainWindow': QMainWindow,
         'QWidget': QWidget,
@@ -817,6 +823,7 @@ if QWidget is not None:
         'FileSorterTab': FileSorterTab,
         'SameTab': SameTab,
         'Base64Tab': Base64Tab,
+        'plugin_manager': _get_or_create_plugin_manager(),
     })
 
     def build_main_window_for_test(settings_dir: str):
