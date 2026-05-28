@@ -106,7 +106,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
 
     from toolbox_app.utils import _FallbackSignal
 
-    DownloadWorker, ScanWorker = build_worker_classes(QObject, QThread, Signal, _FallbackSignal)
+    DownloadWorker, ScanWorker, ThumbnailWorker = build_worker_classes(QObject, QThread, Signal, _FallbackSignal)
 
     class VideoDownloaderTab(QWidget):
         def __init__(self, settings, source_mode: str = 'mixed'):
@@ -154,6 +154,8 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
         def _init_instance_vars(self):
             self.scan_worker_thread = None
             self.scan_worker = None
+            self.thumbnail_worker_thread = None
+            self.thumbnail_worker = None
             self.api_id_edit = None
             self.api_hash_edit = None
             self.phone_edit = None
@@ -722,23 +724,61 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             self.set_busy(True)
             self.log.clear()
             self.append_log(f'补封面: 共 {len(files)} 个文件，源链接: {source_url}')
-            success_count = 0
-            fail_count = 0
-            for i, fpath in enumerate(files, 1):
-                self.progress_label.setText(f'补封面 {i}/{len(files)}: {Path(fpath).name}')
-                self.progress_bar.setValue(int((i - 1) / len(files) * 100))
-                result = module.embed_thumbnail(fpath, source_url, progress_cb=self.append_log, candidate_index=candidate_index)
-                if result.get('success'):
-                    success_count += 1
-                    self.append_log(f'  ✓ {Path(fpath).name}')
-                else:
-                    fail_count += 1
-                    self.append_log(f'  ✗ {Path(fpath).name}: {result.get("error")}')
+            self.reset_progress_ui(len(files))
+            self.thumbnail_worker = ThumbnailWorker(module, files, source_url, candidate_index=candidate_index)
+            self.thumbnail_worker.progress.connect(self.handle_thumbnail_progress)
+            self.thumbnail_worker.finished.connect(self.finalize_thumbnail)
+            self.thumbnail_worker.failed.connect(self.handle_thumbnail_error)
+            if QThread is None:
+                self.thumbnail_worker.run()
+                return
+            self.thumbnail_worker_thread = QThread(self)
+            self.thumbnail_worker.moveToThread(self.thumbnail_worker_thread)
+            self.thumbnail_worker_thread.started.connect(self.thumbnail_worker.run)
+            self.thumbnail_worker_thread.start()
+
+        def handle_thumbnail_progress(self, message: str):
+            self.append_log(message)
+            # Update progress bar based on "补封面 N/M" pattern
+            if message.startswith('补封面 ') and '/' in message:
+                try:
+                    parts = message.split(' ')[1].split('/')
+                    current = int(parts[0])
+                    total = int(parts[1])
+                    self.progress_bar.setValue(int((current - 1) / total * 100))
+                    self.progress_label.setText(message)
+                except (ValueError, IndexError):
+                    pass
+
+        def finalize_thumbnail(self, results: list[dict[str, object]]):
             self.progress_bar.setValue(100)
+            success_count = sum(1 for r in results if r.get('success'))
+            fail_count = len(results) - success_count
+            for r in results:
+                name = Path(r.get('_path', '')).name
+                if r.get('success'):
+                    self.append_log(f'  ✓ {name}')
+                else:
+                    self.append_log(f'  ✗ {name}: {r.get("error")}')
             self.progress_label.setText(f'补封面完成: 成功 {success_count}, 失败 {fail_count}')
             self.append_log(f'----\n补封面完成: 成功 {success_count}, 失败 {fail_count}')
             show_themed_success(self, '完成', [f'成功: {success_count}', f'失败: {fail_count}'])
+            self.cleanup_thumbnail_worker()
             self.set_busy(False)
+
+        def handle_thumbnail_error(self, message: str):
+            self.append_log(f'错误：{message}')
+            self.progress_label.setText('补封面失败')
+            self.cleanup_thumbnail_worker()
+            self.set_busy(False)
+            show_themed_error(self, '补封面失败', message)
+
+        def cleanup_thumbnail_worker(self):
+            if self.thumbnail_worker_thread is not None:
+                self.thumbnail_worker_thread.quit()
+                self.thumbnail_worker_thread.wait()
+            self.thumbnail_worker_thread = None
+            self.thumbnail_worker = None
 
         def run_download(self):
             self.save_form_settings()

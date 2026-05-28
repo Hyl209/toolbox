@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from urllib.parse import urlparse
-
-from .tab_constants import TELEGRAM_HOSTS, SUMMARY_EMPTY_TEXT, TELEGRAM_ONLY_ERROR, WEB_ONLY_ERROR
+from ._shared import classify_source, TELEGRAM_HOSTS
+from .tab_constants import SUMMARY_EMPTY_TEXT, TELEGRAM_ONLY_ERROR, WEB_ONLY_ERROR
 
 
 def normalize_source_mode(source_mode: str) -> str:
@@ -11,18 +10,15 @@ def normalize_source_mode(source_mode: str) -> str:
 
 
 def _guess_source_kind(url: str) -> str:
-    text = str(url or '').strip().lower()
-    parsed = urlparse(text if '://' in text else f'https://{text}')
-    if parsed.netloc.lower() not in TELEGRAM_HOSTS:
+    """Classify a URL as telegram_message, telegram_chat, or web.
+
+    Delegates to _shared.classify_source for consistent logic.
+    Falls back to 'web' for invalid/empty input (UI display context).
+    """
+    try:
+        return classify_source(url)
+    except (ValueError, Exception):
         return 'web'
-    parts = [part for part in parsed.path.split('/') if part]
-    if not parts:
-        return 'telegram_chat'
-    if parts[0] == 'c' and len(parts) >= 3 and parts[2].isdigit():
-        return 'telegram_message'
-    if len(parts) >= 2 and parts[1].isdigit():
-        return 'telegram_message'
-    return 'telegram_chat'
 
 
 def format_video_task_summary(urls: list[str]) -> str:

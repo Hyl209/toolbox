@@ -82,9 +82,9 @@ class _BoundedCache:
                     self._data.popitem(last=False)
 
 
-_FILE_HASH_CACHE = _BoundedCache()
-_VIDEO_METADATA_CACHE = _BoundedCache()
-_VIDEO_SIGNATURE_CACHE = _BoundedCache()
+# Cache instances live in exact_duplicate.py and video_signature.py respectively.
+# (Removed dead _FILE_HASH_CACHE / _VIDEO_METADATA_CACHE / _VIDEO_SIGNATURE_CACHE
+#  that were never used — sub-modules create their own.)
 
 
 def _ensure_root(root: str | Path) -> Path:

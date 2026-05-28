@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from ._shared import TELEGRAM_HOSTS  # noqa: F401 — single source of truth
 
 SETTINGS_PREFIX = 'video_downloader'
-TELEGRAM_HOSTS = {'t.me', 'telegram.me', 'telegram.dog', 'www.t.me', 'www.telegram.me'}
 TITLE = '视频下载'
 SUBTITLE = '批量下载 Telegram 和网页视频'
 TASK_PLACEHOLDER = '每行一个链接'

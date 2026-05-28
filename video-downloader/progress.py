@@ -10,7 +10,7 @@ from .models import DownloadTask, ProgressCallback
 from . import _shared as _s
 
 ANSI_ESCAPE_RE = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
-WHITESPACE_RE = re.compile(r'\s+')
+WHITESPACE_RE = _s.WHITESPACE_RE  # re-export from _shared (single source of truth)
 
 
 def _normalize_progress_text(value: object) -> str:
