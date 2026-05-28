@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 TELEGRAM_HOSTS = {'t.me', 'telegram.me', 'telegram.dog', 'www.t.me', 'www.telegram.me'}
 INVALID_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]+')
 WHITESPACE_RE = re.compile(r'\s+')
+EMBEDDED_URL_RE = re.compile(r'https?://[^\s<>"\'`]+', re.IGNORECASE)
 WEB_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
 SESSION_FILE_NAME = 'telegram.session'
 _stem_lock = threading.Lock()
@@ -62,11 +63,20 @@ def _find_completed_downloads(directory: str | Path, stem: str) -> list[Path]:
     ]
 
 
+def _trim_url_suffix(text: str) -> str:
+    return str(text or '').rstrip(' \t\r\n,.;:!?"\')}]\u3001\u3002\uff01\uff1f\uff1b\uff1a\u300b\u300d\u300f\u3011\uff09')
+
+
 def _normalize_url_text(text: str) -> str:
     cleaned = str(text or '').strip()
     if not cleaned:
         return ''
     cleaned = cleaned.lstrip('-*').strip()
+    if cleaned.startswith(('http://', 'https://')):
+        return _trim_url_suffix(cleaned)
+    match = EMBEDDED_URL_RE.search(cleaned)
+    if match:
+        return _trim_url_suffix(match.group(0))
     if '://' in cleaned:
         return cleaned
     if cleaned.startswith('www.'):

@@ -107,6 +107,28 @@ def test_parse_task_lines_deduplicates_and_preserves_order():
     assert module.parse_task_lines(text) == ['https://example.com/a', 'https://t.me/demo/1']
 
 
+def test_parse_task_lines_extracts_douyin_share_url_from_share_text():
+    module = load_module()
+    text = '7.53 复制打开抖音，看看【示例】 https://v.douyin.com/ABC123/ 09/01 F@x '
+    assert module.parse_task_lines(text) == ['https://v.douyin.com/ABC123/']
+
+
+def test_build_download_tasks_treats_douyin_share_url_as_web():
+    module = load_module()
+    tasks = module.build_download_tasks([
+        '7.53 复制打开抖音，看看【示例】 https://v.douyin.com/ABC123/ 09/01 F@x ',
+    ])
+    assert len(tasks) == 1
+    assert tasks[0].source_url == 'https://v.douyin.com/ABC123/'
+    assert tasks[0].source_kind == 'web'
+
+
+def test_parse_task_lines_deduplicates_plain_url_and_douyin_share_text():
+    module = load_module()
+    text = '\nhttps://v.douyin.com/ABC123/\n7.53 复制打开抖音，看看【示例】 https://v.douyin.com/ABC123/ 09/01 F@x \n'
+    assert module.parse_task_lines(text) == ['https://v.douyin.com/ABC123/']
+
+
 def test_classify_source_distinguishes_telegram_message_chat_and_web():
     module = load_module()
     assert module.classify_source('https://t.me/demo/123') == 'telegram_message'
@@ -920,6 +942,267 @@ def test_download_url_with_ytdlp_sets_legacy_server_connect_for_tls_edge_cases()
         wb._require_web_backend = original_require
         sh._resolve_aria2c_path = original_resolve_aria2
         wb.shutil.which = original_ffmpeg
+
+
+def test_download_url_with_ytdlp_retries_douyin_with_browser_cookies():
+    module = load_module()
+    wb = load_web_backend()
+    sh = load_shared()
+    fake_ytdlp = types.ModuleType('yt_dlp')
+    captured_opts: list[dict[str, object]] = []
+
+    class FakeYoutubeDL:
+        def __init__(self, opts):
+            self.opts = opts
+            captured_opts.append(dict(opts))
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def extract_info(self, url, download=False):
+            if 'cookiesfrombrowser' not in self.opts:
+                raise RuntimeError('ERROR: [Douyin] 7644497851275431174: Fresh cookies (not necessarily logged in) are needed')
+            if not download:
+                return {'title': 'Douyin Demo', 'id': 'dy123'}
+            pathlib.Path(str(self.opts['outtmpl']).replace('%(ext)s', 'mp4')).write_text('ok', encoding='utf-8')
+            return {'ok': True}
+
+    fake_ytdlp.YoutubeDL = FakeYoutubeDL
+    original_module = sys.modules.get('yt_dlp')
+    original_require = wb._require_web_backend
+    original_resolve_aria2 = sh._resolve_aria2c_path
+    original_ffmpeg = wb.shutil.which
+    try:
+        sys.modules['yt_dlp'] = fake_ytdlp
+        wb._require_web_backend = lambda: None
+        sh._resolve_aria2c_path = lambda: ''
+        wb.shutil.which = lambda name: ''
+        with tempfile.TemporaryDirectory() as tmp:
+            result = wb._download_url_with_ytdlp(
+                'https://v.douyin.com/mYxjnR57uFU/',
+                pathlib.Path(tmp),
+                module.DownloadOptions(),
+                None,
+            )
+        assert result['success'] is True
+        assert any('cookiesfrombrowser' not in opts for opts in captured_opts)
+        assert any(opts.get('cookiesfrombrowser') == ('chrome',) for opts in captured_opts)
+    finally:
+        if original_module is None:
+            sys.modules.pop('yt_dlp', None)
+        else:
+            sys.modules['yt_dlp'] = original_module
+        wb._require_web_backend = original_require
+        sh._resolve_aria2c_path = original_resolve_aria2
+        wb.shutil.which = original_ffmpeg
+
+
+def test_extract_ytdlp_entry_candidates_retries_douyin_with_browser_cookies():
+    wb = load_web_backend()
+    fake_ytdlp = types.ModuleType('yt_dlp')
+    captured_opts: list[dict[str, object]] = []
+
+    class FakeYoutubeDL:
+        def __init__(self, opts):
+            self.opts = opts
+            captured_opts.append(dict(opts))
+
+        def extract_info(self, url, download=False):
+            if 'cookiesfrombrowser' not in self.opts:
+                raise RuntimeError('ERROR: [Douyin] 7644497851275431174: Fresh cookies (not necessarily logged in) are needed')
+            return {
+                'entries': [
+                    {'url': 'https://cdn.example.com/video.mp4'},
+                ],
+            }
+
+    fake_ytdlp.YoutubeDL = FakeYoutubeDL
+    original_module = sys.modules.get('yt_dlp')
+    original_require = wb._require_web_backend
+    try:
+        sys.modules['yt_dlp'] = fake_ytdlp
+        wb._require_web_backend = lambda: None
+        result = wb._extract_ytdlp_entry_candidates('https://v.douyin.com/mYxjnR57uFU/')
+        assert result == ['https://cdn.example.com/video.mp4']
+        assert any('cookiesfrombrowser' not in opts for opts in captured_opts)
+        assert any(opts.get('cookiesfrombrowser') == ('chrome',) for opts in captured_opts)
+    finally:
+        if original_module is None:
+            sys.modules.pop('yt_dlp', None)
+        else:
+            sys.modules['yt_dlp'] = original_module
+        wb._require_web_backend = original_require
+
+
+def test_extract_douyin_share_candidates_uses_mobile_share_page_play_url():
+    wb = load_web_backend()
+    original_fetch = wb._fetch_douyin_share_html
+    try:
+        wb._fetch_douyin_share_html = lambda url: '''
+        <script>
+        window._ROUTER_DATA = {"loaderData":{"page":{"videoInfoRes":{"item_list":[{"video":{"play_addr":{"url_list":["https://aweme.snssdk.com/aweme/v1/playwm/?video_id=v0200fg10000d8bbapfog65tcjqvkp40&ratio=720p&line=0"]}}}]}}}};
+        </script>
+        '''
+        result = wb._extract_douyin_share_candidates('https://v.douyin.com/jz83Ii3BD-4/')
+    finally:
+        wb._fetch_douyin_share_html = original_fetch
+    assert result == ['https://aweme.snssdk.com/aweme/v1/play/?video_id=v0200fg10000d8bbapfog65tcjqvkp40&ratio=720p&line=0']
+
+
+def test_download_url_with_ytdlp_falls_back_to_cookiefile_when_browser_cookie_copy_fails():
+    module = load_module()
+    wb = load_web_backend()
+    sh = load_shared()
+    fake_ytdlp = types.ModuleType('yt_dlp')
+    captured_opts: list[dict[str, object]] = []
+
+    class FakeYoutubeDL:
+        def __init__(self, opts):
+            self.opts = opts
+            captured_opts.append(dict(opts))
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def extract_info(self, url, download=False):
+            if self.opts.get('cookiefile'):
+                if not download:
+                    return {'title': 'Douyin Demo', 'id': 'dy456'}
+                pathlib.Path(str(self.opts['outtmpl']).replace('%(ext)s', 'mp4')).write_text('ok', encoding='utf-8')
+                return {'ok': True}
+            if 'cookiesfrombrowser' in self.opts:
+                raise RuntimeError('ERROR: Could not copy Chrome cookie database. See https://github.com/yt-dlp/yt-dlp/issues/7271 for more info')
+            raise RuntimeError('ERROR: [Douyin] 7644497851275431174: Fresh cookies (not necessarily logged in) are needed')
+
+    fake_ytdlp.YoutubeDL = FakeYoutubeDL
+    original_module = sys.modules.get('yt_dlp')
+    original_require = wb._require_web_backend
+    original_resolve_aria2 = sh._resolve_aria2c_path
+    original_ffmpeg = wb.shutil.which
+    original_cookie_candidates = wb._iter_cookie_file_candidates
+    try:
+        sys.modules['yt_dlp'] = fake_ytdlp
+        wb._require_web_backend = lambda: None
+        sh._resolve_aria2c_path = lambda: ''
+        wb.shutil.which = lambda name: ''
+        wb._iter_cookie_file_candidates = lambda: [pathlib.Path('C:/temp/douyin.cookies.txt')]
+        with tempfile.TemporaryDirectory() as tmp:
+            result = wb._download_url_with_ytdlp(
+                'https://v.douyin.com/jz83Ii3BD-4/',
+                pathlib.Path(tmp),
+                module.DownloadOptions(),
+                None,
+            )
+        assert result['success'] is True
+        assert any(opts.get('cookiesfrombrowser') == ('chrome',) for opts in captured_opts)
+        assert any(opts.get('cookiesfrombrowser') == ('firefox',) for opts in captured_opts)
+        assert any(str(opts.get('cookiefile', '')).lower().endswith('douyin.cookies.txt') for opts in captured_opts)
+    finally:
+        if original_module is None:
+            sys.modules.pop('yt_dlp', None)
+        else:
+            sys.modules['yt_dlp'] = original_module
+        wb._require_web_backend = original_require
+        sh._resolve_aria2c_path = original_resolve_aria2
+        wb.shutil.which = original_ffmpeg
+        wb._iter_cookie_file_candidates = original_cookie_candidates
+
+
+def test_download_web_task_prefers_douyin_share_candidates_before_ytdlp():
+    module = load_module()
+    wb = load_web_backend()
+    original_extract_share = wb._extract_douyin_share_candidates
+    original_extract_ytdlp = wb._extract_ytdlp_entry_candidates
+    original_download_candidates = wb._download_web_candidates
+    try:
+        wb._extract_douyin_share_candidates = lambda url: ['https://aweme.snssdk.com/aweme/v1/play/?video_id=abc&ratio=720p&line=0']
+        wb._extract_ytdlp_entry_candidates = lambda url: (_ for _ in ()).throw(AssertionError('should not call yt-dlp'))
+
+        def fake_download(candidates, task, output_root, options, progress_cb, ffmpeg_path='', *, download_all=False):
+            assert candidates == ['https://aweme.snssdk.com/aweme/v1/play/?video_id=abc&ratio=720p&line=0']
+            path = output_root / 'douyin.mp4'
+            path.write_text('ok', encoding='utf-8')
+            return [path], None
+
+        wb._download_web_candidates = fake_download
+        with tempfile.TemporaryDirectory() as tmp:
+            task = module.DownloadTask('https://v.douyin.com/jz83Ii3BD-4/', 'web', 'douyin')
+            result = wb._download_web_task(task, pathlib.Path(tmp), module.DownloadOptions(), None)
+        assert result['success'] is True
+        assert result['downloaded_count'] == 1
+    finally:
+        wb._extract_douyin_share_candidates = original_extract_share
+        wb._extract_ytdlp_entry_candidates = original_extract_ytdlp
+        wb._download_web_candidates = original_download_candidates
+
+
+def test_download_web_candidate_uses_direct_http_for_douyin_play_url():
+    module = load_module()
+    wb = load_web_backend()
+    original_direct = wb._download_direct_media_file
+    original_ytdlp = wb._download_url_with_ytdlp
+    try:
+        called: list[str] = []
+
+        def fake_direct(media_url, task, output_root, options, progress_cb, *, referer_url=''):
+            called.append('direct')
+            assert media_url == 'https://aweme.snssdk.com/aweme/v1/play/?video_id=abc&ratio=720p&line=0'
+            assert referer_url == 'https://v.douyin.com/jz83Ii3BD-4/'
+            return {'success': True, 'files': [output_root / 'douyin.mp4']}
+
+        wb._download_direct_media_file = fake_direct
+        wb._download_url_with_ytdlp = lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError('should not call yt-dlp'))
+        with tempfile.TemporaryDirectory() as tmp:
+            task = module.DownloadTask('https://v.douyin.com/jz83Ii3BD-4/', 'web', 'douyin')
+            result = wb._download_web_candidate(
+                'https://aweme.snssdk.com/aweme/v1/play/?video_id=abc&ratio=720p&line=0',
+                task,
+                pathlib.Path(tmp),
+                module.DownloadOptions(),
+                None,
+            )
+        assert result['success'] is True
+        assert called == ['direct']
+    finally:
+        wb._download_direct_media_file = original_direct
+        wb._download_url_with_ytdlp = original_ytdlp
+
+
+def test_download_web_task_surfaces_cookie_lock_guidance_without_html_fallback():
+    module = load_module()
+    wb = load_web_backend()
+    original_runner = wb._download_url_with_ytdlp
+    original_fetch = wb._fetch_webpage_html
+    original_share = wb._extract_douyin_share_candidates
+    try:
+        wb._extract_douyin_share_candidates = lambda url: []
+        wb._download_url_with_ytdlp = lambda *args, **kwargs: (_ for _ in ()).throw(
+            module.DownloadError(
+                'ERROR: Could not copy Chrome cookie database. See https://github.com/yt-dlp/yt-dlp/issues/7271 for more info'
+            )
+        )
+        wb._fetch_webpage_html = lambda url: (_ for _ in ()).throw(AssertionError('should not reach html fallback'))
+        with tempfile.TemporaryDirectory() as tmp:
+            task = module.DownloadTask('https://v.douyin.com/jz83Ii3BD-4/', 'web', 'douyin')
+            try:
+                wb._download_web_task(task, pathlib.Path(tmp), module.DownloadOptions(), None)
+            except module.DownloadError as exc:
+                message = str(exc)
+            else:
+                raise AssertionError('expected cookie lock guidance error')
+        assert 'Could not copy Chrome cookie database' in message
+        assert 'LockProfileCookieDatabase' in message
+        assert 'cookies.txt' in message
+    finally:
+        wb._extract_douyin_share_candidates = original_share
+        wb._download_url_with_ytdlp = original_runner
+        wb._fetch_webpage_html = original_fetch
 
 
 def test_m3u8_candidate_tries_ytdlp_before_ffmpeg_fallback():

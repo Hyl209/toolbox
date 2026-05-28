@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import importlib.util
 import os
 import re
@@ -48,6 +49,14 @@ MEDIA_URL_RE = re.compile(r"""(?P<url>(?:https?:)?//[^"'\\\s<>]+?\.(?:mp4|m3u8|w
 RELATIVE_MEDIA_RE = re.compile(r"""(?P<url>/[^"'\\\s<>]+?\.(?:mp4|m3u8|webm|mov|m4v)(?:\?[^"'\\\s<>]*)?)""", re.IGNORECASE)
 ARIA2_VERSION = '1.37.0'
 ARIA2_SOURCE_URL = 'https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip'
+COOKIE_RETRY_BROWSERS = ('chrome', 'firefox', 'edge')
+COOKIE_FILE_NAMES = (
+    'douyin.cookies.txt',
+    'douyin-cookies.txt',
+    'cookies.txt',
+    'video-downloader-cookies.txt',
+)
+DOUYIN_HOSTS = {'douyin.com', 'www.douyin.com', 'iesdouyin.com', 'www.iesdouyin.com', 'v.douyin.com'}
 _console_capture_lock = Lock()
 _INTER_TASK_DELAY_RANGE = (0.5, 1.5)
 
@@ -196,6 +205,294 @@ def _parse_speed_bytes(text: str) -> float:
     unit = parts[1].lower()
     multipliers = {'b/s': 1, 'kib/s': 1024, 'mib/s': 1024**2, 'gib/s': 1024**3}
     return value * multipliers.get(unit, 1)
+
+
+def _cookie_browser_name(value: object) -> str:
+    if isinstance(value, (tuple, list)) and value:
+        return str(value[0] or '').strip().lower()
+    if isinstance(value, str):
+        return value.strip().lower()
+    return ''
+
+
+def _needs_browser_cookie_retry(source_url: str, exc: Exception) -> bool:
+    text = str(exc or '').lower()
+    if not text:
+        return False
+    if 'fresh cookies' in text:
+        return True
+    host = urlparse(str(source_url or '')).netloc.lower()
+    return ('douyin.com' in host or 'iesdouyin.com' in host) and 'cookie' in text
+
+
+def _iter_cookie_retry_browsers(base_opts: dict[str, object]) -> list[str]:
+    browsers: list[str] = []
+    preferred = _cookie_browser_name(base_opts.get('cookiesfrombrowser'))
+    if preferred:
+        browsers.append(preferred)
+    for browser in COOKIE_RETRY_BROWSERS:
+        if browser not in browsers:
+            browsers.append(browser)
+    return browsers
+
+
+def _iter_cookie_file_candidates() -> list[Path]:
+    roots: list[Path] = [
+        Path(__file__).resolve().parent,
+        Path(__file__).resolve().parents[2],
+    ]
+    user_home = Path.home()
+    roots.extend(user_home / name for name in ('Downloads', 'Desktop', 'Documents'))
+    unique: dict[str, Path] = {}
+    for root in roots:
+        for file_name in COOKIE_FILE_NAMES:
+            candidate = root / file_name
+            if candidate.is_file() and candidate.stat().st_size > 0:
+                unique.setdefault(str(candidate.resolve()), candidate.resolve())
+    return list(unique.values())
+
+
+def _can_retry_with_cookie_file(source_url: str, exc: Exception) -> bool:
+    text = str(exc or '').lower()
+    if not text:
+        return False
+    if 'could not copy' in text and 'cookie database' in text:
+        return True
+    host = urlparse(str(source_url or '')).netloc.lower()
+    return ('douyin.com' in host or 'iesdouyin.com' in host) and 'cookie' in text
+
+
+def _is_cookie_access_blocked_error(exc: Exception) -> bool:
+    text = str(exc or '').lower()
+    return 'could not copy chrome cookie database' in text or (
+        'permission denied' in text and 'cookie' in text
+    )
+
+
+def _is_douyin_url(url: str) -> bool:
+    host = urlparse(str(url or '')).netloc.lower()
+    return host in DOUYIN_HOSTS
+
+
+def _normalize_douyin_play_url(url: str) -> str:
+    text = str(url or '').strip()
+    if not text:
+        return ''
+    return re.sub(r'/playwm(?=[/?])', '/play', text)
+
+
+def _is_douyin_direct_play_url(url: str) -> bool:
+    parsed = urlparse(str(url or ''))
+    return parsed.scheme in {'http', 'https'} and '/aweme/v1/play/' in parsed.path
+
+
+def _fetch_douyin_share_html(url: str) -> str:
+    request = Request(
+        url,
+        headers={
+            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        },
+    )
+    with urlopen(request, timeout=20) as response:
+        charset = response.headers.get_content_charset() or 'utf-8'
+        return response.read().decode(charset, errors='ignore')
+
+
+def _extract_douyin_page_json(html_text: str) -> dict[str, object] | None:
+    marker = 'window._ROUTER_DATA = '
+    start = str(html_text or '').find(marker)
+    if start < 0:
+        return None
+    start = str(html_text).find('{', start)
+    if start < 0:
+        return None
+    depth = 0
+    end = None
+    for index, ch in enumerate(str(html_text)[start:], start=start):
+        if ch == '{':
+            depth += 1
+        elif ch == '}':
+            depth -= 1
+            if depth == 0:
+                end = index + 1
+                break
+    if end is None:
+        return None
+    try:
+        parsed = json.loads(str(html_text)[start:end])
+    except Exception:
+        return None
+    if isinstance(parsed, dict):
+        return parsed
+    return None
+
+
+def _find_douyin_item_list(data: object) -> list[dict[str, object]]:
+    if isinstance(data, dict):
+        if isinstance(data.get('videoInfoRes'), dict):
+            items = data['videoInfoRes'].get('item_list')
+            if isinstance(items, list):
+                return [item for item in items if isinstance(item, dict)]
+        for value in data.values():
+            found = _find_douyin_item_list(value)
+            if found:
+                return found
+    elif isinstance(data, list):
+        for item in data:
+            found = _find_douyin_item_list(item)
+            if found:
+                return found
+    return []
+
+
+def _extract_douyin_share_candidates(source_url: str) -> list[str]:
+    if not _is_douyin_url(source_url):
+        return []
+    try:
+        html = _fetch_douyin_share_html(source_url)
+    except Exception:
+        return []
+    page_data = _extract_douyin_page_json(html)
+    if not page_data:
+        return []
+    for item in _find_douyin_item_list(page_data):
+        video = item.get('video')
+        if not isinstance(video, dict):
+            continue
+        play_addr = video.get('play_addr')
+        if not isinstance(play_addr, dict):
+            continue
+        urls = play_addr.get('url_list')
+        if not isinstance(urls, list):
+            continue
+        candidates: list[str] = []
+        for raw in urls:
+            candidate = _normalize_douyin_play_url(str(raw or ''))
+            if candidate:
+                candidates.append(candidate)
+        if candidates:
+            return list(dict.fromkeys(candidates))
+    return []
+
+
+def _download_direct_media_file(
+    media_url: str,
+    task: DownloadTask,
+    output_root: Path,
+    options: DownloadOptions,
+    progress_cb: ProgressCallback | None,
+    *,
+    referer_url: str = '',
+) -> dict[str, object]:
+    suffix = Path(urlparse(str(media_url or '')).path).suffix.lower() or '.mp4'
+    if suffix not in {'.mp4', '.mov', '.m4v', '.webm'}:
+        suffix = '.mp4'
+    base_stem = _s.ensure_unique_stem(output_root, _s.sanitize_filename_component(task.target_title or 'video'))
+    output_path = _s.ensure_unique_path(output_root / f'{base_stem}{suffix}')
+    request = Request(media_url, headers=_s._build_web_headers(referer_url))
+    downloaded = 0
+    started_at = monotonic()
+    last_emit_at = started_at
+    token = _current_token()
+    try:
+        with urlopen(request, timeout=60) as response, output_path.open('wb') as fh:
+            total_bytes = int(response.headers.get('Content-Length') or 0)
+            while True:
+                if token is not None:
+                    _check_cancel(token)
+                chunk = response.read(256 * 1024)
+                if not chunk:
+                    break
+                fh.write(chunk)
+                downloaded += len(chunk)
+                now = monotonic()
+                if downloaded < total_bytes and now - last_emit_at < 0.35:
+                    continue
+                elapsed = max(now - started_at, 1e-6)
+                speed_text = _format_byte_rate(downloaded / elapsed)
+                percent_text = ''
+                eta_text = ''
+                if total_bytes > 0:
+                    percent_text = f'{downloaded * 100.0 / total_bytes:.2f}'
+                    if downloaded > 0 and downloaded < total_bytes:
+                        remaining = total_bytes - downloaded
+                        eta_text = _format_eta_seconds(int(remaining / max(downloaded / elapsed, 1e-6)))
+                _emit_web_transfer_progress(progress_cb, output_path.name, percent_text, speed_text, eta_text)
+                last_emit_at = now
+    except Exception:
+        if output_path.exists() and output_path.stat().st_size <= 0:
+            output_path.unlink(missing_ok=True)
+        raise
+    _emit(progress_cb, f'网页 OK -> {output_path.name}')
+    return {
+        'success': True,
+        'files': [output_path],
+    }
+
+
+def _build_cookie_retry_failure_message(source_url: str, exc: Exception) -> str:
+    host = urlparse(str(source_url or '')).netloc or '当前站点'
+    detail = str(exc or '').strip()
+    return (
+        f'{detail}\n'
+        f'{host} 需要 fresh cookies，但当前浏览器 Cookies 无法读取。\n'
+        '可按 GitHub 上 yt-dlp/yt-dlp#7271 的常见做法处理：\n'
+        '1. 彻底关闭 Chrome/Edge 后重试\n'
+        '2. 用 --disable-features=LockProfileCookieDatabase 启动 Chrome/Edge\n'
+        '3. 导出 30 分钟内新鲜的 Netscape 格式 cookies.txt，放到工具目录/桌面/下载/文档\n'
+        '4. 或安装 yt-dlp-ChromeCookieUnlock 插件'
+    )
+
+
+def _run_ytdlp_with_cookie_retry(
+    source_url: str,
+    base_opts: dict[str, object],
+    progress_cb: ProgressCallback | None,
+    runner,
+):
+    initial_opts = dict(base_opts)
+    initial_browser = _cookie_browser_name(initial_opts.get('cookiesfrombrowser'))
+    try:
+        return runner(initial_opts)
+    except CancelledError:
+        raise
+    except Exception as exc:
+        if not _needs_browser_cookie_retry(source_url, exc):
+            raise
+        last_exc = exc
+    host = urlparse(str(source_url or '')).netloc or '当前站点'
+    for browser in _iter_cookie_retry_browsers(initial_opts):
+        if browser == initial_browser:
+            continue
+        retry_opts = dict(base_opts)
+        retry_opts['cookiesfrombrowser'] = (browser,)
+        _emit(progress_cb, f'检测到 {host} 需要浏览器 Cookies，尝试使用 {browser} 重试')
+        try:
+            return runner(retry_opts)
+        except CancelledError:
+            raise
+        except Exception as exc:
+            last_exc = exc
+    if _can_retry_with_cookie_file(source_url, last_exc):
+        for cookie_file in _iter_cookie_file_candidates():
+            retry_opts = dict(base_opts)
+            retry_opts.pop('cookiesfrombrowser', None)
+            retry_opts['cookiefile'] = str(cookie_file)
+            _emit(progress_cb, f'浏览器 Cookies 读取失败，尝试 cookies.txt -> {cookie_file}')
+            try:
+                return runner(retry_opts)
+            except CancelledError:
+                raise
+            except Exception as exc:
+                last_exc = exc
+        message = _build_cookie_retry_failure_message(source_url, last_exc)
+        _emit(progress_cb, message)
+        raise DownloadError(message)
+    raise last_exc if not _is_cookie_access_blocked_error(last_exc) else DownloadError(
+        _build_cookie_retry_failure_message(source_url, last_exc)
+    )
 
 
 def _speed_to_concurrency(bytes_per_sec: float) -> int:
@@ -483,6 +780,15 @@ def _download_web_candidate(
     progress_cb: ProgressCallback | None,
     ffmpeg_path: str = '',
 ) -> dict[str, object]:
+    if _is_douyin_direct_play_url(candidate_url):
+        return _download_direct_media_file(
+            candidate_url,
+            task,
+            output_root,
+            options,
+            progress_cb,
+            referer_url=task.source_url,
+        )
     if _is_m3u8_url(candidate_url) and ffmpeg_path:
         try:
             return _download_url_with_ytdlp(
@@ -589,6 +895,20 @@ def inspect_web_media_candidates(source_url: str) -> dict[str, object]:
 
 def _download_web_task(task: DownloadTask, output_root: Path, options: DownloadOptions, progress_cb: ProgressCallback | None) -> dict[str, object]:
     first_error = None
+    douyin_candidates = _extract_douyin_share_candidates(task.source_url)
+    if douyin_candidates:
+        downloaded_files, last_error = _download_web_candidates(
+            douyin_candidates,
+            task,
+            output_root,
+            options,
+            progress_cb,
+            ffmpeg_path=shutil.which('ffmpeg') or '',
+            download_all=options.web_download_all_candidates,
+        )
+        if downloaded_files:
+            return _make_result(task, True, downloaded_files, '')
+        first_error = last_error
     ytdlp_candidates: list[str] = []
     try:
         ytdlp_candidates = _extract_ytdlp_entry_candidates(task.source_url)
@@ -650,6 +970,8 @@ def _download_web_task(task: DownloadTask, output_root: Path, options: DownloadO
         raise
     except Exception as exc:
         first_error = exc
+        if _is_cookie_access_blocked_error(exc):
+            raise DownloadError(_build_cookie_retry_failure_message(task.source_url, exc)) from exc
     try:
         candidates = _extract_media_candidates(_fetch_webpage_html(task.source_url), task.source_url)
     except Exception as exc:
@@ -730,6 +1052,9 @@ def _inverse_indices(total: int, exclude: list[int]) -> list[int]:
 
 
 def _collect_web_media_candidates(source_url: str) -> tuple[list[str], str]:
+    douyin_candidates = _extract_douyin_share_candidates(source_url)
+    if douyin_candidates:
+        return douyin_candidates, 'douyin-share'
     ytdlp_candidates: list[str] = []
     try:
         ytdlp_candidates = _extract_ytdlp_entry_candidates(source_url)
@@ -763,12 +1088,20 @@ def _download_url_with_ytdlp(
     from yt_dlp import YoutubeDL
 
     http_headers = _s._build_web_headers(referer_url)
-    info = YoutubeDL({
+    probe_opts = {
         'quiet': True,
         'skip_download': True,
         'noplaylist': True,
         'http_headers': http_headers,
-    }).extract_info(source_url, download=False)
+    }
+    if options.web_use_browser_cookies:
+        probe_opts['cookiesfrombrowser'] = ('chrome',)
+    info = _run_ytdlp_with_cookie_retry(
+        source_url,
+        probe_opts,
+        progress_cb,
+        lambda opts: YoutubeDL(opts).extract_info(source_url, download=False),
+    )
     title = _s.sanitize_filename_component(str(info.get('title') or title_hint or 'video'))
     media_id = _s.sanitize_filename_component(str(info.get('id') or 'video'))
     base_stem = options.filename_template.replace('%(title)s', title).replace('%(id)s', media_id).replace('.%(ext)s', '')
@@ -840,8 +1173,11 @@ def _download_url_with_ytdlp(
     for reconnect_attempt in range(max_reconnects + 1):
         try:
             with _capture_aria2_console_progress(progress_cb, unique_stem):
-                with YoutubeDL(ydl_opts) as ydl:
-                    ydl.extract_info(source_url, download=True)
+                def _download_once(run_opts: dict[str, object]):
+                    with YoutubeDL(run_opts) as ydl:
+                        return ydl.extract_info(source_url, download=True)
+
+                _run_ytdlp_with_cookie_retry(source_url, ydl_opts, progress_cb, _download_once)
         except CancelledError:
             token = _current_token()
             if token and token.reconnect.is_set():
@@ -914,7 +1250,12 @@ def _extract_ytdlp_entry_candidates(page_url: str) -> list[str]:
     _require_web_backend()
     from yt_dlp import YoutubeDL
 
-    info = YoutubeDL({'quiet': True, 'skip_download': True}).extract_info(page_url, download=False)
+    info = _run_ytdlp_with_cookie_retry(
+        page_url,
+        {'quiet': True, 'skip_download': True},
+        None,
+        lambda opts: YoutubeDL(opts).extract_info(page_url, download=False),
+    )
     entries = info.get('entries')
     if not isinstance(entries, Iterable):
         return []
@@ -943,7 +1284,12 @@ def _supports_ytdlp_direct_media(source_url: str) -> bool:
     _require_web_backend()
     from yt_dlp import YoutubeDL
 
-    info = YoutubeDL({'quiet': True, 'skip_download': True, 'noplaylist': True}).extract_info(source_url, download=False)
+    info = _run_ytdlp_with_cookie_retry(
+        source_url,
+        {'quiet': True, 'skip_download': True, 'noplaylist': True},
+        None,
+        lambda opts: YoutubeDL(opts).extract_info(source_url, download=False),
+    )
     if not isinstance(info, dict):
         return False
     return bool(info.get('url') or info.get('formats') or info.get('id') or info.get('title'))
