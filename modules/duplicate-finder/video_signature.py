@@ -5,7 +5,7 @@ import json
 import subprocess
 from pathlib import Path
 
-from same._common import (
+from ._common import (
     FFPROBE_PATH,
     FFMPEG_PATH,
     VIDEO_ASPECT_RATIO_TOLERANCE,

@@ -4,17 +4,30 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from types import ModuleType
 
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-MODULE_PATH = ROOT / 'same' / 'converter.py'
+MODULE_PATH = ROOT / 'modules' / 'duplicate-finder' / 'converter.py'
 
 
 def load_module():
-    sys.modules.pop('tests_same_converter_module', None)
-    spec = importlib.util.spec_from_file_location('tests_same_converter_module', MODULE_PATH)
+    # Set up parent package for relative imports
+    pkg_dir = MODULE_PATH.parent
+    pkg_name = pkg_dir.name.replace('-', '_')
+    if pkg_name not in sys.modules:
+        pkg = ModuleType(pkg_name)
+        pkg.__path__ = [str(pkg_dir)]
+        pkg.__package__ = pkg_name
+        pkg.__file__ = str(pkg_dir / '__init__.py')
+        sys.modules[pkg_name] = pkg
+
+    qualified_name = f'{pkg_name}.converter'
+    sys.modules.pop(qualified_name, None)
+    spec = importlib.util.spec_from_file_location(qualified_name, MODULE_PATH)
     module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
+    module.__package__ = pkg_name
+    sys.modules[qualified_name] = module
     spec.loader.exec_module(module)
     return module
 

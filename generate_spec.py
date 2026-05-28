@@ -23,7 +23,7 @@ def generate_spec() -> str:
         ('themes/light.qss', 'themes'),
         ('logo.png', '.'),
         ('sound.mp3', '.'),
-        ('music/weixin_base64.txt', 'music'),
+        ('modules/ncm-converter/weixin_base64.txt', 'modules/ncm-converter'),
     ]
     # Deduplicate
     seen = {src for src, _ in datas}
@@ -45,7 +45,7 @@ def generate_spec() -> str:
 
 from PyInstaller.utils.hooks import collect_data_files
 
-music_datas = collect_data_files('music', includes=['weixin.png'])
+music_datas = collect_data_files('modules.ncm-converter', includes=['weixin.png'])
 
 a = Analysis(
     ['hyl_toolbox.py'],

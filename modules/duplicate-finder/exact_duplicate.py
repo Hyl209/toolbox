@@ -4,7 +4,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-from same._common import (
+from ._common import (
     HASH_CHUNK_SIZE,
     _BoundedCache,
     _build_cache_key,
@@ -46,14 +46,14 @@ def _build_exact_duplicate_groups(files: list[Path]) -> list[dict[str, object]]:
 
 
 def find_duplicate_groups(root: str | Path, recursive: bool, target_dir_name: str = '重复文件') -> dict[str, object]:
-    from same._common import (
+    from ._common import (
         DEFAULT_TARGET_DIR_NAME,
         _ensure_root,
         _normalize_target_dir_name,
         _scan_files_from_root,
         _split_video_and_other_files,
     )
-    from same.video_signature import _build_video_similarity_groups
+    from .video_signature import _build_video_similarity_groups
 
     folder = _ensure_root(root)
     normalized_target_dir_name = _normalize_target_dir_name(target_dir_name)

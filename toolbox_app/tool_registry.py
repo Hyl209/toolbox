@@ -21,21 +21,21 @@ class ToolDef:
 
 
 TOOL_DEFINITIONS: list[ToolDef] = [
-    ToolDef('music', 'NCM转换', 'NCM 转 MP3', 'music', 'ncm_to_mp3.py', 'tab.py'),
-    ToolDef('zipandpng', 'PNG伪装', '图片伪装', 'zipandpng', 'zipandpng.py', 'tab.py'),
-    ToolDef('mp4mp3', 'MP4转MP3', 'MP4 转 MP3', 'mp4-mp3', 'converter.py', 'tab.py',
+    ToolDef('music', 'NCM转换', 'NCM 转 MP3', 'modules/ncm-converter', 'ncm_to_mp3.py', 'tab.py'),
+    ToolDef('zipandpng', 'PNG伪装', '图片伪装', 'modules/file-disguise', 'zipandpng.py', 'tab.py'),
+    ToolDef('mp4mp3', 'MP4转MP3', 'MP4 转 MP3', 'modules/audio-extractor', 'converter.py', 'tab.py',
             extra_files=('config_store.py',)),
-    ToolDef('imageconvert', '图片格式互转', '图片格式互转', 'image-convert', 'converter.py', 'tab.py'),
-    ToolDef('pdftools', 'PDF工具', 'PDF工具', 'pdf-tools', 'converter.py', 'tab.py'),
-    ToolDef('tgdownloader', 'TG下载', 'TG下载', 'video-downloader', 'converter.py', 'tab.py',
+    ToolDef('imageconvert', '图片格式互转', '图片格式互转', 'modules/image-converter', 'converter.py', 'tab.py'),
+    ToolDef('pdftools', 'PDF工具', 'PDF工具', 'modules/pdf-tools', 'converter.py', 'tab.py'),
+    ToolDef('tgdownloader', 'TG下载', 'TG下载', 'modules/video-downloader', 'converter.py', 'tab.py',
             extra_files=('bin/aria2c.exe', 'bin/aria2c.SHA256.txt'),
             tab_kwargs={'source_mode': 'telegram'}),
-    ToolDef('webvideodownloader', '网页视频下载', '网页视频下载', 'video-downloader', 'converter.py', 'tab.py',
+    ToolDef('webvideodownloader', '网页视频下载', '网页视频下载', 'modules/video-downloader', 'converter.py', 'tab.py',
             tab_kwargs={'source_mode': 'web'}),
-    ToolDef('batchrename', '批量命名', '批量命名', 'name', 'converter.py', 'tab.py'),
-    ToolDef('filesorter', '文件分类', '文件分类', '分类', 'converter.py', 'tab.py'),
-    ToolDef('same', '重复文件', '重复文件', 'same', 'converter.py', 'tab.py'),
-    ToolDef('base64', '图片Base64', '图片Base64', 'base64', 'converter.py', 'tab.py'),
+    ToolDef('batchrename', '批量命名', '批量命名', 'modules/batch-rename', 'converter.py', 'tab.py'),
+    ToolDef('filesorter', '文件分类', '文件分类', 'modules/file-sorter', 'converter.py', 'tab.py'),
+    ToolDef('same', '重复文件', '重复文件', 'modules/duplicate-finder', 'converter.py', 'tab.py'),
+    ToolDef('base64', '图片Base64', '图片Base64', 'modules/base64', 'converter.py', 'tab.py'),
 ]
 
 TOOL_BY_ID = {t.id: t for t in TOOL_DEFINITIONS}
@@ -65,7 +65,7 @@ def get_dynamic_module_specs(root) -> dict[tuple[str, str]]:
         tab_module_name = f'{tab_key}_module'
         specs.setdefault(tab_key, (tab_module_name, dir_path / t.tab_file))
     # legacy aliases
-    specs['ncm'] = ('music_ncm_to_mp3', root / 'music' / 'ncm_to_mp3.py')
+    specs['ncm'] = ('music_ncm_to_mp3', root / 'modules' / 'ncm-converter' / 'ncm_to_mp3.py')
     return specs
 
 
@@ -77,13 +77,13 @@ def get_packaging_datas() -> list[tuple[str, str]]:
     """
     # Sub-modules that must be included alongside converter.py
     _EXTRA_SUB_MODULES: dict[str, list[str]] = {
-        'video-downloader': [
+        'modules/video-downloader': [
             'models.py', '_shared.py', 'source_parser.py',
             'progress.py', 'telegram_backend.py', 'web_backend.py',
             'tab_constants.py', 'tab_formatters.py', 'tab_workers.py', 'tab_panels.py',
             '__init__.py',
         ],
-        'same': ['_common.py', 'exact_duplicate.py', 'video_signature.py', 'move_plan.py', '__init__.py'],
+        'modules/duplicate-finder': ['_common.py', 'exact_duplicate.py', 'video_signature.py', 'move_plan.py', '__init__.py'],
     }
 
     datas = []

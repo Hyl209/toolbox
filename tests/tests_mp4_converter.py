@@ -5,7 +5,7 @@ import tempfile
 from unittest.mock import patch, MagicMock
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-MODULE_PATH = ROOT / 'mp4-mp3' / 'converter.py'
+MODULE_PATH = ROOT / 'modules' / 'audio-extractor' / 'converter.py'
 
 
 def load_module():

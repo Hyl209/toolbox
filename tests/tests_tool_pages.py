@@ -161,8 +161,8 @@ def test_image_convert_drop_summary_shows_selected_images_in_same_area():
 
 
 def test_image_convert_and_base64_drop_zones_preview_first_image_in_source():
-    ic_source = (ROOT / 'image-convert' / 'tab.py').read_text(encoding='utf-8')
-    b64_source = (ROOT / 'base64' / 'tab.py').read_text(encoding='utf-8')
+    ic_source = (ROOT / 'modules' / 'image-converter' / 'tab.py').read_text(encoding='utf-8')
+    b64_source = (ROOT / 'modules' / 'base64' / 'tab.py').read_text(encoding='utf-8')
     assert "self.drop_zone.set_preview_image(" in ic_source
     assert "self.drop_zone.set_preview_image(" in b64_source
     assert "body_text=picked.name" in ic_source
@@ -580,7 +580,7 @@ def test_video_downloader_tab_source_contains_log_recent_limit_and_status_contro
     tab_files = ['tab.py', 'tab_constants.py', 'tab_formatters.py', 'tab_workers.py', 'tab_panels.py']
     source = ''
     for name in tab_files:
-        path = ROOT / 'video-downloader' / name
+        path = ROOT / 'modules' / 'video-downloader' / name
         if path.exists():
             source += path.read_text(encoding='utf-8')
     assert "task_card_title" in source
@@ -900,12 +900,12 @@ def test_global_scrollbar_style_covers_both_axes_and_is_applied_to_scroll_hosts(
     assert 'QScrollBar:horizontal' in style
     assert 'QScrollBar::handle:vertical:hover' in style
 
-    music_source = (ROOT / 'music' / 'tab.py').read_text(encoding='utf-8')
+    music_source = (ROOT / 'modules' / 'ncm-converter' / 'tab.py').read_text(encoding='utf-8')
     assert "self.song_list_scroll.setStyleSheet(build_music_scroll_area_style())" in music_source
     # log.setStyleSheet is now in tab files (directly or via init_log_widget)
     import glob
     main_source = MODULE_PATH.read_text(encoding='utf-8')
-    tab_files = glob.glob(str(ROOT / '*' / 'tab.py'))
+    tab_files = glob.glob(str(ROOT / 'modules' / '*' / 'tab.py'))
     log_style_count = sum(pathlib.Path(f).read_text(encoding='utf-8').count('self.log.setStyleSheet(build_global_scrollbar_style())') for f in tab_files)
     assert log_style_count >= 1
     window_source = (ROOT / 'toolbox_app' / 'window.py').read_text(encoding='utf-8')

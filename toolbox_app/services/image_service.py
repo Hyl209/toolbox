@@ -17,7 +17,7 @@ class ImageService:
     def _get_converter(self):
         if self._converter is None:
             from ..loaders import load_module_once
-            converter_path = Path(__file__).resolve().parent.parent.parent / 'image-convert' / 'converter.py'
+            converter_path = Path(__file__).resolve().parent.parent.parent / 'modules' / 'image-converter' / 'converter.py'
             self._converter = load_module_once('image_convert_module', converter_path)
         return self._converter
 

@@ -77,23 +77,23 @@ def test_get_name_module_loads_batch_rename_helpers():
 
 def test_file_sorter_modules_live_under_classify_directory():
     toolbox = load_module()
-    assert toolbox.FILE_SORTER_DIR.name == '鍒嗙被'
-    assert (ROOT / '鍒嗙被' / 'converter.py').exists()
-    assert (ROOT / '鍒嗙被' / 'tab.py').exists()
+    assert toolbox.FILE_SORTER_DIR.name == 'file-sorter'
+    assert (ROOT / 'modules' / 'file-sorter' / 'converter.py').exists()
+    assert (ROOT / 'modules' / 'file-sorter' / 'tab.py').exists()
 
 
 def test_name_modules_live_under_name_directory():
     toolbox = load_module()
-    assert toolbox.NAME_DIR.name == 'name'
-    assert (ROOT / 'name' / 'converter.py').exists()
-    assert (ROOT / 'name' / 'tab.py').exists()
+    assert toolbox.NAME_DIR.name == 'batch-rename'
+    assert (ROOT / 'modules' / 'batch-rename' / 'converter.py').exists()
+    assert (ROOT / 'modules' / 'batch-rename' / 'tab.py').exists()
 
 
 def test_video_downloader_modules_live_under_video_downloader_directory():
     toolbox = load_module()
     assert toolbox.VIDEO_DOWNLOADER_DIR.name == 'video-downloader'
-    assert (ROOT / 'video-downloader' / 'converter.py').exists()
-    assert (ROOT / 'video-downloader' / 'tab.py').exists()
+    assert (ROOT / 'modules' / 'video-downloader' / 'converter.py').exists()
+    assert (ROOT / 'modules' / 'video-downloader' / 'tab.py').exists()
 
 
 def test_get_same_module_loads_duplicate_helpers():

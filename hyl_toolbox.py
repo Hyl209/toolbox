@@ -12,7 +12,7 @@ from toolbox_app.auth_dialog import build_auth_dialog_class
 from toolbox_app.window import build_toolbox_window_class
 
 
-_WEIXIN_B64_FILE = Path(__file__).resolve().parent / "music" / "weixin_base64.txt"
+_WEIXIN_B64_FILE = Path(__file__).resolve().parent / "modules" / "ncm-converter" / "weixin_base64.txt"
 WEIXIN_IMAGE_BASE64 = _WEIXIN_B64_FILE.read_text(encoding="utf-8").strip() if _WEIXIN_B64_FILE.exists() else "" 
 
 
@@ -90,16 +90,16 @@ except ModuleNotFoundError:
 ROOT = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
 SOURCE_DIR = Path(__file__).resolve().parent
 APP_DIR = SOURCE_DIR if getattr(sys, 'frozen', False) and (SOURCE_DIR / 'users.json').exists() else (Path(sys.executable).resolve().parent if getattr(sys, 'frozen', False) else SOURCE_DIR)
-MUSIC_DIR = ROOT / 'music'
-ZIP_DIR = ROOT / 'zipandpng'
-MP4_DIR = ROOT / 'mp4-mp3'
-IMAGE_CONVERT_DIR = ROOT / 'image-convert'
-PDF_TOOLS_DIR = ROOT / 'pdf-tools'
-VIDEO_DOWNLOADER_DIR = ROOT / 'video-downloader'
-BASE64_DIR = ROOT / 'base64'
-NAME_DIR = ROOT / 'name'
-FILE_SORTER_DIR = ROOT / '分类'
-SAME_DIR = ROOT / 'same'
+MUSIC_DIR = ROOT / 'modules' / 'ncm-converter'
+ZIP_DIR = ROOT / 'modules' / 'file-disguise'
+MP4_DIR = ROOT / 'modules' / 'audio-extractor'
+IMAGE_CONVERT_DIR = ROOT / 'modules' / 'image-converter'
+PDF_TOOLS_DIR = ROOT / 'modules' / 'pdf-tools'
+VIDEO_DOWNLOADER_DIR = ROOT / 'modules' / 'video-downloader'
+BASE64_DIR = ROOT / 'modules' / 'base64'
+NAME_DIR = ROOT / 'modules' / 'batch-rename'
+FILE_SORTER_DIR = ROOT / 'modules' / 'file-sorter'
+SAME_DIR = ROOT / 'modules' / 'duplicate-finder'
 LOGO_PATH = ROOT / 'logo.png'
 SOUND_PATH = ROOT / 'sound.mp3'
 WEIXIN_IMAGE_PATH = next((p for p in (MUSIC_DIR / 'weixin.png', ROOT / 'weixin.png') if p.exists()), None)

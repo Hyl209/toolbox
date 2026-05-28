@@ -4,7 +4,7 @@ import sys
 import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-MODULE_PATH = ROOT / '分类' / 'converter.py'
+MODULE_PATH = ROOT / 'modules' / 'file-sorter' / 'converter.py'
 
 
 def load_module():

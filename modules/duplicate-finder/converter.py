@@ -1,7 +1,7 @@
 """Backward-compatible re-export layer.
 
 All implementation lives in sub-modules. This file re-exports everything
-so that ``from same.converter import X`` continues to work unchanged.
+so that ``from .converter import X`` continues to work unchanged.
 
 A custom module class with property descriptors ensures that monkey-patching
 ``_probe_video`` and ``_build_video_signature`` on this module propagates
@@ -13,7 +13,7 @@ import sys as _sys
 import types as _types
 
 # --- Shared constants and utilities from _common ---
-from same._common import (  # noqa: F401
+from ._common import (  # noqa: F401
     DEFAULT_TARGET_DIR_NAME,
     HASH_CHUNK_SIZE,
     FFPROBE_PATH,
@@ -49,14 +49,14 @@ from same._common import (  # noqa: F401
 )
 
 # --- Exact duplicate detection from exact_duplicate ---
-from same.exact_duplicate import (  # noqa: F401
+from .exact_duplicate import (  # noqa: F401
     hash_file,
     _build_exact_duplicate_groups,
     find_duplicate_groups,
 )
 
 # --- Video similarity detection from video_signature ---
-from same.video_signature import (  # noqa: F401
+from .video_signature import (  # noqa: F401
     _probe_video,
     _extract_video_frames,
     _build_video_signature,
@@ -66,7 +66,7 @@ from same.video_signature import (  # noqa: F401
 )
 
 # --- Duplicate file moving from move_plan ---
-from same.move_plan import (  # noqa: F401
+from .move_plan import (  # noqa: F401
     _build_target_path,
     _resolve_move_inputs,
     move_duplicates,

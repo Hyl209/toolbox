@@ -6,7 +6,7 @@ from pathlib import Path
 
 from toolbox_app.utils import resolve_name_conflict
 
-from same._common import (
+from ._common import (
     DEFAULT_TARGET_DIR_NAME,
     _ensure_root,
     _normalize_target_dir_name,
