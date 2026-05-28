@@ -1188,6 +1188,7 @@ def _download_url_with_ytdlp(
         except Exception:
             created = sorted(_s._find_completed_downloads(output_root, unique_stem))
             if created:
+                _maybe_fill_missing_embedded_thumbnails(created, source_url, progress_cb, ffmpeg or '')
                 _emit(progress_cb, f'网页 OK -> {created[0].name}')
                 return {
                     'success': True,
@@ -1207,6 +1208,7 @@ def _download_url_with_ytdlp(
     created = sorted(_s._find_completed_downloads(output_root, unique_stem))
     if not created:
         raise DownloadError('网页视频下载完成，但未找到输出文件')
+    _maybe_fill_missing_embedded_thumbnails(created, source_url, progress_cb, ffmpeg or '')
     _emit(progress_cb, f'网页 OK -> {created[0].name}')
     return {
         'success': True,
@@ -1278,6 +1280,200 @@ def _collect_ytdlp_entry_candidates(entries: object, page_url: str, unique: dict
             if candidate:
                 unique.setdefault(candidate, None)
                 break
+
+
+def _collect_ytdlp_candidate_entries(entries: object, page_url: str, collected: list[dict[str, object]]) -> None:
+    if not isinstance(entries, Iterable) or isinstance(entries, (str, bytes, dict)):
+        return
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        nested_entries = entry.get('entries')
+        if nested_entries is not None:
+            _collect_ytdlp_candidate_entries(nested_entries, page_url, collected)
+        for key in ('url', 'webpage_url', 'original_url'):
+            candidate = _normalize_web_candidate_url(entry.get(key), page_url)
+            if candidate:
+                collected.append(entry)
+                break
+
+
+def _normalize_thumbnail_url(raw_url: object, page_url: str) -> str:
+    if not isinstance(raw_url, str):
+        return ''
+    cleaned = raw_url.strip()
+    if not cleaned:
+        return ''
+    if cleaned.startswith('//'):
+        return f'{urlparse(page_url).scheme}:{cleaned}'
+    return urljoin(page_url, cleaned)
+
+
+def _collect_thumbnail_urls_from_info(info: object, page_url: str, unique: dict[str, None]) -> None:
+    if not isinstance(info, dict):
+        return
+    thumbnail = _normalize_thumbnail_url(info.get('thumbnail'), page_url)
+    if thumbnail:
+        unique.setdefault(thumbnail, None)
+    thumbnails = info.get('thumbnails')
+    if isinstance(thumbnails, Iterable) and not isinstance(thumbnails, (str, bytes, dict)):
+        for item in thumbnails:
+            if not isinstance(item, dict):
+                continue
+            thumb_url = _normalize_thumbnail_url(item.get('url'), page_url)
+            if thumb_url:
+                unique.setdefault(thumb_url, None)
+
+
+def _select_ytdlp_thumbnail_entry(
+    info: object,
+    page_url: str,
+    resolved_url: str,
+    candidate_index: int | None,
+) -> object:
+    if not isinstance(info, dict):
+        return info
+    entries = info.get('entries')
+    if not isinstance(entries, Iterable) or isinstance(entries, (str, bytes, dict)):
+        return info
+    collected: list[dict[str, object]] = []
+    _collect_ytdlp_candidate_entries(entries, page_url, collected)
+    normalized_resolved = _normalize_web_candidate_url(resolved_url, page_url)
+    if normalized_resolved:
+        for entry in collected:
+            for key in ('url', 'webpage_url', 'original_url'):
+                candidate = _normalize_web_candidate_url(entry.get(key), page_url)
+                if candidate == normalized_resolved:
+                    return entry
+    if candidate_index is not None and 1 <= candidate_index <= len(collected):
+        return collected[candidate_index - 1]
+    if len(collected) == 1:
+        return collected[0]
+    return info
+
+
+def _extract_thumbnail_urls(
+    source_url: str,
+    resolved_url: str,
+    candidate_index: int | None,
+) -> list[str]:
+    _require_web_backend()
+    from yt_dlp import YoutubeDL
+
+    info = _run_ytdlp_with_cookie_retry(
+        source_url,
+        {'quiet': True, 'skip_download': True, 'noplaylist': True},
+        None,
+        lambda opts: YoutubeDL(opts).extract_info(source_url, download=False),
+    )
+    unique: dict[str, None] = {}
+    selected_info = _select_ytdlp_thumbnail_entry(info, source_url, resolved_url, candidate_index)
+    _collect_thumbnail_urls_from_info(selected_info, source_url, unique)
+    if not unique and selected_info is not info:
+        _collect_thumbnail_urls_from_info(info, source_url, unique)
+    return list(unique.keys())
+
+
+def _guess_thumbnail_suffix(url: str, content_type: str = '') -> str:
+    lowered_type = str(content_type or '').lower()
+    type_map = {
+        'image/jpeg': '.jpg',
+        'image/jpg': '.jpg',
+        'image/png': '.png',
+        'image/webp': '.webp',
+    }
+    for prefix, suffix in type_map.items():
+        if lowered_type.startswith(prefix):
+            return suffix
+    suffix = Path(urlparse(url).path).suffix.lower()
+    return suffix if suffix in {'.jpg', '.jpeg', '.png', '.webp'} else '.jpg'
+
+
+def _download_thumbnail_file(url: str, thumb_dir: Path, stem: str, referer_url: str) -> Path:
+    request = Request(
+        url,
+        headers={
+            **_s._build_web_headers(referer_url),
+            'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+        },
+    )
+    with urlopen(request, timeout=20) as response:
+        suffix = _guess_thumbnail_suffix(url, response.headers.get('Content-Type', ''))
+        thumb_path = thumb_dir / f'{stem}{suffix}'
+        thumb_path.write_bytes(response.read())
+        return thumb_path
+
+
+def _extract_video_frame_thumbnail(video_path: Path, thumb_dir: Path, stem: str, ffmpeg: str) -> Path:
+    thumb_path = thumb_dir / f'{stem}.jpg'
+    subprocess.run(
+        [
+            ffmpeg,
+            '-y',
+            '-i', str(video_path),
+            '-vf', 'thumbnail',
+            '-frames:v', '1',
+            str(thumb_path),
+        ],
+        capture_output=True,
+        check=True,
+    )
+    return thumb_path
+
+
+def _video_has_embedded_thumbnail(video_path: Path, ffmpeg_path: str) -> bool:
+    ffprobe = Path(ffmpeg_path).with_name('ffprobe') if ffmpeg_path else Path('ffprobe')
+    try:
+        result = subprocess.run(
+            [
+                str(ffprobe),
+                '-v', 'error',
+                '-select_streams', 'v',
+                '-show_entries', 'stream=disposition',
+                '-of', 'json',
+                str(video_path),
+            ],
+            capture_output=True,
+            check=True,
+        )
+    except Exception:
+        return False
+    try:
+        payload = json.loads(result.stdout.decode(errors='ignore') or '{}')
+    except Exception:
+        return False
+    streams = payload.get('streams')
+    if not isinstance(streams, list):
+        return False
+    for stream in streams:
+        if not isinstance(stream, dict):
+            continue
+        disposition = stream.get('disposition')
+        if isinstance(disposition, dict) and disposition.get('attached_pic') == 1:
+            return True
+    return False
+
+
+def _maybe_fill_missing_embedded_thumbnails(
+    files: list[Path],
+    source_url: str,
+    progress_cb: ProgressCallback | None,
+    ffmpeg_path: str,
+) -> None:
+    video_exts = {'.mp4', '.mkv', '.webm', '.mov', '.m4v'}
+    if not ffmpeg_path:
+        return
+    for video_path in files:
+        if video_path.suffix.lower() not in video_exts or not video_path.is_file():
+            continue
+        if _video_has_embedded_thumbnail(video_path, ffmpeg_path):
+            continue
+        _emit(progress_cb, f'封面缺失，自动补封面: {video_path.name}')
+        result = embed_thumbnail(video_path, source_url, progress_cb=progress_cb)
+        if result.get('success'):
+            _emit(progress_cb, f'封面补全成功: {video_path.name}')
+        else:
+            _emit(progress_cb, f'封面补全失败，保留原视频: {video_path.name} -> {result.get("error", "")}')
 
 
 def _supports_ytdlp_direct_media(source_url: str) -> bool:
@@ -1500,30 +1696,43 @@ def embed_thumbnail(
         except Exception:
             pass  # Fall through with original source_url
 
-        # Step 1: download thumbnail from resolved URL
-        _emit(progress_cb, f'正在抓取封面: {resolved_url}')
-        ydl_opts = {
-            'skip_download': True,
-            'writethumbnail': True,
-            'quiet': True,
-            'no_warnings': True,
-            'outtmpl': str(thumb_dir / f'{stem}.%(ext)s'),
-            'noplaylist': True,
-            'http_headers': _s._build_web_headers(source_url),
-        }
-        with YoutubeDL(ydl_opts) as ydl:
-            ydl.extract_info(resolved_url, download=True)
-
-        # Find downloaded thumbnail – match loosely since yt-dlp may sanitize stem
         image_exts = {'.jpg', '.jpeg', '.png', '.webp'}
         thumb_file = None
-        for f in thumb_dir.iterdir():
-            if f.suffix.lower() in image_exts:
-                thumb_file = f
-                break
+        _emit(progress_cb, f'正在抓取封面: {source_url}')
+        try:
+            for thumb_url in _extract_thumbnail_urls(source_url, resolved_url, candidate_index):
+                try:
+                    thumb_file = _download_thumbnail_file(thumb_url, thumb_dir, stem, source_url)
+                    break
+                except Exception:
+                    continue
+        except Exception:
+            thumb_file = None
         if not thumb_file:
-            actual = [f.name for f in thumb_dir.iterdir()]
-            return {'success': False, 'error': f'未找到封面文件，目录内容: {actual}'}
+            _emit(progress_cb, f'页面封面缺失，尝试媒体地址: {resolved_url}')
+            ydl_opts = {
+                'skip_download': True,
+                'writethumbnail': True,
+                'quiet': True,
+                'no_warnings': True,
+                'outtmpl': str(thumb_dir / f'{stem}.%(ext)s'),
+                'noplaylist': True,
+                'http_headers': _s._build_web_headers(source_url),
+            }
+            with YoutubeDL(ydl_opts) as ydl:
+                ydl.extract_info(resolved_url, download=True)
+            for f in thumb_dir.iterdir():
+                if f.suffix.lower() in image_exts:
+                    thumb_file = f
+                    break
+        if not thumb_file:
+            _emit(progress_cb, f'外部封面缺失，改用视频首帧: {video_path.name}')
+            try:
+                thumb_file = _extract_video_frame_thumbnail(video_path, thumb_dir, stem, ffmpeg)
+            except subprocess.CalledProcessError as exc:
+                stderr = exc.stderr.decode(errors='replace') if exc.stderr else ''
+                actual = [f.name for f in thumb_dir.iterdir()]
+                return {'success': False, 'error': f'未找到封面文件，目录内容: {actual}；首帧提取失败: {stderr[:200]}'}
 
         # Convert to jpg if needed
         if thumb_file.suffix.lower() != '.jpg':

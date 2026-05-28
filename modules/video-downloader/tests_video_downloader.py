@@ -848,6 +848,236 @@ def test_download_url_with_ytdlp_uses_aria2_and_stability_options():
         wb.shutil.which = original_ffmpeg
 
 
+def test_download_url_with_ytdlp_auto_fills_missing_cover_after_aria2_download():
+    module = load_module()
+    wb = load_web_backend()
+    sh = load_shared()
+    fake_ytdlp = types.ModuleType('yt_dlp')
+    progress: list[str] = []
+    fill_calls: list[tuple[str, str]] = []
+
+    class FakeYoutubeDL:
+        def __init__(self, opts):
+            self.opts = opts
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def extract_info(self, url, download=False):
+            if not download:
+                return {'title': 'Demo', 'id': 'abc'}
+            pathlib.Path(str(self.opts['outtmpl']).replace('%(ext)s', 'mp4')).write_text('ok', encoding='utf-8')
+            return {'ok': True}
+
+    def fake_embed_thumbnail(video_path, source_url, progress_cb=None, candidate_index=None):
+        fill_calls.append((pathlib.Path(video_path).name, source_url))
+        if progress_cb:
+            progress_cb('mock fill')
+        return {'success': True, 'files': [str(video_path)]}
+
+    original_module = sys.modules.get('yt_dlp')
+    original_require = wb._require_web_backend
+    original_resolve_aria2 = sh._resolve_aria2c_path
+    original_ffmpeg = wb.shutil.which
+    original_has_cover = wb._video_has_embedded_thumbnail
+    original_embed = wb.embed_thumbnail
+    try:
+        sys.modules['yt_dlp'] = fake_ytdlp
+        fake_ytdlp.YoutubeDL = FakeYoutubeDL
+        wb._require_web_backend = lambda: None
+        sh._resolve_aria2c_path = lambda: 'C:/tools/aria2c.exe'
+        wb.shutil.which = lambda name: 'C:/tools/ffmpeg.exe' if name == 'ffmpeg' else ''
+        wb._video_has_embedded_thumbnail = lambda video_path, ffmpeg_path: False
+        wb.embed_thumbnail = fake_embed_thumbnail
+        with tempfile.TemporaryDirectory() as tmp:
+            result = wb._download_url_with_ytdlp(
+                'https://example.com/video',
+                pathlib.Path(tmp),
+                module.DownloadOptions(),
+                progress.append,
+            )
+        assert result['success'] is True
+        assert fill_calls == [('Demo [abc].mp4', 'https://example.com/video')]
+        assert any('封面缺失，自动补封面: Demo [abc].mp4' == line for line in progress)
+        assert any('封面补全成功: Demo [abc].mp4' == line for line in progress)
+    finally:
+        if original_module is None:
+            sys.modules.pop('yt_dlp', None)
+        else:
+            sys.modules['yt_dlp'] = original_module
+        wb._require_web_backend = original_require
+        sh._resolve_aria2c_path = original_resolve_aria2
+        wb.shutil.which = original_ffmpeg
+        wb._video_has_embedded_thumbnail = original_has_cover
+        wb.embed_thumbnail = original_embed
+
+
+def test_embed_thumbnail_prefers_page_thumbnail_for_selected_candidate():
+    wb = load_web_backend()
+    fake_ytdlp = types.ModuleType('yt_dlp')
+    progress: list[str] = []
+    ytdlp_calls: list[tuple[str, bool]] = []
+    ffmpeg_calls: list[list[str]] = []
+
+    class FakeYoutubeDL:
+        def __init__(self, opts):
+            self.opts = opts
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def extract_info(self, url, download=False):
+            ytdlp_calls.append((url, download))
+            return {
+                'entries': [
+                    {'url': 'https://cdn.example.com/a/index.m3u8', 'thumbnail': 'https://cdn.example.com/a.jpg'},
+                    {'url': 'https://cdn.example.com/b/index.m3u8', 'thumbnail': 'https://cdn.example.com/b.jpg'},
+                ],
+            }
+
+    class FakeResponse:
+        def __init__(self, body: bytes):
+            self._body = body
+            self.headers = {'Content-Type': 'image/jpeg'}
+
+        def read(self):
+            return self._body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    def fake_urlopen(request, timeout=20):
+        assert request.full_url == 'https://cdn.example.com/b.jpg'
+        return FakeResponse(b'jpg-data')
+
+    def fake_run(args, capture_output=True, check=True):
+        ffmpeg_calls.append(list(args))
+        pathlib.Path(args[-1]).write_text('ok', encoding='utf-8')
+        return types.SimpleNamespace(stderr=b'')
+
+    original_module = sys.modules.get('yt_dlp')
+    original_require = wb._require_web_backend
+    original_collect = wb._collect_web_media_candidates
+    original_urlopen = wb.urlopen
+    original_run = wb.subprocess.run
+    original_which = wb.shutil.which
+    try:
+        sys.modules['yt_dlp'] = fake_ytdlp
+        fake_ytdlp.YoutubeDL = FakeYoutubeDL
+        wb._require_web_backend = lambda: None
+        wb._collect_web_media_candidates = lambda url: (
+            ['https://cdn.example.com/a/index.m3u8', 'https://cdn.example.com/b/index.m3u8'],
+            'yt-dlp',
+        )
+        wb.urlopen = fake_urlopen
+        wb.subprocess.run = fake_run
+        wb.shutil.which = lambda name: 'C:/tools/ffmpeg.exe' if name == 'ffmpeg' else ''
+        with tempfile.TemporaryDirectory() as tmp:
+            video_path = pathlib.Path(tmp) / 'demo.mp4'
+            video_path.write_text('video', encoding='utf-8')
+            result = wb.embed_thumbnail(
+                video_path,
+                'https://example.com/post',
+                progress_cb=progress.append,
+                candidate_index=2,
+            )
+            assert result['success'] is True
+            assert video_path.exists()
+            assert video_path.read_text(encoding='utf-8') == 'ok'
+        assert ytdlp_calls == [('https://example.com/post', False)]
+        assert '正在抓取封面: https://example.com/post' in progress
+        assert not any('页面封面缺失' in line for line in progress)
+        assert len(ffmpeg_calls) == 1
+        assert any(str(arg).endswith('demo.jpg') for arg in ffmpeg_calls[0])
+    finally:
+        if original_module is None:
+            sys.modules.pop('yt_dlp', None)
+        else:
+            sys.modules['yt_dlp'] = original_module
+        wb._require_web_backend = original_require
+        wb._collect_web_media_candidates = original_collect
+        wb.urlopen = original_urlopen
+        wb.subprocess.run = original_run
+        wb.shutil.which = original_which
+
+
+def test_embed_thumbnail_falls_back_to_video_frame_when_external_cover_missing():
+    wb = load_web_backend()
+    fake_ytdlp = types.ModuleType('yt_dlp')
+    progress: list[str] = []
+    ffmpeg_calls: list[list[str]] = []
+
+    class FakeYoutubeDL:
+        def __init__(self, opts):
+            self.opts = opts
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def extract_info(self, url, download=False):
+            return {}
+
+    def fake_run(args, capture_output=True, check=True):
+        ffmpeg_calls.append(list(args))
+        out_path = pathlib.Path(args[-1])
+        out_path.write_text('ok', encoding='utf-8')
+        return types.SimpleNamespace(stderr=b'')
+
+    original_module = sys.modules.get('yt_dlp')
+    original_require = wb._require_web_backend
+    original_collect = wb._collect_web_media_candidates
+    original_extract = wb._extract_thumbnail_urls
+    original_run = wb.subprocess.run
+    original_which = wb.shutil.which
+    try:
+        sys.modules['yt_dlp'] = fake_ytdlp
+        fake_ytdlp.YoutubeDL = FakeYoutubeDL
+        wb._require_web_backend = lambda: None
+        wb._collect_web_media_candidates = lambda url: (['https://cdn.example.com/a/index.m3u8'], 'yt-dlp')
+        wb._extract_thumbnail_urls = lambda source_url, resolved_url, candidate_index: []
+        wb.subprocess.run = fake_run
+        wb.shutil.which = lambda name: 'C:/tools/ffmpeg.exe' if name == 'ffmpeg' else ''
+        with tempfile.TemporaryDirectory() as tmp:
+            video_path = pathlib.Path(tmp) / 'demo.mp4'
+            video_path.write_text('video', encoding='utf-8')
+            result = wb.embed_thumbnail(
+                video_path,
+                'https://example.com/post',
+                progress_cb=progress.append,
+                candidate_index=1,
+            )
+            assert result['success'] is True
+            assert video_path.exists()
+            assert video_path.read_text(encoding='utf-8') == 'ok'
+        assert any('外部封面缺失，改用视频首帧' in line for line in progress)
+        assert len(ffmpeg_calls) == 2
+        assert 'thumbnail' in ffmpeg_calls[0]
+        assert any(str(arg).endswith('demo.jpg') for arg in ffmpeg_calls[0])
+        assert any(str(arg).endswith('demo_cover_tmp.mp4') for arg in ffmpeg_calls[1])
+    finally:
+        if original_module is None:
+            sys.modules.pop('yt_dlp', None)
+        else:
+            sys.modules['yt_dlp'] = original_module
+        wb._require_web_backend = original_require
+        wb._collect_web_media_candidates = original_collect
+        wb._extract_thumbnail_urls = original_extract
+        wb.subprocess.run = original_run
+        wb.shutil.which = original_which
+
+
 def test_download_url_with_ytdlp_keeps_completed_file_when_aria2_finish_trips_error():
     module = load_module()
     wb = load_web_backend()
