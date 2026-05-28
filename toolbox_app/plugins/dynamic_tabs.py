@@ -9,14 +9,14 @@ logger = get_logger(__name__)
 
 # tab 名称 -> builder 函数 的默认注册表
 _BUILTIN_TABS: dict[str, str] = {
-    'image-convert': 'image-convert.tab.build_image_convert_tab_class',
-    'pdf-tools': 'pdf-tools.tab.build_pdf_tools_tab_class',
-    'zipandpng': 'zipandpng.tab.build_zip_tab_class',
-    'mp4-mp3': 'mp4-mp3.tab.build_mp4_tab_class',
-    'music': 'music.tab.build_music_tab_class',
-    'video-downloader': 'video-downloader.tab.build_video_downloader_tab_class',
-    'same': 'same.tab.build_same_tab_class',
-    'name': 'name.tab.build_name_tab_class',
+    'image-convert': 'modules.image-converter.tab.build_image_convert_tab_class',
+    'pdf-tools': 'modules.pdf-tools.tab.build_pdf_tools_tab_class',
+    'zipandpng': 'modules.file-disguise.tab.build_zip_tab_class',
+    'mp4-mp3': 'modules.audio-extractor.tab.build_mp4_tab_class',
+    'music': 'modules.ncm-converter.tab.build_music_tab_class',
+    'video-downloader': 'modules.video-downloader.tab.build_video_downloader_tab_class',
+    'same': 'modules.duplicate-finder.tab.build_same_tab_class',
+    'name': 'modules.batch-rename.tab.build_name_tab_class',
 }
 
 

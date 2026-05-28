@@ -103,3 +103,6 @@ class _ConverterModule(_types.ModuleType):
 # Activate the custom class on *this* module (works for both normal import
 # and the test's importlib-based loading).
 _sys.modules[__name__].__class__ = _ConverterModule
+
+# Backward-compatible alias used by older service wrappers.
+compute_file_hash = hash_file

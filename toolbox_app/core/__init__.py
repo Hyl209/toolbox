@@ -1,9 +1,9 @@
 from .logger import setup_logger, get_logger
-from .config import ConfigManager
+from config.manager import ConfigManager
 from .paths import PathManager
 from .exceptions import ToolboxError, ServiceError
 from .worker import Worker
-from .task_manager import TaskManager
+from toolbox_app.task_framework.manager import TaskManager
 from .file_utils import file_utils
 from .downloader_base import DownloaderBase
 from .events import EventSystem

@@ -8,13 +8,6 @@ Authoritative implementation: ``config/manager.py``
 """
 from __future__ import annotations
 
-import warnings as _warnings
-_warnings.warn(
-    "toolbox_app.core.config is deprecated; use config.manager.ConfigManager instead",
-    DeprecationWarning,
-    stacklevel=2,
-)
-
 import json
 from pathlib import Path
 from typing import Any, Optional

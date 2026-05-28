@@ -6,7 +6,7 @@ import sys
 import tempfile
 
 ROOT = pathlib.Path('PROJECT_ROOT')
-MODULE_PATH = ROOT / 'pdf-tools' / 'converter.py'
+MODULE_PATH = ROOT / 'modules' / 'pdf-tools' / 'converter.py'
 
 
 def load_module():

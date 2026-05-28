@@ -18,7 +18,7 @@ class MP4Service:
     def _get_converter(self):
         if self._converter is None:
             from ..loaders import load_module_once
-            converter_path = Path(__file__).resolve().parent.parent.parent / 'mp4-mp3' / 'converter.py'
+            converter_path = Path(__file__).resolve().parent.parent.parent / 'modules' / 'audio-extractor' / 'converter.py'
             self._converter = load_module_once('mp4_converter_module', converter_path)
         return self._converter
 

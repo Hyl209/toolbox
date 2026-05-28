@@ -6,7 +6,7 @@ import sys
 import tempfile
 
 ROOT = pathlib.Path('PROJECT_ROOT')
-MODULE_PATH = ROOT / 'image-convert' / 'converter.py'
+MODULE_PATH = ROOT / 'modules' / 'image-converter' / 'converter.py'
 
 
 def load_module():

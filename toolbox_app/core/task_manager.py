@@ -8,13 +8,6 @@ Authoritative implementation: ``toolbox_app/task_framework/manager.py``
 """
 from __future__ import annotations
 
-import warnings as _warnings
-_warnings.warn(
-    "toolbox_app.core.task_manager is deprecated; use task_framework.manager.TaskManager instead",
-    DeprecationWarning,
-    stacklevel=2,
-)
-
 from typing import Any, Callable, Optional
 from .worker import Worker
 from .logger import get_logger

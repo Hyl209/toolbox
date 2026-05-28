@@ -17,7 +17,7 @@ class PDFService:
     def _get_converter(self):
         if self._converter is None:
             from ..loaders import load_module_once
-            converter_path = Path(__file__).resolve().parent.parent.parent / 'pdf-tools' / 'converter.py'
+            converter_path = Path(__file__).resolve().parent.parent.parent / 'modules' / 'pdf-tools' / 'converter.py'
             self._converter = load_module_once('pdf_tools_converter_module', converter_path)
         return self._converter
 

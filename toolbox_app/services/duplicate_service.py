@@ -17,7 +17,7 @@ class DuplicateService:
     def _get_converter(self):
         if self._converter is None:
             from ..loaders import load_module_once
-            converter_path = Path(__file__).resolve().parent.parent.parent / 'same' / 'converter.py'
+            converter_path = Path(__file__).resolve().parent.parent.parent / 'modules' / 'duplicate-finder' / 'converter.py'
             self._converter = load_module_once('same_converter_module', converter_path)
         return self._converter
 
@@ -25,7 +25,8 @@ class DuplicateService:
         """检测重复文件，返回重复文件组列表"""
         try:
             conv = self._get_converter()
-            return conv.find_duplicate_groups(str(folder_path), recursive)
+            result = conv.find_duplicate_groups(str(folder_path), recursive)
+            return result.get('groups', []) if isinstance(result, dict) else result
         except Exception as e:
             raise ServiceError(f'重复检测失败: {e}', 'DuplicateService')
 
@@ -33,7 +34,7 @@ class DuplicateService:
         """计算文件哈希值"""
         try:
             conv = self._get_converter()
-            return conv.compute_file_hash(str(file_path))
+            return conv.hash_file(str(file_path))
         except Exception as e:
             raise ServiceError(f'哈希计算失败: {e}', 'DuplicateService')
 
