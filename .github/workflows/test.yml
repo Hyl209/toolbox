@@ -12,19 +12,6 @@ jobs:
     strategy:
       matrix:
         python-version: ['3.12']
-        test-file:
-          - tests/tests_core.py
-          - tests/tests_mp4_converter.py
-          - tests/tests_name_converter.py
-          - tests/tests_pdf_spec.py
-          - tests/tests_performance.py
-          - tests/tests_same_converter.py
-          - tests/tests_services.py
-          - tests/tests_tab_utils.py
-          - tests/tests_tool_pages.py
-          - tests/tests_tool_registry.py
-          - tests/tests_toolbox.py
-          - tests/tests_分类_converter.py
 
     steps:
       - uses: actions/checkout@v4
@@ -41,6 +28,6 @@ jobs:
 
       - name: Run tests
         run: |
-          python -m pytest "${{ matrix.test-file }}" -x --tb=short -q --basetemp="$env:RUNNER_TEMP/pytest-hyl"
+          python -m pytest tests -x --tb=short -q --ignore=tests/tests_toolbox.py --basetemp="$env:RUNNER_TEMP/pytest-hyl"
         env:
           QT_QPA_PLATFORM: offscreen
