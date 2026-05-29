@@ -697,6 +697,34 @@ class TestPluginManager:
         assert results.get("missing_class") is False
         assert "plugin_missing_class" not in sys.modules
 
+    def test_manifest_entry_class_must_extend_plugin_base_before_instantiation(self, tmp_plugins_dir, tmp_path):
+        reset_plugin_manager()
+        marker = tmp_path / "plain_class_instantiated.txt"
+        plugin_dir = tmp_plugins_dir / "plain_class"
+        plugin_dir.mkdir()
+        manifest = {
+            "name": "plain_class",
+            "version": "1.0",
+            "description": "d",
+            "author": "a",
+            "entry": "plugin.py:PlainClass",
+        }
+        (plugin_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        (plugin_dir / "plugin.py").write_text(textwrap.dedent(f'''\
+            from pathlib import Path
+
+            class PlainClass:
+                def __init__(self):
+                    Path({str(marker)!r}).write_text("created", encoding="utf-8")
+        '''), encoding="utf-8")
+
+        mgr = PluginManager(tmp_plugins_dir)
+        results = mgr.load_all_plugins()
+
+        assert results.get("plain_class") is False
+        assert not marker.exists()
+        assert "plugin_plain_class" not in sys.modules
+
     def test_manifest_entry_cannot_load_file_from_sibling_plugin_directory(self, tmp_plugins_dir):
         reset_plugin_manager()
         neighbor_dir = tmp_plugins_dir / "neighbor"

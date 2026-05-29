@@ -230,6 +230,10 @@ class PluginManager:
                 sys.modules.pop(qualified_name, None)
                 logger.error(f"插件类 {class_name} 未找到于 {module_file}")
                 return None
+            if not (isinstance(target_class, type) and issubclass(target_class, PluginBase)):
+                sys.modules.pop(qualified_name, None)
+                logger.error(f"插件类 {class_name} 不是 PluginBase 子类: {module_file}")
+                return None
         else:
             # 自动找第一个 PluginBase 子类
             for attr_name in dir(module):
