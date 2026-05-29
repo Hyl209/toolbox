@@ -160,7 +160,7 @@ class TestPluginRegistry:
             def get_plugin_info(self_info):
                 return PluginInfo(name=name, version="1.0", description="d", author="a")
             def initialize(self_info, deps=None):
-                self_info._is_initialized = True
+                self_info._mark_initialized()
                 return True
             def cleanup(self_info):
                 pass

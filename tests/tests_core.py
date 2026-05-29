@@ -712,7 +712,7 @@ class TestPluginRegistryEdgeCases:
             def get_plugin_info(self):
                 return PluginInfo(name=name, version=version, description="desc", author="auth")
             def initialize(self, deps=None):
-                self._is_initialized = True
+                self._mark_initialized()
                 return True
             def cleanup(self):
                 pass
