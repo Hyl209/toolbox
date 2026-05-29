@@ -471,6 +471,36 @@ class TestPluginManager:
         assert results.get("missing_class") is False
         assert "plugin_missing_class" not in sys.modules
 
+    def test_manifest_entry_cannot_load_file_from_sibling_plugin_directory(self, tmp_plugins_dir):
+        reset_plugin_manager()
+        neighbor_dir = tmp_plugins_dir / "neighbor"
+        neighbor_dir.mkdir()
+        (neighbor_dir / "plugin.py").write_text(textwrap.dedent('''\
+            from toolbox_app.plugins.base import PluginBase, PluginInfo
+
+            class EscapePlugin(PluginBase):
+                def get_plugin_info(self):
+                    return PluginInfo(name="path_escape", version="1.0", description="d", author="a")
+                def cleanup(self):
+                    pass
+        '''), encoding="utf-8")
+
+        plugin_dir = tmp_plugins_dir / "path_escape"
+        plugin_dir.mkdir()
+        manifest = {
+            "name": "path_escape",
+            "version": "1.0",
+            "description": "d",
+            "author": "a",
+            "entry": "../neighbor/plugin.py:EscapePlugin",
+        }
+        (plugin_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+        mgr = PluginManager(tmp_plugins_dir)
+
+        assert mgr.load_plugin("path_escape") is False
+        assert "plugin_path_escape" not in sys.modules
+
     def test_load_all_plugins_missing_dir_returns_empty(self, tmp_path):
         reset_plugin_manager()
         mgr = PluginManager(tmp_path / "missing_plugins")

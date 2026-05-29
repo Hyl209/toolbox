@@ -185,7 +185,11 @@ class PluginManager:
 
         # 防止路径遍历：加载文件必须在插件目录内
         resolved = module_file.resolve()
-        if not resolved.is_relative_to(self.plugins_dir.resolve()):
+        if plugin_path.is_dir():
+            entry_is_allowed = resolved.is_relative_to(plugin_path.resolve())
+        else:
+            entry_is_allowed = resolved == plugin_path.resolve()
+        if not entry_is_allowed:
             logger.error(f"插件入口路径越界: {resolved}")
             return None
 
