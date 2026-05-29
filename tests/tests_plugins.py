@@ -530,6 +530,34 @@ class TestPluginManager:
         assert mgr.get_plugin("code_name") is None
         assert "plugin_manifest_name" not in sys.modules
 
+    def test_plugin_info_error_unloads_imported_module(self, tmp_plugins_dir):
+        reset_plugin_manager()
+        plugin_dir = tmp_plugins_dir / "bad_info"
+        plugin_dir.mkdir()
+        manifest = {
+            "name": "bad_info",
+            "version": "1.0",
+            "description": "d",
+            "author": "a",
+            "entry": "plugin.py:BadInfoPlugin",
+        }
+        (plugin_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        (plugin_dir / "plugin.py").write_text(textwrap.dedent('''\
+            from toolbox_app.plugins.base import PluginBase
+
+            class BadInfoPlugin(PluginBase):
+                def get_plugin_info(self):
+                    raise RuntimeError("bad metadata")
+                def cleanup(self):
+                    pass
+        '''), encoding="utf-8")
+
+        mgr = PluginManager(tmp_plugins_dir)
+
+        assert mgr.load_plugin("bad_info") is False
+        assert mgr.get_plugin("bad_info") is None
+        assert "plugin_bad_info" not in sys.modules
+
     def test_load_all_plugins_missing_dir_returns_empty(self, tmp_path):
         reset_plugin_manager()
         mgr = PluginManager(tmp_path / "missing_plugins")

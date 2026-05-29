@@ -145,10 +145,16 @@ class PluginManager:
             instance = self._instantiate_plugin(plugin_info)
             if instance is None:
                 return False
-            if instance.plugin_info.name != plugin_info.name:
+            try:
+                instance_name = instance.plugin_info.name
+            except Exception as e:
+                logger.error(f"插件信息读取失败 {plugin_info.name}: {e}")
+                self._unload_plugin_module(plugin_info.name)
+                return False
+            if instance_name != plugin_info.name:
                 logger.error(
                     f"插件名称不一致: manifest={plugin_info.name}, "
-                    f"code={instance.plugin_info.name}"
+                    f"code={instance_name}"
                 )
                 self._unload_plugin_module(plugin_info.name)
                 return False
