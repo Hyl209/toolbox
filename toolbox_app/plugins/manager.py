@@ -145,6 +145,13 @@ class PluginManager:
             instance = self._instantiate_plugin(plugin_info)
             if instance is None:
                 return False
+            if instance.plugin_info.name != plugin_info.name:
+                logger.error(
+                    f"插件名称不一致: manifest={plugin_info.name}, "
+                    f"code={instance.plugin_info.name}"
+                )
+                self._unload_plugin_module(plugin_info.name)
+                return False
             registered = self._registry.register(instance)
             if not registered:
                 self._unload_plugin_module(plugin_info.name)

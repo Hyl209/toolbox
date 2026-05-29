@@ -501,6 +501,35 @@ class TestPluginManager:
         assert mgr.load_plugin("path_escape") is False
         assert "plugin_path_escape" not in sys.modules
 
+    def test_manifest_name_must_match_plugin_info_name(self, tmp_plugins_dir):
+        reset_plugin_manager()
+        plugin_dir = tmp_plugins_dir / "manifest_name"
+        plugin_dir.mkdir()
+        manifest = {
+            "name": "manifest_name",
+            "version": "1.0",
+            "description": "d",
+            "author": "a",
+            "entry": "plugin.py:MismatchPlugin",
+        }
+        (plugin_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        (plugin_dir / "plugin.py").write_text(textwrap.dedent('''\
+            from toolbox_app.plugins.base import PluginBase, PluginInfo
+
+            class MismatchPlugin(PluginBase):
+                def get_plugin_info(self):
+                    return PluginInfo(name="code_name", version="1.0", description="d", author="a")
+                def cleanup(self):
+                    pass
+        '''), encoding="utf-8")
+
+        mgr = PluginManager(tmp_plugins_dir)
+
+        assert mgr.load_plugin("manifest_name") is False
+        assert mgr.get_plugin("manifest_name") is None
+        assert mgr.get_plugin("code_name") is None
+        assert "plugin_manifest_name" not in sys.modules
+
     def test_load_all_plugins_missing_dir_returns_empty(self, tmp_path):
         reset_plugin_manager()
         mgr = PluginManager(tmp_path / "missing_plugins")
