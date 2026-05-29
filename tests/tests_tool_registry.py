@@ -66,15 +66,31 @@ def test_spec_includes_real_plugin_files():
     plugin_datas = get_plugin_packaging_datas(ROOT)
     expected = {
         'plugins/archive_extractor/manifest.json',
+        'plugins/csv_tools/plugin.py',
         'plugins/file_hasher/plugin.py',
         'plugins/json_tools/converter.py',
+        'plugins/text_tools/converter.py',
         'plugins/url_tools/plugin.py',
         'plugins/app_logger.py',
     }
     data_srcs = {_norm(src) for src, _dest in plugin_datas}
     assert expected <= data_srcs
-    for src in expected:
+    for src in data_srcs:
         assert src in spec_text, f'spec missing {src}'
+
+
+def test_plugin_packaging_datas_skip_generated_and_hidden_dirs(tmp_path):
+    root = tmp_path
+    plugins = root / 'plugins'
+    (plugins / 'real_plugin').mkdir(parents=True)
+    (plugins / 'real_plugin' / 'plugin.py').write_text('ok', encoding='utf-8')
+    for dirname in ['__pycache__', 'logs', '.codex-pytest-tmp', '.hidden_plugin']:
+        (plugins / dirname).mkdir(parents=True)
+        (plugins / dirname / 'plugin.py').write_text('skip', encoding='utf-8')
+
+    data_srcs = {_norm(src) for src, _dest in get_plugin_packaging_datas(root)}
+
+    assert data_srcs == {'plugins/real_plugin/plugin.py'}
 
 
 def test_packaging_datas_covers_all_registered_tools():

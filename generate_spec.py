@@ -18,6 +18,10 @@ PLUGIN_DATA_SUFFIXES = {'.json', '.md', '.py'}
 PLUGIN_DATA_SKIP_PARTS = {'__pycache__', 'logs', '.codex-pytest-tmp', '.pytest-tmp'}
 
 
+def _should_skip_plugin_data_path(rel_path: Path) -> bool:
+    return any(part in PLUGIN_DATA_SKIP_PARTS or part.startswith('.') for part in rel_path.parts)
+
+
 def get_plugin_packaging_datas(root: Path | None = None) -> list[tuple[str, str]]:
     root = root or Path(__file__).resolve().parent
     plugins_dir = root / 'plugins'
@@ -29,7 +33,7 @@ def get_plugin_packaging_datas(root: Path | None = None) -> list[tuple[str, str]
         if not path.is_file():
             continue
         rel = path.relative_to(root)
-        if any(part in PLUGIN_DATA_SKIP_PARTS for part in rel.parts):
+        if _should_skip_plugin_data_path(rel):
             continue
         if path.suffix.lower() not in PLUGIN_DATA_SUFFIXES:
             continue
