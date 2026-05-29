@@ -1020,6 +1020,14 @@ def test_settings_dialog_disables_plugin_dependents_when_dependency_is_disabled(
                     dependencies=['core_dep'],
                     plugin_type='gui',
                 ),
+                'orphan': PluginInfo(
+                    name='orphan',
+                    version='1.0',
+                    description='missing dependency plugin',
+                    author='tester',
+                    dependencies=['missing_dep'],
+                    plugin_type='gui',
+                ),
             }
 
     class FakePluginManager:
@@ -1036,14 +1044,16 @@ def test_settings_dialog_disables_plugin_dependents_when_dependency_is_disabled(
         manager = FakePluginManager()
         dialog = toolbox.SettingsDialog(settings, manager, None)
         try:
+            assert not dialog._plugin_checkboxes['orphan'].isChecked()
             dialog._plugin_checkboxes['core_dep'].setChecked(False)
+            assert not dialog._plugin_checkboxes['dependent'].isChecked()
             dialog._save_and_close()
             disabled = toolbox.load_setting(settings, 'plugins/disabled', '')
-            assert disabled == 'core_dep,dependent'
-            assert not dialog._plugin_checkboxes['dependent'].isChecked()
+            assert disabled == 'core_dep,dependent,orphan'
             assert set(manager.enabled_calls) == {
                 ('core_dep', False),
                 ('dependent', False),
+                ('orphan', False),
             }
         finally:
             dialog.close()

@@ -268,6 +268,7 @@ def build_settings_dialog_class(deps: dict):
                 for name, info in self._iter_user_visible_plugin_infos():
                     sidebar_label = self._label_map.get(f'plugin:{name}', name)
                     self._plugin_layout.addWidget(self._make_plugin_card(name, info, sidebar_label, name not in disabled))
+                self._resolve_disabled_plugins_from_checkboxes()
             if not self._plugin_checkboxes:
                 empty = QLabel('暂无已安装的扩展插件。')
                 empty.setProperty('cardSub', True)
@@ -331,6 +332,7 @@ def build_settings_dialog_class(deps: dict):
             cb.setMinimumWidth(48)
             cb.setToolTip(f'启用/禁用 {sidebar_label}')
             cb.setAccessibleName(sidebar_label)
+            cb.toggled.connect(self._on_plugin_checkbox_toggled)
             self._plugin_checkboxes[name] = cb
             h.addWidget(cb, 0, Qt.AlignVCenter)
             return card
@@ -449,6 +451,10 @@ def build_settings_dialog_class(deps: dict):
         def _on_auto_login_toggled(self, checked: bool):
             if checked and not self.remember_checkbox.isChecked():
                 self.remember_checkbox.setChecked(True)
+
+        def _on_plugin_checkbox_toggled(self, checked: bool):
+            if not checked:
+                self._resolve_disabled_plugins_from_checkboxes()
 
         def _resolve_disabled_plugins_from_checkboxes(self) -> set[str]:
             disabled = {name for name, cb in self._plugin_checkboxes.items() if not cb.isChecked()}
