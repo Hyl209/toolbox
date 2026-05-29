@@ -983,6 +983,44 @@ def test_settings_dialog_reuses_plugin_metadata_and_ignores_invalid_nav_rows():
             app.processEvents()
 
 
+def test_settings_dialog_order_uses_stable_ids_when_labels_duplicate():
+    toolbox = load_module()
+    if toolbox.QWidget is None:
+        return
+    from toolbox_app.plugins.base import PluginInfo
+
+    duplicate_label = toolbox.TOOL_DEFINITIONS[0].sidebar_label
+
+    class FakeDiscovery:
+        def get_all_plugins(self):
+            return {
+                'duplicate_label_plugin': PluginInfo(
+                    name='duplicate_label_plugin',
+                    version='1.0',
+                    description='demo',
+                    author='tester',
+                    plugin_type='gui',
+                    sidebar_label=duplicate_label,
+                )
+            }
+
+    class FakePluginManager:
+        def __init__(self):
+            self.discovery = FakeDiscovery()
+
+    with tempfile.TemporaryDirectory() as tmp:
+        app = toolbox.QApplication.instance() or toolbox.QApplication([])
+        settings = toolbox.make_settings(tmp)
+        dialog = toolbox.SettingsDialog(settings, FakePluginManager(), None)
+        try:
+            order_ids = dialog._get_current_order_ids()
+            assert order_ids.count(toolbox.TOOL_DEFINITIONS[0].id) == 1
+            assert order_ids.count('plugin:duplicate_label_plugin') == 1
+        finally:
+            dialog.close()
+            app.processEvents()
+
+
 def test_settings_dialog_hides_manifest_disabled_demo_plugin_when_pyside_available():
     toolbox = load_module()
     if toolbox.QWidget is None:

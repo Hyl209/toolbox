@@ -92,6 +92,7 @@ def build_settings_dialog_class(deps: dict):
             self.settings = settings
             self.plugin_manager = plugin_manager
             self.current_theme = load_setting(settings, 'ui/theme', 'dark')
+            self._order_item_role = getattr(Qt, 'UserRole', Qt.ItemDataRole.UserRole)
             self._plugin_infos = self._discover_plugin_infos()
             self._label_map = self._build_label_map()
             self.setWindowTitle('设置')
@@ -385,7 +386,7 @@ def build_settings_dialog_class(deps: dict):
             self._disabled_tools = disabled_tools
             self._disabled_plugins = disabled_plugins
             for tid in enabled_ids:
-                self._order_list.addItem(self._label_map.get(tid, tid))
+                self._add_order_item(tid)
             card_layout.addWidget(self._order_list)
             layout.addWidget(card, 1)
             btn_row = QHBoxLayout()
@@ -400,24 +401,28 @@ def build_settings_dialog_class(deps: dict):
         def _on_order_changed(self):
             pass
 
+        def _add_order_item(self, item_id: str):
+            self._order_list.addItem(self._label_map.get(item_id, item_id))
+            item = self._order_list.item(self._order_list.count() - 1)
+            item.setData(self._order_item_role, item_id)
+
         def _reset_order(self):
             self._order_list.clear()
             for t in TOOL_DEFINITIONS:
                 if t.id not in self._disabled_tools:
-                    self._order_list.addItem(self._label_map.get(t.id, t.sidebar_label))
+                    self._add_order_item(t.id)
             if self._plugin_infos:
                 for name, plugin in self._iter_user_visible_plugin_infos():
                     pid = f'plugin:{name}'
                     if plugin.plugin_type == 'gui' and name not in self._disabled_plugins:
-                        self._order_list.addItem(self._label_map.get(pid, name))
+                        self._add_order_item(pid)
 
         def _get_current_order_ids(self) -> list[str]:
-            label_to_id = {v: k for k, v in self._label_map.items()}
             # 可见项（按当前顺序）
             visible = []
             for i in range(self._order_list.count()):
-                text = self._order_list.item(i).text()
-                visible.append(label_to_id.get(text, text))
+                item = self._order_list.item(i)
+                visible.append(item.data(self._order_item_role) or item.text())
             # 禁用项追加到末尾（保持原顺序）
             disabled = []
             for tid in self._full_order:
