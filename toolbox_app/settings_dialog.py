@@ -295,6 +295,8 @@ def build_settings_dialog_class(deps: dict):
             cb = QCheckBox()
             cb.setChecked(checked)
             cb.setMinimumWidth(48)
+            cb.setToolTip(f'启用/禁用 {tool_def.title}')
+            cb.setAccessibleName(tool_def.title)
             self._tool_checkboxes[tool_def.id] = cb
             h.addWidget(cb, 0, Qt.AlignVCenter)
             self._plugin_layout.addWidget(card)
@@ -327,6 +329,8 @@ def build_settings_dialog_class(deps: dict):
             cb = QCheckBox()
             cb.setChecked(checked)
             cb.setMinimumWidth(48)
+            cb.setToolTip(f'启用/禁用 {sidebar_label}')
+            cb.setAccessibleName(sidebar_label)
             self._plugin_checkboxes[name] = cb
             h.addWidget(cb, 0, Qt.AlignVCenter)
             return card

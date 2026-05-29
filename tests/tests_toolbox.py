@@ -980,6 +980,13 @@ def test_settings_dialog_reuses_plugin_metadata_and_ignores_invalid_nav_rows():
             assert dialog.plugin_manager.discovery.calls == 1
             assert 'plugin:demo_plugin' in dialog._label_map
             assert 'demo_plugin' in dialog._plugin_checkboxes
+            tool_title = toolbox.TOOL_DEFINITIONS[0].title
+            tool_cb = dialog._tool_checkboxes[toolbox.TOOL_DEFINITIONS[0].id]
+            assert tool_cb.toolTip() == f'启用/禁用 {tool_title}'
+            assert tool_cb.accessibleName() == tool_title
+            plugin_cb = dialog._plugin_checkboxes['demo_plugin']
+            assert plugin_cb.toolTip() == '启用/禁用 demo_plugin'
+            assert plugin_cb.accessibleName() == 'demo_plugin'
             current_index = dialog._stack.currentIndex()
             dialog._on_nav_changed(-1)
             assert dialog._stack.currentIndex() == current_index
