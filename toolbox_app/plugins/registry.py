@@ -85,7 +85,7 @@ class PluginRegistry:
         try:
             result = plugin.initialize(deps)
             if result:
-                plugin._is_initialized = True
+                plugin._mark_initialized()
                 logger.info(f"插件初始化成功: {plugin_name}")
             else:
                 logger.warning(f"插件初始化失败: {plugin_name}")

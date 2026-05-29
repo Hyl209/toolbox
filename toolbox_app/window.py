@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 from toolbox_app.tool_registry import TOOL_DEFINITIONS
+
+logger = logging.getLogger(__name__)
 
 
 def build_toolbox_window_class(deps: dict):
@@ -181,9 +184,9 @@ def build_toolbox_window_class(deps: dict):
                         try:
                             plugin.on_app_start()
                         except Exception:
-                            pass
+                            logger.error(f"插件 on_app_start 异常: {name}", exc_info=True)
                 except Exception:
-                    pass
+                    logger.error("插件加载/初始化异常", exc_info=True)
             shell.addWidget(self.stack, 1)
             self.sidebar.currentRowChanged.connect(self.switch_tool_page)
             content_layout.addWidget(central, 1)
@@ -362,17 +365,17 @@ def build_toolbox_window_class(deps: dict):
             # 清理插件
             if hasattr(self, '_plugin_manager') and self._plugin_manager is not None:
                 try:
+                    # 先保存禁用列表（cleanup 后 registry 已清空）
+                    disabled = self._plugin_manager.get_disabled_plugin_names()
+                    save_setting(self.settings, 'plugins/disabled', ','.join(sorted(disabled)))
                     for name, plugin in self._plugin_manager.get_enabled_plugins().items():
                         try:
                             plugin.on_app_close()
                         except Exception:
-                            pass
-                    # 保存禁用插件列表
-                    disabled = self._plugin_manager.get_disabled_plugin_names()
-                    save_setting(self.settings, 'plugins/disabled', ','.join(sorted(disabled)))
+                            logger.error(f"插件 on_app_close 异常: {name}", exc_info=True)
                     self._plugin_manager.cleanup_all_plugins()
                 except Exception:
-                    pass
+                    logger.error("插件清理异常", exc_info=True)
             # 清理内置 Tab 线程
             for tab in self._tabs.values():
                 for attr in ('cleanup_worker', 'cleanup_scan_worker',
@@ -417,7 +420,7 @@ def build_toolbox_window_class(deps: dict):
                     try:
                         plugin.on_theme_change(self.current_theme)
                     except Exception:
-                        pass
+                        logger.error(f"插件 on_theme_change 异常: {name}", exc_info=True)
             if hasattr(self, 'user_menu') and self.user_menu.isVisible():
                 self.user_menu.hide()
             if hasattr(self, 'help_popup') and self.help_popup.isVisible():

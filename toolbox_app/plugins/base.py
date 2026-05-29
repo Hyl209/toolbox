@@ -54,6 +54,10 @@ class PluginBase(ABC):
     def is_initialized(self) -> bool:
         return self._is_initialized
 
+    def _mark_initialized(self):
+        """标记插件为已初始化（由 Registry 调用，子类不应直接操作）"""
+        self._is_initialized = True
+
     @property
     def is_enabled(self) -> bool:
         return self._is_enabled

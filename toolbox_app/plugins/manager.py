@@ -21,6 +21,7 @@ class PluginManager:
         self._discovery = PluginDiscovery(self.plugins_dir)
         self._registry = PluginRegistry()
         self._initialized = False
+        self._loaded_module_names: dict[str, str] = {}  # plugin_name → sys.modules key
 
     @property
     def discovery(self) -> PluginDiscovery:
@@ -57,6 +58,10 @@ class PluginManager:
     def cleanup_all_plugins(self):
         """清理所有插件"""
         self._registry.cleanup_all()
+        # 清理 sys.modules 中注入的插件模块，防止内存泄漏
+        for name, module_name in self._loaded_module_names.items():
+            sys.modules.pop(module_name, None)
+        self._loaded_module_names.clear()
 
     def get_plugin(self, plugin_name: str) -> Optional[PluginBase]:
         """获取插件"""
@@ -180,6 +185,7 @@ class PluginManager:
 
         # 实例化
         instance = target_class()
+        self._loaded_module_names[plugin_info.name] = qualified_name
         logger.info(f"插件实例化成功: {plugin_info.name}")
         return instance
 
@@ -190,7 +196,8 @@ class PluginManager:
 
         for plugin_name, info in sorted(
             discovered_plugins.items(),
-            key=lambda x: x[1].priority
+            key=lambda x: x[1].priority,
+            reverse=True,
         ):
             results[plugin_name] = self.load_plugin(plugin_name, disabled_names)
 
