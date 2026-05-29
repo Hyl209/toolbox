@@ -692,6 +692,8 @@ def test_bottom_left_button_order_places_avatar_theme_and_hint_buttons():
         assert bottom_layout.itemAt(1).widget() is window.theme_button
         assert bottom_layout.itemAt(2).widget() is window.hint_button
         assert window.hint_button.text() == '❕'
+        assert window.hint_button.toolTip() == '赞赏'
+        assert window.theme_button.toolTip() in {'切换为亮色主题', '切换为暗色主题'}
 
 
 def test_build_user_menu_state_exposes_avatar_button_and_roomier_popup_style():
@@ -934,6 +936,9 @@ def test_theme_toggle_switches_dark_light():
             assert window.current_theme == initial
             expected_icon = '☀️' if window.current_theme == 'dark' else '🌙'
             assert window.theme_button.text() == expected_icon
+            assert window.theme_button.toolTip() == (
+                '切换为亮色主题' if window.current_theme == 'dark' else '切换为暗色主题'
+            )
         finally:
             window.close()
             app.quit()

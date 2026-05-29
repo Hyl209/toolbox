@@ -110,6 +110,7 @@ def build_toolbox_window_class(deps: dict):
             self.theme_button.setProperty('themeToggle', True)
             self.theme_button.setMinimumSize(44, 44)
             self.theme_button.setMaximumSize(44, 44)
+            self._update_theme_button_tooltip()
             self.theme_button.clicked.connect(self.toggle_theme)
             disabled_tools_str = load_setting(settings, 'tools/disabled', '')
             self._disabled_tools = set(disabled_tools_str.split(',')) if disabled_tools_str.strip() else set()
@@ -140,6 +141,7 @@ def build_toolbox_window_class(deps: dict):
             self.hint_button.setMinimumSize(38, 38)
             self.hint_button.setMaximumSize(38, 38)
             self.hint_button.setCursor(Qt.PointingHandCursor)
+            self.hint_button.setToolTip('赞赏')
             self.hint_button.clicked.connect(self.toggle_help_popup)
             bottom_row.addWidget(self.hint_button, 0, Qt.AlignLeft | Qt.AlignVCenter)
             bottom_row.addStretch(1)
@@ -517,6 +519,7 @@ def build_toolbox_window_class(deps: dict):
             self.current_theme = 'light' if self.current_theme == 'dark' else 'dark'
             save_setting(self.settings, 'ui/theme', self.current_theme)
             self.theme_button.setText('☀️' if self.current_theme == 'dark' else '🌙')
+            self._update_theme_button_tooltip()
             # Generic: iterate all tabs, call apply_theme if available
             for i in range(self.stack.count()):
                 page = self.stack.widget(i)
@@ -537,5 +540,8 @@ def build_toolbox_window_class(deps: dict):
                 self.user_menu.hide()
             if hasattr(self, 'help_popup') and self.help_popup.isVisible():
                 self.hide_help_popup()
+
+        def _update_theme_button_tooltip(self):
+            self.theme_button.setToolTip('切换为亮色主题' if self.current_theme == 'dark' else '切换为暗色主题')
 
     return ToolboxWindow
