@@ -443,6 +443,34 @@ class TestPluginManager:
         results = mgr.load_all_plugins()
         assert results.get("bad_plugin") is False
 
+    def test_invalid_plugin_missing_class_does_not_leave_module_loaded(self, tmp_plugins_dir):
+        reset_plugin_manager()
+        plugin_dir = tmp_plugins_dir / "missing_class"
+        plugin_dir.mkdir()
+        manifest = {
+            "name": "missing_class",
+            "version": "1.0",
+            "description": "d",
+            "author": "a",
+            "entry": "plugin.py:MissingClass",
+        }
+        (plugin_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        (plugin_dir / "plugin.py").write_text(textwrap.dedent('''\
+            from toolbox_app.plugins.base import PluginBase, PluginInfo
+
+            class OtherPlugin(PluginBase):
+                def get_plugin_info(self):
+                    return PluginInfo(name="missing_class", version="1.0", description="d", author="a")
+                def cleanup(self):
+                    pass
+        '''), encoding="utf-8")
+
+        mgr = PluginManager(tmp_plugins_dir)
+        results = mgr.load_all_plugins()
+
+        assert results.get("missing_class") is False
+        assert "plugin_missing_class" not in sys.modules
+
     def test_load_all_plugins_missing_dir_returns_empty(self, tmp_path):
         reset_plugin_manager()
         mgr = PluginManager(tmp_path / "missing_plugins")

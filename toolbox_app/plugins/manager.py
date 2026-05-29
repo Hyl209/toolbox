@@ -145,7 +145,10 @@ class PluginManager:
             instance = self._instantiate_plugin(plugin_info)
             if instance is None:
                 return False
-            return self._registry.register(instance)
+            registered = self._registry.register(instance)
+            if not registered:
+                self._unload_plugin_module(plugin_info.name)
+            return registered
         except Exception as e:
             logger.error(f"加载插件异常 {plugin_name}: {e}")
             return False
@@ -207,6 +210,7 @@ class PluginManager:
         if class_name:
             target_class = getattr(module, class_name, None)
             if target_class is None:
+                sys.modules.pop(qualified_name, None)
                 logger.error(f"插件类 {class_name} 未找到于 {module_file}")
                 return None
         else:
@@ -219,11 +223,17 @@ class PluginManager:
                     break
 
         if target_class is None:
+            sys.modules.pop(qualified_name, None)
             logger.error(f"插件中未找到 PluginBase 子类: {module_file}")
             return None
 
         # 实例化
-        instance = target_class()
+        try:
+            instance = target_class()
+        except Exception as e:
+            sys.modules.pop(qualified_name, None)
+            logger.error(f"插件实例化失败 {plugin_info.name}: {e}")
+            return None
         self._loaded_module_names[plugin_info.name] = qualified_name
         logger.info(f"插件实例化成功: {plugin_info.name}")
         return instance
