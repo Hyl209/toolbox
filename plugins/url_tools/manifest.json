@@ -1,0 +1,11 @@
+{
+  "name": "url_tools",
+  "version": "1.0.0",
+  "description": "URL 编码、解码和查询参数解析",
+  "author": "HylToolbox",
+  "sidebar_label": "URL 工具",
+  "entry": "plugin.py:UrlToolsPlugin",
+  "type": "gui",
+  "enabled": true,
+  "priority": 0
+}
