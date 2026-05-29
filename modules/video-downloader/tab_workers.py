@@ -58,12 +58,13 @@ def build_worker_classes(QObject, QThread, Signal, _FallbackSignal):
             finished = Signal(list)
             failed = Signal(str)
 
-            def __init__(self, module, files, source_url, candidate_index=None):
+            def __init__(self, module, files, source_url, candidate_index=None, thumbnail_mode='web_then_frame'):
                 super().__init__()
                 self.module = module
                 self.files = files
                 self.source_url = source_url
                 self.candidate_index = candidate_index
+                self.thumbnail_mode = thumbnail_mode
 
             def run(self):
                 try:
@@ -74,6 +75,7 @@ def build_worker_classes(QObject, QThread, Signal, _FallbackSignal):
                             fpath, self.source_url,
                             progress_cb=self.progress.emit,
                             candidate_index=self.candidate_index,
+                            thumbnail_mode=self.thumbnail_mode,
                         )
                         result['_index'] = i
                         result['_path'] = str(fpath)
@@ -127,11 +129,12 @@ def build_worker_classes(QObject, QThread, Signal, _FallbackSignal):
                     self.failed.emit(str(exc))
 
         class ThumbnailWorker:
-            def __init__(self, module, files, source_url, candidate_index=None):
+            def __init__(self, module, files, source_url, candidate_index=None, thumbnail_mode='web_then_frame'):
                 self.module = module
                 self.files = files
                 self.source_url = source_url
                 self.candidate_index = candidate_index
+                self.thumbnail_mode = thumbnail_mode
                 self.progress = _FallbackSignal()
                 self.finished = _FallbackSignal()
                 self.failed = _FallbackSignal()
@@ -145,6 +148,7 @@ def build_worker_classes(QObject, QThread, Signal, _FallbackSignal):
                             fpath, self.source_url,
                             progress_cb=self.progress.emit,
                             candidate_index=self.candidate_index,
+                            thumbnail_mode=self.thumbnail_mode,
                         )
                         result['_index'] = i
                         result['_path'] = str(fpath)

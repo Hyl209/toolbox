@@ -527,6 +527,27 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             self.worker_thread = None
             self.worker = None
 
+        def _choose_thumbnail_mode(self, has_source_url: bool) -> str | None:
+            try:
+                from PySide6.QtWidgets import QMessageBox
+            except Exception:
+                return 'web_then_frame' if has_source_url else 'frame'
+            box = QMessageBox(self)
+            box.setWindowTitle('补封面')
+            box.setText('选择封面来源')
+            web_button = None
+            if has_source_url:
+                web_button = box.addButton('网页优先', QMessageBox.AcceptRole)
+            frame_button = box.addButton('视频抽帧', QMessageBox.AcceptRole)
+            box.addButton('取消', QMessageBox.RejectRole)
+            box.exec()
+            clicked = box.clickedButton()
+            if clicked is frame_button:
+                return 'frame'
+            if web_button is not None and clicked is web_button:
+                return 'web_then_frame'
+            return None
+
         def build_config(self):
             return self.module.TelegramConfig(
                 api_id=self._widget_text(self.api_id_edit),
@@ -696,10 +717,10 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             module = self.module
             # Get source URL from task edit
             urls = module.parse_task_lines(self.task_edit.toPlainText())
-            if not urls:
-                show_themed_warning(self, '提示', '请先在任务区输入视频源链接')
+            thumbnail_mode = self._choose_thumbnail_mode(bool(urls))
+            if thumbnail_mode is None:
                 return
-            source_url = urls[0]
+            source_url = urls[0] if urls else ''
             # Ask for candidate index if user typed one in web_candidate_index_edit
             raw_idx = self._widget_text(self.web_candidate_index_edit) if self.web_candidate_index_edit else ''
             candidate_index = None
@@ -720,7 +741,11 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             self.log.clear()
             self.append_log(f'补封面: 共 {len(files)} 个文件，源链接: {source_url}')
             self.reset_progress_ui(len(files))
-            self.thumbnail_worker = ThumbnailWorker(module, files, source_url, candidate_index=candidate_index)
+            self.thumbnail_worker = ThumbnailWorker(
+                module, files, source_url,
+                candidate_index=candidate_index,
+                thumbnail_mode=thumbnail_mode,
+            )
             self.thumbnail_worker.progress.connect(self.handle_thumbnail_progress)
             self.thumbnail_worker.finished.connect(self.finalize_thumbnail)
             self.thumbnail_worker.failed.connect(self.handle_thumbnail_error)

@@ -1,0 +1,10 @@
+{
+  "name": "archive_extractor",
+  "version": "1.0.0",
+  "description": "解压 ZIP 和 TAR 压缩包的 GUI 插件",
+  "author": "HylToolbox",
+  "entry": "plugin.py:ArchiveExtractorPlugin",
+  "type": "gui",
+  "enabled": true,
+  "priority": 0
+}

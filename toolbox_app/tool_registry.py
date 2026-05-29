@@ -6,6 +6,7 @@ should read from TOOL_DEFINITIONS instead of hard-coding tool lists.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -51,9 +52,9 @@ def get_tool_definitions() -> list[dict]:
     ]
 
 
-def get_dynamic_module_specs(root) -> dict[tuple[str, str]]:
+def get_dynamic_module_specs(root: Path) -> dict[str, tuple[str, Path]]:
     """Build DynamicModuleLoader specs from TOOL_DEFINITIONS."""
-    specs: dict[str, tuple[str, str]] = {}
+    specs: dict[str, tuple[str, Path]] = {}
     for t in TOOL_DEFINITIONS:
         dir_path = root / t.dir_name
         # converter modules

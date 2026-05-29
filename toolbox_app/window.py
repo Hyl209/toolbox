@@ -118,9 +118,9 @@ def build_toolbox_window_class(deps: dict):
             self.sidebar.setFixedWidth(196)
             self.sidebar.setStyleSheet(build_global_scrollbar_style())
             self._sidebar_to_stack: list[int] = []
-            for tool_def in TOOL_DEFINITIONS:
+            for stack_index, tool_def in enumerate(TOOL_DEFINITIONS):
                 if tool_def.id not in self._disabled_tools:
-                    self._sidebar_to_stack.append(TOOL_DEFINITIONS.index(tool_def))
+                    self._sidebar_to_stack.append(stack_index)
                     self.sidebar.addItem(tool_def.sidebar_label)
             self.sidebar.setCurrentRow(0)
             side_layout.addWidget(self.sidebar, 1)
@@ -456,15 +456,15 @@ def build_toolbox_window_class(deps: dict):
             if not order_ids:
                 return
             # 当前 sidebar 中的 id 列表（按 sidebar 顺序）
+            widget_to_tab_id = {id(tab): tid for tid, tab in self._tabs.items()}
             sidebar_ids = []
             for i in range(self.sidebar.count()):
                 # 通过 _sidebar_to_stack 找到 stack index，再通过 stack widget 找到 tab id
                 stack_idx = self._sidebar_to_stack[i]
                 widget = self.stack.widget(stack_idx)
-                for tid, tab in self._tabs.items():
-                    if tab is widget:
-                        sidebar_ids.append(tid)
-                        break
+                tid = widget_to_tab_id.get(id(widget))
+                if tid:
+                    sidebar_ids.append(tid)
             # 按保存的顺序重排（只排当前 sidebar 中的项）
             ordered_set = set()
             new_ids = []

@@ -3,7 +3,13 @@ from __future__ import annotations
 
 import pathlib
 
-from toolbox_app.tool_registry import TOOL_DEFINITIONS, get_tool_definitions, get_packaging_datas, SIDEBAR_LABELS
+from toolbox_app.tool_registry import (
+    SIDEBAR_LABELS,
+    TOOL_DEFINITIONS,
+    get_dynamic_module_specs,
+    get_packaging_datas,
+    get_tool_definitions,
+)
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SPEC_PATH = ROOT / 'HylToolbox.spec'
@@ -63,3 +69,13 @@ def test_packaging_datas_covers_all_registered_tools():
         tab = f'{td.dir_name}/{td.tab_file}'
         assert conv in datas_srcs or conv.replace('/', '\\') in datas_srcs, f'{td.id}: missing converter in packaging'
         assert tab in datas_srcs or tab.replace('/', '\\') in datas_srcs, f'{td.id}: missing tab in packaging'
+
+
+def test_dynamic_module_specs_include_registered_converters_and_tabs():
+    specs = get_dynamic_module_specs(ROOT)
+    assert specs['ncm'][1] == ROOT / 'modules' / 'ncm-converter' / 'ncm_to_mp3.py'
+    for td in TOOL_DEFINITIONS:
+        converter_key = 'mp4' if td.id == 'mp4mp3' else td.id
+        tab_key = 'music_tab' if td.id == 'music' else f'{td.id}_tab'
+        assert specs[converter_key][1] == ROOT / td.dir_name / td.converter_file
+        assert specs[tab_key][1] == ROOT / td.dir_name / td.tab_file

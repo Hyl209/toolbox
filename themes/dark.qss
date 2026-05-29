@@ -196,6 +196,18 @@ QPushButton[themeToggle='true'] {
     font-size: 15px;
     font-weight: 500;
 }
+QPushButton[themeToggle='true']:hover {
+    background-color: rgba(73, 84, 98, 0.98);
+    border-color: #617089;
+}
+QPushButton[themeToggle='true']:pressed {
+    background-color: rgba(47, 55, 66, 0.98);
+}
+QPushButton:disabled {
+    background-color: rgba(58, 66, 78, 0.52);
+    border-color: rgba(75, 85, 99, 0.60);
+    color: #7f8a99;
+}
 QCheckBox {
     color: #c8d0dc;
     spacing: 8px;

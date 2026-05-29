@@ -959,7 +959,7 @@ def test_embed_thumbnail_prefers_page_thumbnail_for_selected_candidate():
         assert request.full_url == 'https://cdn.example.com/b.jpg'
         return FakeResponse(b'jpg-data')
 
-    def fake_run(args, capture_output=True, check=True):
+    def fake_run(args, capture_output=True, check=True, **kwargs):
         ffmpeg_calls.append(list(args))
         pathlib.Path(args[-1]).write_text('ok', encoding='utf-8')
         return types.SimpleNamespace(stderr=b'')
@@ -1029,7 +1029,7 @@ def test_embed_thumbnail_falls_back_to_video_frame_when_external_cover_missing()
         def extract_info(self, url, download=False):
             return {}
 
-    def fake_run(args, capture_output=True, check=True):
+    def fake_run(args, capture_output=True, check=True, **kwargs):
         ffmpeg_calls.append(list(args))
         out_path = pathlib.Path(args[-1])
         out_path.write_text('ok', encoding='utf-8')
@@ -1076,6 +1076,153 @@ def test_embed_thumbnail_falls_back_to_video_frame_when_external_cover_missing()
         wb._extract_thumbnail_urls = original_extract
         wb.subprocess.run = original_run
         wb.shutil.which = original_which
+
+
+def test_embed_thumbnail_frame_mode_skips_web_lookup():
+    wb = load_web_backend()
+    progress: list[str] = []
+    ffmpeg_calls: list[list[str]] = []
+
+    def fake_run(args, capture_output=True, check=True, **kwargs):
+        ffmpeg_calls.append(list(args))
+        pathlib.Path(args[-1]).write_text('ok', encoding='utf-8')
+        return types.SimpleNamespace(stderr=b'')
+
+    def fail_require():
+        raise AssertionError('yt-dlp should not be required for frame mode')
+
+    original_require = wb._require_web_backend
+    original_run = wb.subprocess.run
+    original_which = wb.shutil.which
+    try:
+        wb._require_web_backend = fail_require
+        wb.subprocess.run = fake_run
+        wb.shutil.which = lambda name: 'C:/tools/ffmpeg.exe' if name == 'ffmpeg' else ''
+        with tempfile.TemporaryDirectory() as tmp:
+            video_path = pathlib.Path(tmp) / 'demo.mp4'
+            video_path.write_text('video', encoding='utf-8')
+            result = wb.embed_thumbnail(
+                video_path,
+                '',
+                progress_cb=progress.append,
+                thumbnail_mode='frame',
+            )
+            assert result['success'] is True
+            assert video_path.read_text(encoding='utf-8') == 'ok'
+        assert any('直接抽取视频帧作为封面: demo.mp4' == line for line in progress)
+        assert len(ffmpeg_calls) == 2
+        assert 'thumbnail' in ffmpeg_calls[0]
+        assert any(str(arg).endswith('demo_cover_tmp.mp4') for arg in ffmpeg_calls[1])
+    finally:
+        wb._require_web_backend = original_require
+        wb.subprocess.run = original_run
+        wb.shutil.which = original_which
+
+
+def test_cover_button_defaults_to_frame_mode_without_source_url():
+    tab_module = load_tab_module()
+    calls: list[dict[str, object]] = []
+
+    class FakeFileDialog:
+        @staticmethod
+        def getOpenFileNames(*args, **kwargs):
+            return (['C:/tmp/demo.mp4'], '')
+
+    class FakeModule:
+        def parse_task_lines(self, text):
+            return []
+
+        def embed_thumbnail(self, fpath, source_url, progress_cb=None, candidate_index=None, thumbnail_mode='web_then_frame'):
+            calls.append({
+                'fpath': fpath,
+                'source_url': source_url,
+                'thumbnail_mode': thumbnail_mode,
+            })
+            return {'success': True}
+
+    tab_class = tab_module.build_video_downloader_tab_class({
+        'QWidget': object,
+        'QVBoxLayout': object,
+        'QHBoxLayout': object,
+        'QScrollArea': object,
+        'QFrame': object,
+        'QLabel': object,
+        'QLineEdit': object,
+        'QPlainTextEdit': object,
+        'QPushButton': object,
+        'QProgressBar': object,
+        'QFileDialog': FakeFileDialog,
+        'QApplication': object,
+        'QCheckBox': object,
+        'QComboBox': object,
+        'QObject': None,
+        'QThread': None,
+        'Signal': None,
+        'load_setting': lambda *args, **kwargs: '',
+        'save_setting': lambda *args, **kwargs: None,
+        'make_card': lambda *args, **kwargs: object(),
+        'make_transparent_row': lambda *args, **kwargs: object(),
+        'build_global_scrollbar_style': lambda: '',
+        'show_themed_warning': lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError('no warning expected')),
+        'show_themed_error': lambda *args, **kwargs: None,
+        'show_themed_success': lambda *args, **kwargs: None,
+        'style_combo_popup': lambda *args, **kwargs: None,
+        'get_video_downloader_module': FakeModule,
+        'ROOT': ROOT,
+        'VIDEO_DOWNLOADER_DIR': ROOT,
+    })
+
+    class DummyText:
+        def toPlainText(self):
+            return ''
+
+        def text(self):
+            return ''
+
+    class DummyTab:
+        module = FakeModule()
+        settings = object()
+        task_edit = DummyText()
+        output_edit = DummyText()
+        web_candidate_index_edit = DummyText()
+        _last_cover_dir = ''
+        log = types.SimpleNamespace(clear=lambda: None)
+        thumbnail_worker = None
+        thumbnail_worker_thread = None
+
+        def _choose_thumbnail_mode(self, has_source_url):
+            assert has_source_url is False
+            return 'frame'
+
+        def _widget_text(self, widget):
+            return widget.text()
+
+        def _mode_setting_key(self, name):
+            return name
+
+        def set_busy(self, value):
+            pass
+
+        def append_log(self, message):
+            pass
+
+        def reset_progress_ui(self, total):
+            pass
+
+        def handle_thumbnail_progress(self, message):
+            pass
+
+        def finalize_thumbnail(self, results):
+            pass
+
+        def handle_thumbnail_error(self, message):
+            raise AssertionError(message)
+
+        def cleanup_thumbnail_worker(self):
+            pass
+
+    tab_class.embed_thumbnail_clicked(DummyTab())
+    assert calls == [{'fpath': 'C:/tmp/demo.mp4', 'source_url': '', 'thumbnail_mode': 'frame'}]
 
 
 def test_download_url_with_ytdlp_keeps_completed_file_when_aria2_finish_trips_error():

@@ -92,6 +92,8 @@ def build_settings_dialog_class(deps: dict):
             self.settings = settings
             self.plugin_manager = plugin_manager
             self.current_theme = load_setting(settings, 'ui/theme', 'dark')
+            self._plugin_infos = self._discover_plugin_infos()
+            self._label_map = self._build_label_map()
             self.setWindowTitle('设置')
             self.setModal(True)
             self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
@@ -102,6 +104,20 @@ def build_settings_dialog_class(deps: dict):
             self._nav_list.setCurrentRow(0)
 
         # ---- layout ----
+
+        def _setting_set(self, key: str) -> set[str]:
+            raw = load_setting(self.settings, key, '')
+            return {item.strip() for item in raw.split(',') if item.strip()} if raw.strip() else set()
+
+        def _discover_plugin_infos(self) -> dict:
+            if self.plugin_manager is None:
+                return {}
+            return self.plugin_manager.discovery.get_all_plugins()
+
+        def _build_label_map(self) -> dict[str, str]:
+            labels = {t.id: t.sidebar_label for t in TOOL_DEFINITIONS}
+            labels.update({f'plugin:{name}': name for name in self._plugin_infos})
+            return labels
 
         def _build_ui(self):
             root = QVBoxLayout(self)
@@ -169,7 +185,8 @@ def build_settings_dialog_class(deps: dict):
             self.close_button.clicked.connect(self.reject)
 
         def _on_nav_changed(self, row: int):
-            self._stack.setCurrentIndex(row)
+            if 0 <= row < self._stack.count():
+                self._stack.setCurrentIndex(row)
 
         # ---- account page ----
 
@@ -233,17 +250,14 @@ def build_settings_dialog_class(deps: dict):
             self._tool_checkboxes: dict[str, QCheckBox] = {}
             self._plugin_checkboxes: dict[str, QCheckBox] = {}
             # 内置工具
-            disabled_tools_str = load_setting(self.settings, 'tools/disabled', '')
-            disabled_tools = set(disabled_tools_str.split(',')) if disabled_tools_str.strip() else set()
+            disabled_tools = self._setting_set('tools/disabled')
             for t in TOOL_DEFINITIONS:
                 self._tool_checkboxes[t.id] = self._make_tool_card(t, t.id not in disabled_tools)
             # 外部插件
-            if self.plugin_manager is not None:
-                infos = self.plugin_manager.discovery.get_all_plugins()
-                disabled_str = load_setting(self.settings, 'plugins/disabled', '')
-                disabled = set(disabled_str.split(',')) if disabled_str.strip() else set()
-                for name, info in sorted(infos.items()):
-                    sidebar_label = self._label_map.get(f'plugin:{name}', name) if hasattr(self, '_label_map') else name
+            if self._plugin_infos:
+                disabled = self._setting_set('plugins/disabled')
+                for name, info in sorted(self._plugin_infos.items()):
+                    sidebar_label = self._label_map.get(f'plugin:{name}', name)
                     self._plugin_layout.addWidget(self._make_plugin_card(name, info, sidebar_label, name not in disabled))
             if not self._plugin_checkboxes:
                 empty = QLabel('暂无已安装的扩展插件。')
@@ -334,17 +348,15 @@ def build_settings_dialog_class(deps: dict):
             self._order_list.setSelectionMode(QListWidget.SingleSelection)
             self._order_list.model().rowsMoved.connect(self._on_order_changed)
             # 读取禁用列表
-            disabled_tools_str = load_setting(self.settings, 'tools/disabled', '')
-            disabled_tools = set(disabled_tools_str.split(',')) if disabled_tools_str.strip() else set()
-            disabled_plugins_str = load_setting(self.settings, 'plugins/disabled', '')
-            disabled_plugins = set(disabled_plugins_str.split(',')) if disabled_plugins_str.strip() else set()
+            disabled_tools = self._setting_set('tools/disabled')
+            disabled_plugins = self._setting_set('plugins/disabled')
             # 读取保存的顺序（包含所有项）
             saved_order = load_setting(self.settings, 'sidebar/order', '')
             full_order = [s.strip() for s in saved_order.split(',') if s.strip()] if saved_order.strip() else []
             # 构建所有可能的 id 集合
             all_ids = [t.id for t in TOOL_DEFINITIONS]
-            if self.plugin_manager is not None:
-                for name, plugin in self.plugin_manager.discovery.get_all_plugins().items():
+            if self._plugin_infos:
+                for name, plugin in self._plugin_infos.items():
                     if plugin.plugin_type == 'gui':
                         all_ids.append(f'plugin:{name}')
             # 补全 saved_order 中缺失的新 id
@@ -364,13 +376,8 @@ def build_settings_dialog_class(deps: dict):
             self._full_order = full_order
             self._disabled_tools = disabled_tools
             self._disabled_plugins = disabled_plugins
-            label_map = {t.id: t.sidebar_label for t in TOOL_DEFINITIONS}
-            if self.plugin_manager is not None:
-                for name, plugin in self.plugin_manager.discovery.get_all_plugins().items():
-                    label_map[f'plugin:{name}'] = plugin.get_sidebar_label() if hasattr(plugin, 'get_sidebar_label') else name
-            self._label_map = label_map
             for tid in enabled_ids:
-                self._order_list.addItem(label_map.get(tid, tid))
+                self._order_list.addItem(self._label_map.get(tid, tid))
             card_layout.addWidget(self._order_list)
             layout.addWidget(card, 1)
             btn_row = QHBoxLayout()
@@ -390,8 +397,8 @@ def build_settings_dialog_class(deps: dict):
             for t in TOOL_DEFINITIONS:
                 if t.id not in self._disabled_tools:
                     self._order_list.addItem(self._label_map.get(t.id, t.sidebar_label))
-            if self.plugin_manager is not None:
-                for name, plugin in self.plugin_manager.discovery.get_all_plugins().items():
+            if self._plugin_infos:
+                for name, plugin in self._plugin_infos.items():
                     pid = f'plugin:{name}'
                     if plugin.plugin_type == 'gui' and name not in self._disabled_plugins:
                         self._order_list.addItem(self._label_map.get(pid, name))

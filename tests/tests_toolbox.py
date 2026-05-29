@@ -900,6 +900,50 @@ def test_theme_toggle_switches_dark_light():
             app.quit()
 
 
+def test_settings_dialog_reuses_plugin_metadata_and_ignores_invalid_nav_rows():
+    toolbox = load_module()
+    if toolbox.QWidget is None:
+        return
+    from toolbox_app.plugins.base import PluginInfo
+
+    class FakeDiscovery:
+        def __init__(self):
+            self.calls = 0
+
+        def get_all_plugins(self):
+            self.calls += 1
+            return {
+                'demo_plugin': PluginInfo(
+                    name='demo_plugin',
+                    version='1.0',
+                    description='demo',
+                    author='tester',
+                    plugin_type='gui',
+                )
+            }
+
+    class FakePluginManager:
+        def __init__(self):
+            self.discovery = FakeDiscovery()
+
+    with tempfile.TemporaryDirectory() as tmp:
+        app = toolbox.QApplication.instance() or toolbox.QApplication([])
+        settings = toolbox.make_settings(tmp)
+        toolbox.save_setting(settings, 'tools/disabled', ' music, ,same ')
+        dialog = toolbox.SettingsDialog(settings, FakePluginManager(), None)
+        try:
+            assert dialog._setting_set('tools/disabled') == {'music', 'same'}
+            assert dialog.plugin_manager.discovery.calls == 1
+            assert 'plugin:demo_plugin' in dialog._label_map
+            assert 'demo_plugin' in dialog._plugin_checkboxes
+            current_index = dialog._stack.currentIndex()
+            dialog._on_nav_changed(-1)
+            assert dialog._stack.currentIndex() == current_index
+        finally:
+            dialog.close()
+            app.processEvents()
+
+
 def test_drop_zone_accepts_files():
     """测试拖放区域接受文件"""
     toolbox = load_module()

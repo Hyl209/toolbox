@@ -1652,19 +1652,18 @@ def embed_thumbnail(
     source_url: str,
     progress_cb: ProgressCallback | None = None,
     candidate_index: int | None = None,
+    thumbnail_mode: str = 'web_then_frame',
 ) -> dict[str, object]:
     """Download thumbnail via yt-dlp and embed it into an existing mp4.
 
     If *source_url* is a page with multiple video candidates (same as the
     download pipeline), pass ``candidate_index`` (1-based) to pick one.
     """
-    _require_web_backend()
-    from yt_dlp import YoutubeDL
-
     video_path = Path(video_path)
+    direct_frame = thumbnail_mode == 'frame'
     if not video_path.is_file():
         return {'success': False, 'error': f'文件不存在: {video_path}'}
-    if not source_url.strip():
+    if not direct_frame and not source_url.strip():
         return {'success': False, 'error': '请提供视频源链接'}
 
     ffmpeg = shutil.which('ffmpeg')
@@ -1675,67 +1674,78 @@ def embed_thumbnail(
     thumb_dir.mkdir(exist_ok=True)
     stem = video_path.stem
     try:
-        # Step 0: resolve page URL → actual video candidate URL
-        _emit(progress_cb, f'正在解析链接: {source_url}')
-        resolved_url = source_url
-        try:
-            candidates, _source = _collect_web_media_candidates(source_url)
-            if candidates:
-                if candidate_index is not None and 1 <= candidate_index <= len(candidates):
-                    resolved_url = candidates[candidate_index - 1]
-                    _emit(progress_cb, f'候选 {candidate_index}/{len(candidates)}: {resolved_url}')
-                elif len(candidates) == 1:
-                    resolved_url = candidates[0]
-                else:
-                    # Multiple candidates but no index specified – inform user
-                    labels = [f'  [{i+1}] {u}' for i, u in enumerate(candidates[:10])]
-                    return {
-                        'success': False,
-                        'error': f'该页面有 {len(candidates)} 个视频，请指定序号\n' + '\n'.join(labels),
-                        'candidate_count': len(candidates),
-                        'candidates': candidates,
-                    }
-        except Exception:
-            pass  # Fall through with original source_url
-
-        image_exts = {'.jpg', '.jpeg', '.png', '.webp'}
-        thumb_file = None
-        _emit(progress_cb, f'正在抓取封面: {source_url}')
-        try:
-            for thumb_url in _extract_thumbnail_urls(source_url, resolved_url, candidate_index):
-                try:
-                    thumb_file = _download_thumbnail_file(thumb_url, thumb_dir, stem, source_url)
-                    break
-                except Exception:
-                    continue
-        except Exception:
-            thumb_file = None
-        if not thumb_file:
-            _emit(progress_cb, f'页面封面缺失，尝试媒体地址: {resolved_url}')
-            ydl_opts = {
-                'skip_download': True,
-                'writethumbnail': True,
-                'quiet': True,
-                'no_warnings': True,
-                'outtmpl': str(thumb_dir / f'{stem}.%(ext)s'),
-                'noplaylist': True,
-                'http_headers': _s._build_web_headers(source_url),
-            }
-            with YoutubeDL(ydl_opts) as ydl:
-                ydl.extract_info(resolved_url, download=True)
-            for f in thumb_dir.iterdir():
-                if f.suffix.lower() in image_exts:
-                    thumb_file = f
-                    break
-        if not thumb_file:
-            _emit(progress_cb, f'外部封面缺失，改用视频首帧: {video_path.name}')
+        if direct_frame:
+            _emit(progress_cb, f'直接抽取视频帧作为封面: {video_path.name}')
             try:
                 thumb_file = _extract_video_frame_thumbnail(video_path, thumb_dir, stem, ffmpeg)
             except subprocess.CalledProcessError as exc:
                 stderr = exc.stderr.decode(errors='replace') if exc.stderr else ''
-                actual = [f.name for f in thumb_dir.iterdir()]
-                return {'success': False, 'error': f'未找到封面文件，目录内容: {actual}；首帧提取失败: {stderr[:200]}'}
+                return {'success': False, 'error': f'视频帧提取失败: {stderr[:200]}'}
+        else:
+            _require_web_backend()
+            from yt_dlp import YoutubeDL
 
+            thumb_file = None
+            image_exts = {'.jpg', '.jpeg', '.png', '.webp'}
+            resolved_url = source_url
+
+            # Step 0: resolve page URL → actual video candidate URL
+            _emit(progress_cb, f'正在解析链接: {source_url}')
+            try:
+                candidates, _source = _collect_web_media_candidates(source_url)
+                if candidates:
+                    if candidate_index is not None and 1 <= candidate_index <= len(candidates):
+                        resolved_url = candidates[candidate_index - 1]
+                        _emit(progress_cb, f'候选 {candidate_index}/{len(candidates)}: {resolved_url}')
+                    elif len(candidates) == 1:
+                        resolved_url = candidates[0]
+                    else:
+                        # Multiple candidates but no index specified – inform user
+                        labels = [f'  [{i+1}] {u}' for i, u in enumerate(candidates[:10])]
+                        return {
+                            'success': False,
+                            'error': f'该页面有 {len(candidates)} 个视频，请指定序号\n' + '\n'.join(labels),
+                            'candidate_count': len(candidates),
+                            'candidates': candidates,
+                        }
+            except Exception:
+                pass  # Fall through with original source_url
+
+            _emit(progress_cb, f'正在抓取封面: {source_url}')
+            try:
+                for thumb_url in _extract_thumbnail_urls(source_url, resolved_url, candidate_index):
+                    try:
+                        thumb_file = _download_thumbnail_file(thumb_url, thumb_dir, stem, source_url)
+                        break
+                    except Exception:
+                        continue
+            except Exception:
+                thumb_file = None
+            if not thumb_file:
+                _emit(progress_cb, f'页面封面缺失，尝试媒体地址: {resolved_url}')
+                ydl_opts = {
+                    'skip_download': True,
+                    'writethumbnail': True,
+                    'quiet': True,
+                    'no_warnings': True,
+                    'outtmpl': str(thumb_dir / f'{stem}.%(ext)s'),
+                    'noplaylist': True,
+                    'http_headers': _s._build_web_headers(source_url),
+                }
+                with YoutubeDL(ydl_opts) as ydl:
+                    ydl.extract_info(resolved_url, download=True)
+                for f in thumb_dir.iterdir():
+                    if f.suffix.lower() in image_exts:
+                        thumb_file = f
+                        break
+            if not thumb_file:
+                _emit(progress_cb, f'外部封面缺失，改用视频首帧: {video_path.name}')
+                try:
+                    thumb_file = _extract_video_frame_thumbnail(video_path, thumb_dir, stem, ffmpeg)
+                except subprocess.CalledProcessError as exc:
+                    stderr = exc.stderr.decode(errors='replace') if exc.stderr else ''
+                    actual = [f.name for f in thumb_dir.iterdir()]
+                    return {'success': False, 'error': f'未找到封面文件，目录内容: {actual}；首帧提取失败: {stderr[:200]}'}
         # Convert to jpg if needed
         if thumb_file.suffix.lower() != '.jpg':
             jpg_thumb = thumb_dir / f'{stem}.jpg'

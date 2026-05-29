@@ -178,7 +178,8 @@ def build_task_section(self, layout, center_row, textedit_style, task_min_height
     else:
         saved_index = max(1, min(5, int(saved_concurrent or '1')))
     self.concurrent_combo.setCurrentIndex(saved_index)
-    self.concurrent_combo.setMaximumWidth(72)
+    self.concurrent_combo.setMinimumWidth(104)
+    self.concurrent_combo.setMaximumWidth(104)
     self.concurrent_combo.currentIndexChanged.connect(self.save_form_settings)
     style_combo_popup(self.concurrent_combo, self.current_theme)
     common_row.addWidget(self.concurrent_combo)
