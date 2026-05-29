@@ -130,13 +130,21 @@ class PluginDiscovery:
         if raw is None:
             return []
         if isinstance(raw, str):
-            return [raw]
-        if isinstance(raw, list) and all(isinstance(item, str) for item in raw):
-            return raw
-        raise PluginError(
-            "manifest.json dependencies must be a string or list of strings",
-            plugin_name,
-        )
+            items = [raw]
+        elif isinstance(raw, list) and all(isinstance(item, str) for item in raw):
+            items = raw
+        else:
+            raise PluginError(
+                "manifest.json dependencies must be a string or list of strings",
+                plugin_name,
+            )
+        normalized = [item.strip() for item in items]
+        if any(not item for item in normalized):
+            raise PluginError(
+                "manifest.json dependencies cannot contain empty names",
+                plugin_name,
+            )
+        return normalized
 
     @staticmethod
     def _required_manifest_text(manifest: dict, field: str) -> str:
@@ -146,7 +154,7 @@ class PluginDiscovery:
                 f"manifest.json field must be a non-empty string: {field}",
                 manifest.get('name'),
             )
-        return value
+        return value.strip()
 
     @staticmethod
     def _optional_manifest_text(manifest: dict, field: str, default: str = '') -> str:
@@ -156,7 +164,7 @@ class PluginDiscovery:
                 f"manifest.json field must be a string: {field}",
                 manifest.get('name'),
             )
-        return value
+        return value.strip()
 
     @staticmethod
     def _optional_manifest_bool(manifest: dict, field: str, default: bool) -> bool:

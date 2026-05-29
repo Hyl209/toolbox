@@ -188,7 +188,7 @@ class TestPluginDiscovery:
         plugin_dir.mkdir()
         manifest = {
             "name": "string_dep", "version": "1.0", "description": "d", "author": "a",
-            "entry": "plugin.py:X", "dependencies": "dep_tool",
+            "entry": "plugin.py:X", "dependencies": " dep_tool ",
         }
         (plugin_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
         (plugin_dir / "plugin.py").write_text("pass", encoding="utf-8")
@@ -197,6 +197,20 @@ class TestPluginDiscovery:
         found = disc.discover_plugins()
 
         assert found["string_dep"].dependencies == ["dep_tool"]
+
+    def test_manifest_empty_dependency_name_is_skipped(self, tmp_plugins_dir):
+        plugin_dir = tmp_plugins_dir / "empty_dep"
+        plugin_dir.mkdir()
+        manifest = {
+            "name": "empty_dep", "version": "1.0", "description": "d", "author": "a",
+            "entry": "plugin.py:X", "dependencies": ["dep_tool", " "],
+        }
+        (plugin_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        (plugin_dir / "plugin.py").write_text("pass", encoding="utf-8")
+
+        disc = PluginDiscovery(tmp_plugins_dir)
+
+        assert "empty_dep" not in disc.discover_plugins()
 
     def test_manifest_invalid_dependencies_type_is_skipped(self, tmp_plugins_dir):
         plugin_dir = tmp_plugins_dir / "bad_deps"
@@ -228,6 +242,30 @@ class TestPluginDiscovery:
         disc = PluginDiscovery(tmp_plugins_dir)
 
         assert "bad_name" not in disc.discover_plugins()
+
+    def test_manifest_text_fields_are_trimmed(self, tmp_plugins_dir):
+        plugin_dir = tmp_plugins_dir / "trimmed"
+        plugin_dir.mkdir()
+        manifest = {
+            "name": " trimmed_tool ",
+            "version": " 1.0 ",
+            "description": " d ",
+            "author": " a ",
+            "entry": " plugin.py:X ",
+            "sidebar_label": " Trimmed ",
+        }
+        (plugin_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        (plugin_dir / "plugin.py").write_text("pass", encoding="utf-8")
+
+        disc = PluginDiscovery(tmp_plugins_dir)
+        found = disc.discover_plugins()
+
+        info = found["trimmed_tool"]
+        assert info.version == "1.0"
+        assert info.description == "d"
+        assert info.author == "a"
+        assert info.entry == "plugin.py:X"
+        assert info.sidebar_label == "Trimmed"
 
     def test_manifest_optional_fields_have_strict_types(self, tmp_plugins_dir):
         plugin_dir = tmp_plugins_dir / "bad_enabled"
