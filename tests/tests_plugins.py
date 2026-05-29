@@ -153,6 +153,23 @@ class TestPluginDiscovery:
         disc = PluginDiscovery(plugin_file)
         assert disc.discover_plugins() == {}
 
+    def test_discover_skips_generated_and_hidden_directories(self, tmp_plugins_dir):
+        for dirname in ["__pycache__", "logs", ".codex-pytest-tmp", ".hidden_plugin"]:
+            plugin_dir = tmp_plugins_dir / dirname
+            plugin_dir.mkdir()
+            (plugin_dir / "__init__.py").write_text(textwrap.dedent('''\
+                from toolbox_app.plugins.base import PluginBase, PluginInfo
+                class ShouldNotLoadPlugin(PluginBase):
+                    def get_plugin_info(self):
+                        return PluginInfo(
+                            name="generated_plugin", version="1.0",
+                            description="generated", author="Tester",
+                        )
+            '''), encoding="utf-8")
+
+        disc = PluginDiscovery(tmp_plugins_dir)
+        assert disc.discover_plugins() == {}
+
     def test_validate_missing_dependency(self, tmp_plugins_dir):
         plugin_dir = tmp_plugins_dir / "dep_plugin"
         plugin_dir.mkdir()

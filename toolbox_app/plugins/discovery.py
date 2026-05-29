@@ -12,6 +12,7 @@ logger = get_logger(__name__)
 
 # Regex to find class names that inherit from PluginBase
 _CLASS_RE = re.compile(r'class\s+(\w+)\s*\(.*PluginBase.*\)')
+IGNORED_PLUGIN_DIR_NAMES = {'__pycache__', 'logs', '.codex-pytest-tmp', '.pytest-tmp'}
 
 
 class PluginDiscovery:
@@ -38,6 +39,8 @@ class PluginDiscovery:
 
         # 扫描插件目录
         for plugin_path in self.plugins_dir.iterdir():
+            if self._should_skip_path(plugin_path):
+                continue
             if plugin_path.is_dir():
                 self._scan_plugin_directory(plugin_path)
             elif plugin_path.suffix == '.py' and not plugin_path.name.startswith('_'):
@@ -45,6 +48,11 @@ class PluginDiscovery:
 
         logger.info(f"发现 {len(self._discovered_plugins)} 个插件")
         return self._discovered_plugins.copy()
+
+    @staticmethod
+    def _should_skip_path(plugin_path: Path) -> bool:
+        name = plugin_path.name
+        return name in IGNORED_PLUGIN_DIR_NAMES or name.startswith('.')
 
     def _scan_plugin_directory(self, plugin_path: Path):
         """扫描插件目录 — 优先读 manifest.json"""
