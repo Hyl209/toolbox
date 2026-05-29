@@ -205,7 +205,7 @@ class MyHookPlugin(PluginBase):
 | `version` | string | 是 | - | 语义化版本号 |
 | `description` | string | 是 | - | 插件描述 |
 | `author` | string | 是 | - | 作者 |
-| `entry` | string | 是 | - | 入口，格式 `"文件名.py:类名"` |
+| `entry` | string | 是 | - | 入口，格式 `"文件名.py:类名"`；类必须继承 `PluginBase` |
 | `type` | string | 否 | `"gui"` | `"gui"` 或 `"hook"` |
 | `enabled` | bool | 否 | `true` | 是否默认启用 |
 | `priority` | int | 否 | `0` | 加载优先级，越大越先加载 |
@@ -311,7 +311,7 @@ def initialize(self, deps: dict = None) -> bool:
 - 插件名称、版本、描述
 - 启用/禁用开关
 
-用户禁用的插件会持久化保存，下次启动自动跳过。
+用户禁用的插件会持久化保存，下次启动自动跳过。若禁用某个插件的依赖项，依赖它的插件会在设置页自动同步为禁用，避免下次启动加载失败。
 
 ---
 
@@ -321,6 +321,7 @@ def initialize(self, deps: dict = None) -> bool:
 2. **路径安全**：插件文件必须位于 `plugins/` 目录内，框架会校验路径防止目录穿越
 3. **模块隔离**：插件模块以 `plugin_{name}` 注册到 `sys.modules`，卸载时自动清理
 4. **插件名唯一**：同名插件会注册失败，日志会报错
-5. **Hook 插件不需要 `manifest.json`**：单文件放到 `plugins/` 目录即可自动发现
-6. **优先级**：`priority` 越大越先加载，适合有启动顺序依赖的场景
-7. **不要在 `initialize()` 中做耗时操作**：会阻塞应用启动；异步任务放到 `on_app_start()` 中
+5. **入口类必须继承 `PluginBase`**：manifest `entry` 指向普通类时会在实例化前拒绝加载
+6. **Hook 插件不需要 `manifest.json`**：单文件放到 `plugins/` 目录即可自动发现
+7. **优先级**：`priority` 越大越先加载，适合有启动顺序依赖的场景
+8. **不要在 `initialize()` 中做耗时操作**：会阻塞应用启动；异步任务放到 `on_app_start()` 中
