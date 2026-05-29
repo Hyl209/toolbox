@@ -147,9 +147,15 @@ class PluginManager:
             logger.error(f"插件入口文件不存在: {module_file}")
             return None
 
+        # 防止路径遍历：加载文件必须在插件目录内
+        resolved = module_file.resolve()
+        if not resolved.is_relative_to(self.plugins_dir.resolve()):
+            logger.error(f"插件入口路径越界: {resolved}")
+            return None
+
         # 用 importlib 加载模块
         qualified_name = f"plugin_{plugin_info.name}"
-        spec = importlib.util.spec_from_file_location(qualified_name, str(module_file))
+        spec = importlib.util.spec_from_file_location(qualified_name, str(resolved))
         if spec is None or spec.loader is None:
             logger.error(f"无法加载插件模块: {module_file}")
             return None

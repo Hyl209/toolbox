@@ -33,6 +33,7 @@ class PluginBase(ABC):
     def __init__(self):
         self._is_initialized = False
         self._is_enabled = True
+        self._is_cleaned = False
         self._plugin_info: Optional[PluginInfo] = None
 
     @property
@@ -79,8 +80,10 @@ class PluginBase(ABC):
 
     @abstractmethod
     def cleanup(self):
-        """清理插件（子类实现）"""
-        pass
+        """清理插件（子类实现，仅调用一次）"""
+        if self._is_cleaned:
+            return
+        self._is_cleaned = True
 
     def enable(self):
         """启用插件"""

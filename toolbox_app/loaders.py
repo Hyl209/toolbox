@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+from collections import OrderedDict
 from pathlib import Path
 from threading import RLock
 from types import ModuleType
 
 _MAX_MODULE_CACHE = 32
 
-_MODULE_CACHE: dict[tuple[str, str], ModuleType] = {}
+_MODULE_CACHE: OrderedDict[tuple[str, str], ModuleType] = OrderedDict()
 _MODULE_CACHE_LOCK = RLock()
 
 
@@ -73,6 +74,12 @@ def load_module_once(module_name: str, file_path: Path) -> ModuleType:
         # Cache AFTER successful init — prevents other threads from seeing
         # a partially-initialised module if exec_module is slow or fails.
         _MODULE_CACHE[cache_key] = module
+        # Evict oldest entries if over capacity
+        while len(_MODULE_CACHE) > _MAX_MODULE_CACHE:
+            evicted_key, _ = _MODULE_CACHE.popitem(last=False)
+            evicted_name = evicted_key[0]
+            if sys.modules.get(evicted_name) is not None:
+                sys.modules.pop(evicted_name, None)
         return module
 
 

@@ -34,4 +34,4 @@ class AppLoggerPlugin(PluginBase):
         return None
 
     def cleanup(self):
-        pass
+        super().cleanup()

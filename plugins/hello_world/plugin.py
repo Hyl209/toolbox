@@ -45,4 +45,4 @@ class HelloWorldPlugin(PluginBase):
         pass
 
     def cleanup(self):
-        pass
+        super().cleanup()

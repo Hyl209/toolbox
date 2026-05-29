@@ -93,11 +93,6 @@ class DownloaderBase(ABC):
         """注册完成回调"""
         self._completion_callbacks.append(callback)
 
-    def clear_callbacks(self):
-        """清空所有回调，释放引用"""
-        self._progress_callbacks.clear()
-        self._completion_callbacks.clear()
-
     def _emit_progress(self, progress: DownloadProgress):
         """触发进度回调"""
         for callback in self._progress_callbacks:

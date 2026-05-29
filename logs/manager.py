@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import logging.handlers
+import time
 from pathlib import Path
 from typing import Optional
 from .handlers import FileHandler, CrashHandler, GUIHandler, TaskHandler
@@ -10,6 +11,7 @@ from .formatters import LogFormatter
 logger = logging.getLogger(__name__)
 
 _MAX_LOGGERS = 64
+_RESERVED_LOGGER_NAMES = frozenset({'gui', 'crash'})
 
 
 class LogManager:
@@ -21,6 +23,7 @@ class LogManager:
 
         self._loggers: dict[str, logging.Logger] = {}
         self._handlers: dict[str, logging.Handler] = {}
+        self._last_access: dict[str, float] = {}
         self._initialized = False
 
         # 初始化默认处理器
@@ -73,14 +76,19 @@ class LogManager:
     def get_logger(self, name: str, handlers: list[str] = None) -> logging.Logger:
         """获取或创建日志记录器"""
         if name in self._loggers:
+            self._last_access[name] = time.monotonic()
             return self._loggers[name]
 
-        # Evict oldest task loggers if at capacity
+        # LRU evict task loggers if at capacity
         if len(self._loggers) >= _MAX_LOGGERS:
-            _RESERVED = {'gui', 'crash'}
-            evict_keys = [k for k in self._loggers if k.startswith('task.') and k not in _RESERVED]
-            for k in evict_keys[:len(evict_keys) // 2]:
+            evict_candidates = [
+                k for k in self._loggers
+                if k.startswith('task.') and k not in _RESERVED_LOGGER_NAMES
+            ]
+            evict_candidates.sort(key=lambda k: self._last_access.get(k, 0))
+            for k in evict_candidates[: max(1, len(evict_candidates) // 2)]:
                 self._loggers.pop(k, None)
+                self._last_access.pop(k, None)
 
         logger = logging.getLogger(name)
         logger.setLevel(logging.DEBUG)
@@ -94,6 +102,7 @@ class LogManager:
                 logger.addHandler(self._handlers[handler_name])
 
         self._loggers[name] = logger
+        self._last_access[name] = time.monotonic()
         return logger
 
     def get_task_logger(self, task_id: str) -> logging.Logger:
@@ -151,6 +160,7 @@ class LogManager:
             handler.close()
         self._handlers.clear()
         self._loggers.clear()
+        self._last_access.clear()
 
     def get_log_files(self) -> list[Path]:
         """获取所有日志文件"""
