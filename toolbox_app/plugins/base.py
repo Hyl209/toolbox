@@ -21,6 +21,7 @@ class PluginInfo:
     plugin_type: str = "gui"  # "gui" or "hook"
     entry: str = ""  # "file.py:ClassName" for manifest plugins
     plugin_path: str = ""  # absolute path to plugin dir or .py file
+    sidebar_label: str = ""
 
     def __post_init__(self):
         if self.dependencies is None:
@@ -125,7 +126,7 @@ class PluginBase(ABC):
 
     def get_sidebar_label(self) -> str:
         """获取侧边栏显示文字（GUI 插件可覆盖）"""
-        return self.plugin_info.name
+        return self.plugin_info.sidebar_label or self.plugin_info.name
 
     def get_menu_items(self) -> list[dict[str, Any]]:
         """获取插件提供的菜单项"""

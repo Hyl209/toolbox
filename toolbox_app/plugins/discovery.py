@@ -88,6 +88,7 @@ class PluginDiscovery:
         desc_match = _field_re('description').search(cleaned)
         author_match = _field_re('author').search(cleaned)
         type_match = _field_re('plugin_type').search(cleaned)
+        sidebar_match = _field_re('sidebar_label').search(cleaned)
         if not (name_match and version_match):
             return None
         return PluginInfo(
@@ -96,6 +97,7 @@ class PluginDiscovery:
             description=desc_match.group(1) if desc_match else '',
             author=author_match.group(1) if author_match else '',
             plugin_type=type_match.group(1) if type_match else 'gui',
+            sidebar_label=sidebar_match.group(1) if sidebar_match else '',
         )
 
     def _load_manifest(self, plugin_path: Path, manifest_path: Path):
@@ -122,6 +124,7 @@ class PluginDiscovery:
                 plugin_type=manifest.get('type', 'gui'),
                 entry=manifest.get('entry', ''),
                 plugin_path=str(plugin_path),
+                sidebar_label=manifest.get('sidebar_label', ''),
             )
 
             self._discovered_plugins[plugin_info.name] = plugin_info

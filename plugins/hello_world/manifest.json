@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "示例 GUI 插件 - Hello World",
   "author": "HylToolbox",
+  "sidebar_label": "Hello 插件",
   "entry": "plugin.py:HelloWorldPlugin",
   "type": "gui",
   "enabled": false,

@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "格式化、压缩和校验 JSON 文本",
   "author": "HylToolbox",
+  "sidebar_label": "JSON 工具",
   "entry": "plugin.py:JsonToolsPlugin",
   "type": "gui",
   "enabled": true,

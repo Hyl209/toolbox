@@ -121,7 +121,10 @@ def build_settings_dialog_class(deps: dict):
 
         def _build_label_map(self) -> dict[str, str]:
             labels = {t.id: t.sidebar_label for t in TOOL_DEFINITIONS}
-            labels.update({f'plugin:{name}': name for name in self._plugin_infos})
+            labels.update({
+                f'plugin:{name}': getattr(info, 'sidebar_label', '') or name
+                for name, info in self._plugin_infos.items()
+            })
             return labels
 
         def _build_ui(self):

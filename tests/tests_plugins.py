@@ -39,6 +39,7 @@ def gui_plugin_dir(tmp_plugins_dir):
         "version": "1.0.0",
         "description": "Test GUI plugin",
         "author": "Tester",
+        "sidebar_label": "Friendly GUI Tool",
         "entry": "plugin.py:MyGuiPlugin",
         "type": "gui",
     }
@@ -101,6 +102,7 @@ class TestPluginBase:
         assert info.plugin_type == "gui"
         assert info.entry == ""
         assert info.plugin_path == ""
+        assert info.sidebar_label == ""
 
     def test_plugin_info_custom(self):
         info = PluginInfo(
@@ -125,6 +127,7 @@ class TestPluginDiscovery:
         assert info.plugin_type == "gui"
         assert info.entry == "plugin.py:MyGuiPlugin"
         assert info.plugin_path == str(gui_plugin_dir)
+        assert info.sidebar_label == "Friendly GUI Tool"
 
     def test_discover_single_file_plugin(self, hook_plugin_file, tmp_plugins_dir):
         disc = PluginDiscovery(tmp_plugins_dir)

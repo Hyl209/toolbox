@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "解压 ZIP 和 TAR 压缩包的 GUI 插件",
   "author": "HylToolbox",
+  "sidebar_label": "解压",
   "entry": "plugin.py:ArchiveExtractorPlugin",
   "type": "gui",
   "enabled": true,
