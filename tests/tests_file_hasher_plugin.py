@@ -43,6 +43,17 @@ def test_calculate_hashes(tmp_path):
     assert hashes["sha256"] == hashlib.sha256(payload).hexdigest()
 
 
+def test_calculate_hashes_supports_subset_and_normalizes_algorithm_names(tmp_path):
+    converter = _load_converter()
+    sample = tmp_path / "sample.txt"
+    sample.write_text("hello", encoding="utf-8")
+
+    hashes = converter.calculate_hashes(sample, ["SHA256"])
+
+    assert list(hashes) == ["sha256"]
+    assert hashes["sha256"] == hashlib.sha256(b"hello").hexdigest()
+
+
 def test_verify_file_hash_auto_detects_algorithm(tmp_path):
     converter = _load_converter()
     sample = tmp_path / "sample.txt"

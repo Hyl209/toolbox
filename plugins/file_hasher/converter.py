@@ -43,8 +43,26 @@ def calculate_file_hash(path: str | Path, algorithm: str = "sha256", chunk_size:
     return digest.hexdigest()
 
 
-def calculate_hashes(path: str | Path, algorithms: Iterable[str] = SUPPORTED_ALGORITHMS) -> dict[str, str]:
-    return {algorithm: calculate_file_hash(path, algorithm) for algorithm in algorithms}
+def calculate_hashes(
+    path: str | Path,
+    algorithms: Iterable[str] = SUPPORTED_ALGORITHMS,
+    chunk_size: int = 1024 * 1024,
+) -> dict[str, str]:
+    source = Path(path)
+    if not source.is_file():
+        raise FileHashError("请选择有效文件")
+
+    normalized = tuple(algorithm.lower() for algorithm in algorithms)
+    for algorithm in normalized:
+        if algorithm not in SUPPORTED_ALGORITHMS:
+            raise FileHashError(f"不支持的哈希算法: {algorithm}")
+
+    digests = {algorithm: hashlib.new(algorithm) for algorithm in normalized}
+    with source.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(chunk_size), b""):
+            for digest in digests.values():
+                digest.update(chunk)
+    return {algorithm: digest.hexdigest() for algorithm, digest in digests.items()}
 
 
 def verify_file_hash(path: str | Path, expected_checksum: str, algorithm: str = "auto") -> dict[str, object]:
