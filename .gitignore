@@ -6,6 +6,8 @@ __pycache__/
 
 # Test / virtual env
 .pytest_cache/
+.codex-pytest-tmp/
+*/.codex-pytest-tmp/
 .venv/
 */.venv/
 .codex-test-venv/
