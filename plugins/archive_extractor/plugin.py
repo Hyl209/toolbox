@@ -151,7 +151,7 @@ class ArchiveExtractorPlugin(PluginBase):
         self.output_edit = QLineEdit()
         if self.settings is not None:
             self.output_edit.setText(load_setting(self.settings, "archive_extractor/output_dir", ""))
-        self.output_edit.setPlaceholderText("默认使用压缩包同目录下的"文件名_解压"")
+        self.output_edit.setPlaceholderText("默认使用压缩包同目录下的 文件名_解压")
         output_btn = QPushButton("选择路径")
         output_btn.clicked.connect(self._choose_output)
         output_row = QHBoxLayout()
@@ -273,13 +273,13 @@ class ArchiveExtractorPlugin(PluginBase):
             count = 0
             error = ""
             try:
-                gen = _converter.extract_archive(archive, output, password, self._abort)
-                for line in gen:
-                    self._extract_logs.append(line)
-                try:
-                    gen.send(None)
-                except StopIteration as exc:
-                    count = exc.value or 0
+                count = _converter.extract_archive(
+                    archive,
+                    output,
+                    password,
+                    self._abort,
+                    self._extract_logs.append,
+                )
             except Exception as exc:
                 error = str(exc)
             with self._extract_lock:

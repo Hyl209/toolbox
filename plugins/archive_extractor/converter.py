@@ -235,7 +235,7 @@ def _extract_with_7z(
     return len(new_files - existing_files)
 
 
-def extract_archive(
+def iter_extract_archive(
     archive_path: str | Path,
     output_dir: str | Path,
     password: str = "",
@@ -256,17 +256,31 @@ def extract_archive(
         raise ArchiveExtractError("无法识别压缩包格式")
     target.mkdir(parents=True, exist_ok=True)
     if archive_type == "zip":
-        yield from ()  # make this a generator (no log lines for zip)
         return _safe_zip_extract(archive, target, password)
     if archive_type == "tar":
-        yield from ()  # make this a generator (no log lines for tar)
         return _safe_tar_extract(archive, target)
     if archive_type.startswith("7z"):
-        gen = _extract_with_7z(archive, target, password, abort, log_callback)
-        yield from gen
-        return gen.return_value  # type: ignore[attr-defined]
+        return (yield from _extract_with_7z(archive, target, password, abort, log_callback))
     raise ArchiveExtractError("无法识别压缩包格式")
 
+
+
+def extract_archive(
+    archive_path: str | Path,
+    output_dir: str | Path,
+    password: str = "",
+    abort: threading.Event | None = None,
+    log_callback: Callable[[str], None] | None = None,
+) -> int:
+    """Extract archive synchronously and return the number of extracted entries."""
+    gen = iter_extract_archive(archive_path, output_dir, password, abort, log_callback)
+    while True:
+        try:
+            line = next(gen)
+        except StopIteration as exc:
+            return int(exc.value or 0)
+        if log_callback is not None:
+            log_callback(line)
 
 def extract_archive_sync(
     archive_path: str | Path,
@@ -275,12 +289,5 @@ def extract_archive_sync(
     abort: threading.Event | None = None,
     log_callback: object = None,
 ) -> int:
-    """Synchronous wrapper that drains the generator and returns file count."""
-    gen = extract_archive(archive_path, output_dir, password, abort, log_callback)
-    for line in gen:
-        if log_callback is not None:
-            log_callback(line)
-    try:
-        return gen.send(None)  # type: ignore[union-attr]
-    except StopIteration as exc:
-        return exc.value
+    """Backward-compatible synchronous wrapper."""
+    return extract_archive(archive_path, output_dir, password, abort, log_callback)
