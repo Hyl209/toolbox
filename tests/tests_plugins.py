@@ -212,6 +212,20 @@ class TestPluginDiscovery:
 
         assert "empty_dep" not in disc.discover_plugins()
 
+    def test_manifest_invalid_dependency_name_is_skipped(self, tmp_plugins_dir):
+        plugin_dir = tmp_plugins_dir / "bad_dep_name"
+        plugin_dir.mkdir()
+        manifest = {
+            "name": "bad_dep_name", "version": "1.0", "description": "d", "author": "a",
+            "entry": "plugin.py:X", "dependencies": "bad-name",
+        }
+        (plugin_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        (plugin_dir / "plugin.py").write_text("pass", encoding="utf-8")
+
+        disc = PluginDiscovery(tmp_plugins_dir)
+
+        assert "bad_dep_name" not in disc.discover_plugins()
+
     def test_manifest_invalid_dependencies_type_is_skipped(self, tmp_plugins_dir):
         plugin_dir = tmp_plugins_dir / "bad_deps"
         plugin_dir.mkdir()
@@ -242,6 +256,23 @@ class TestPluginDiscovery:
         disc = PluginDiscovery(tmp_plugins_dir)
 
         assert "bad_name" not in disc.discover_plugins()
+
+    def test_manifest_plugin_name_must_be_safe_identifier(self, tmp_plugins_dir):
+        plugin_dir = tmp_plugins_dir / "bad_plugin_name"
+        plugin_dir.mkdir()
+        manifest = {
+            "name": "bad-name",
+            "version": "1.0",
+            "description": "d",
+            "author": "a",
+            "entry": "plugin.py:X",
+        }
+        (plugin_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        (plugin_dir / "plugin.py").write_text("pass", encoding="utf-8")
+
+        disc = PluginDiscovery(tmp_plugins_dir)
+
+        assert "bad-name" not in disc.discover_plugins()
 
     def test_manifest_text_fields_are_trimmed(self, tmp_plugins_dir):
         plugin_dir = tmp_plugins_dir / "trimmed"

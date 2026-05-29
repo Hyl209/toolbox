@@ -12,6 +12,7 @@ logger = get_logger(__name__)
 
 # Regex to find class names that inherit from PluginBase
 _CLASS_RE = re.compile(r'class\s+(\w+)\s*\(.*PluginBase.*\)')
+_PLUGIN_NAME_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
 IGNORED_PLUGIN_DIR_NAMES = {'__pycache__', 'logs', '.codex-pytest-tmp', '.pytest-tmp'}
 
 
@@ -144,7 +145,18 @@ class PluginDiscovery:
                 "manifest.json dependencies cannot contain empty names",
                 plugin_name,
             )
+        for item in normalized:
+            PluginDiscovery._validate_plugin_name(item, plugin_name, 'dependencies')
         return normalized
+
+    @staticmethod
+    def _validate_plugin_name(value: str, plugin_name: str, field: str = 'name') -> str:
+        if not _PLUGIN_NAME_RE.fullmatch(value):
+            raise PluginError(
+                f"manifest.json {field} must use letters, numbers, and underscores only",
+                plugin_name,
+            )
+        return value
 
     @staticmethod
     def _required_manifest_text(manifest: dict, field: str) -> str:
@@ -207,7 +219,10 @@ class PluginDiscovery:
 
             # 创建插件信息
             plugin_info = PluginInfo(
-                name=self._required_manifest_text(manifest, 'name'),
+                name=self._validate_plugin_name(
+                    self._required_manifest_text(manifest, 'name'),
+                    manifest.get('name'),
+                ),
                 version=self._required_manifest_text(manifest, 'version'),
                 description=self._required_manifest_text(manifest, 'description'),
                 author=self._required_manifest_text(manifest, 'author'),
