@@ -1,0 +1,11 @@
+{
+  "name": "text_tools",
+  "version": "1.0.0",
+  "description": "清理、去重、排序和转换文本行",
+  "author": "HylToolbox",
+  "sidebar_label": "文本工具",
+  "entry": "plugin.py:TextToolsPlugin",
+  "type": "gui",
+  "enabled": true,
+  "priority": 0
+}
