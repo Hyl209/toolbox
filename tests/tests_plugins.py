@@ -289,6 +289,78 @@ class TestPluginManager:
         assert results.get("my_gui_tool") is False
         assert mgr.get_plugin("my_gui_tool") is None
 
+    def test_load_plugin_loads_dependencies_first(self, tmp_plugins_dir):
+        dep_dir = tmp_plugins_dir / "dep_tool"
+        dep_dir.mkdir()
+        (dep_dir / "manifest.json").write_text(json.dumps({
+            "name": "dep_tool", "version": "1.0", "description": "dep",
+            "author": "Tester", "entry": "plugin.py:DepPlugin", "type": "hook",
+            "priority": 0,
+        }), encoding="utf-8")
+        (dep_dir / "plugin.py").write_text(textwrap.dedent('''\
+            from toolbox_app.plugins.base import PluginBase, PluginInfo
+            class DepPlugin(PluginBase):
+                def get_plugin_info(self):
+                    return PluginInfo(name="dep_tool", version="1.0", description="dep", author="Tester", plugin_type="hook")
+                def initialize(self, deps=None):
+                    return True
+                def cleanup(self):
+                    pass
+        '''), encoding="utf-8")
+        main_dir = tmp_plugins_dir / "main_tool"
+        main_dir.mkdir()
+        (main_dir / "manifest.json").write_text(json.dumps({
+            "name": "main_tool", "version": "1.0", "description": "main",
+            "author": "Tester", "entry": "plugin.py:MainPlugin",
+            "dependencies": ["dep_tool"], "priority": 10,
+        }), encoding="utf-8")
+        (main_dir / "plugin.py").write_text(textwrap.dedent('''\
+            from toolbox_app.plugins.base import PluginBase, PluginInfo
+            class MainPlugin(PluginBase):
+                def get_plugin_info(self):
+                    return PluginInfo(name="main_tool", version="1.0", description="main", author="Tester")
+                def initialize(self, deps=None):
+                    return True
+                def cleanup(self):
+                    pass
+        '''), encoding="utf-8")
+
+        reset_plugin_manager()
+        mgr = PluginManager(tmp_plugins_dir)
+        results = mgr.load_all_plugins()
+
+        assert results["main_tool"] is True
+        assert mgr.has_plugin("dep_tool") is True
+        assert mgr.has_plugin("main_tool") is True
+
+    def test_load_plugin_rejects_dependency_cycles(self, tmp_plugins_dir):
+        for name, dep in [("first", "second"), ("second", "first")]:
+            plugin_dir = tmp_plugins_dir / name
+            plugin_dir.mkdir()
+            (plugin_dir / "manifest.json").write_text(json.dumps({
+                "name": name, "version": "1.0", "description": name,
+                "author": "Tester", "entry": "plugin.py:CyclePlugin",
+                "dependencies": [dep],
+            }), encoding="utf-8")
+            (plugin_dir / "plugin.py").write_text(textwrap.dedent(f'''\
+                from toolbox_app.plugins.base import PluginBase, PluginInfo
+                class CyclePlugin(PluginBase):
+                    def get_plugin_info(self):
+                        return PluginInfo(name="{name}", version="1.0", description="{name}", author="Tester")
+                    def initialize(self, deps=None):
+                        return True
+                    def cleanup(self):
+                        pass
+            '''), encoding="utf-8")
+
+        reset_plugin_manager()
+        mgr = PluginManager(tmp_plugins_dir)
+        results = mgr.load_all_plugins()
+
+        assert results["first"] is False
+        assert results["second"] is False
+        assert mgr.get_plugin_count() == 0
+
     def test_repeated_load_all_plugins_is_idempotent(self, gui_plugin_dir, tmp_plugins_dir):
         reset_plugin_manager()
         mgr = PluginManager(tmp_plugins_dir)

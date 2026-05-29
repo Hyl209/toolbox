@@ -22,6 +22,7 @@ class PluginManager:
         self._registry = PluginRegistry()
         self._initialized = False
         self._loaded_module_names: dict[str, str] = {}  # plugin_name → sys.modules key
+        self._loading_plugins: set[str] = set()
 
     @property
     def discovery(self) -> PluginDiscovery:
@@ -101,6 +102,10 @@ class PluginManager:
 
     def load_plugin(self, plugin_name: str, disabled_names: set[str] = None) -> bool:
         """加载单个插件：发现 → 验证 → 导入 → 实例化 → 注册"""
+        if plugin_name in self._loading_plugins:
+            logger.error(f"插件依赖存在循环: {plugin_name}")
+            return False
+
         plugin_info = self._discovery.get_plugin_info(plugin_name)
         if plugin_info is None:
             logger.error(f"插件未发现: {plugin_name}")
@@ -127,7 +132,13 @@ class PluginManager:
             logger.error(f"插件验证失败: {plugin_name}")
             return False
 
+        self._loading_plugins.add(plugin_name)
         try:
+            for dep_name in plugin_info.dependencies:
+                if not self.load_plugin(dep_name, disabled_names):
+                    logger.error(f"插件依赖加载失败: {plugin_name} -> {dep_name}")
+                    return False
+
             instance = self._instantiate_plugin(plugin_info)
             if instance is None:
                 return False
@@ -135,6 +146,8 @@ class PluginManager:
         except Exception as e:
             logger.error(f"加载插件异常 {plugin_name}: {e}")
             return False
+        finally:
+            self._loading_plugins.discard(plugin_name)
 
     def _instantiate_plugin(self, plugin_info: PluginInfo) -> Optional[PluginBase]:
         """根据 PluginInfo 导入模块并实例化 PluginBase 子类"""
