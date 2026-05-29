@@ -276,8 +276,12 @@ _plugin_manager: Optional[PluginManager] = None
 def get_plugin_manager(plugins_dir: str | Path = None) -> PluginManager:
     """获取全局插件管理器实例"""
     global _plugin_manager
+    requested_dir = Path(plugins_dir) if plugins_dir else Path(__file__).parent
     if _plugin_manager is None:
-        _plugin_manager = PluginManager(plugins_dir)
+        _plugin_manager = PluginManager(requested_dir)
+    elif _plugin_manager.plugins_dir.resolve() != requested_dir.resolve():
+        _plugin_manager.cleanup_all_plugins()
+        _plugin_manager = PluginManager(requested_dir)
     return _plugin_manager
 
 

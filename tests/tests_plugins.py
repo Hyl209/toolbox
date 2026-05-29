@@ -12,7 +12,7 @@ import pytest
 from toolbox_app.plugins.base import PluginBase, PluginInfo
 from toolbox_app.plugins.discovery import PluginDiscovery
 from toolbox_app.plugins.registry import PluginRegistry
-from toolbox_app.plugins.manager import PluginManager, reset_plugin_manager
+from toolbox_app.plugins.manager import PluginManager, get_plugin_manager, reset_plugin_manager
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -243,6 +243,27 @@ class TestPluginManager:
         plugin = mgr.get_plugin("my_hook")
         assert plugin is not None
         assert plugin.plugin_info.plugin_type == "hook"
+
+    def test_get_plugin_manager_reuses_same_directory(self, tmp_plugins_dir):
+        reset_plugin_manager()
+        first = get_plugin_manager(tmp_plugins_dir)
+        second = get_plugin_manager(tmp_plugins_dir)
+        assert second is first
+
+    def test_get_plugin_manager_rebuilds_when_directory_changes(self, gui_plugin_dir, tmp_plugins_dir, tmp_path):
+        reset_plugin_manager()
+        first = get_plugin_manager(tmp_plugins_dir)
+        first.load_all_plugins()
+        module_name = first._loaded_module_names["my_gui_tool"]
+        assert module_name in sys.modules
+
+        other_dir = tmp_path / "other_plugins"
+        other_dir.mkdir()
+        second = get_plugin_manager(other_dir)
+
+        assert second is not first
+        assert second.plugins_dir == other_dir
+        assert module_name not in sys.modules
 
     def test_load_with_disabled_names(self, gui_plugin_dir, tmp_plugins_dir):
         reset_plugin_manager()
