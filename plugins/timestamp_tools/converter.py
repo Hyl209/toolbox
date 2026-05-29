@@ -26,13 +26,20 @@ def parse_timezone_offset(offset: str | int | float = "+08:00") -> timezone:
 
     sign = -1 if text.startswith("-") else 1
     value = text[1:] if text[:1] in "+-" else text
-    if ":" in value:
-        hour_text, minute_text = value.split(":", 1)
-        hours = int(hour_text or "0")
-        minutes = int(minute_text or "0")
-    else:
-        hours = int(value)
-        minutes = 0
+    try:
+        if ":" in value:
+            hour_text, minute_text = value.split(":", 1)
+            hours = int(hour_text or "0")
+            minutes = int(minute_text or "0")
+        elif "." in value:
+            total_hours = float(value)
+            hours = int(total_hours)
+            minutes = round((total_hours - hours) * 60)
+        else:
+            hours = int(value)
+            minutes = 0
+    except ValueError as exc:
+        raise TimestampToolError("无法识别时区偏移") from exc
     if hours > 23 or minutes > 59:
         raise TimestampToolError("时区偏移超出范围")
     return timezone(sign * timedelta(hours=hours, minutes=minutes))

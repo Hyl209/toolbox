@@ -67,3 +67,23 @@ def test_invalid_timezone_offset_is_rejected():
         assert "时区偏移超出范围" in str(exc)
     else:
         raise AssertionError("invalid timezone should be rejected")
+
+
+def test_decimal_timezone_offset_is_supported():
+    converter = _load_converter()
+
+    state = converter.timestamp_to_datetime("0", "+5.5")
+
+    assert state["datetime"] == "1970-01-01 05:30:00"
+    assert state["timezone"] == "+0530"
+
+
+def test_non_numeric_timezone_offset_reports_tool_error():
+    converter = _load_converter()
+
+    try:
+        converter.timestamp_to_datetime("0", "abc")
+    except converter.TimestampToolError as exc:
+        assert "无法识别时区偏移" in str(exc)
+    else:
+        raise AssertionError("invalid timezone text should be rejected")
