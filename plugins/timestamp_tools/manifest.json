@@ -1,0 +1,11 @@
+{
+  "name": "timestamp_tools",
+  "version": "1.0.0",
+  "description": "时间戳与日期时间互转",
+  "author": "HylToolbox",
+  "sidebar_label": "时间戳工具",
+  "entry": "plugin.py:TimestampToolsPlugin",
+  "type": "gui",
+  "enabled": true,
+  "priority": 0
+}

@@ -70,6 +70,7 @@ def test_spec_includes_real_plugin_files():
         'plugins/file_hasher/plugin.py',
         'plugins/json_tools/converter.py',
         'plugins/text_tools/converter.py',
+        'plugins/timestamp_tools/converter.py',
         'plugins/url_tools/plugin.py',
         'plugins/app_logger.py',
     }

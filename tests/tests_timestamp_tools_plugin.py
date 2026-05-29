@@ -1,0 +1,69 @@
+from __future__ import annotations
+
+import importlib.util
+from pathlib import Path
+
+from toolbox_app.plugins.manager import PluginManager, reset_plugin_manager
+
+
+ROOT = Path(__file__).resolve().parents[1]
+PLUGIN_DIR = ROOT / "plugins" / "timestamp_tools"
+
+
+def _load_converter():
+    spec = importlib.util.spec_from_file_location("timestamp_tools_converter_test", PLUGIN_DIR / "converter.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_timestamp_tools_plugin_loads():
+    reset_plugin_manager()
+    manager = PluginManager(ROOT / "plugins")
+    found = manager.discover_plugins()
+    assert "timestamp_tools" in found
+    assert found["timestamp_tools"].sidebar_label == "时间戳工具"
+    results = manager.load_all_plugins()
+    assert results.get("timestamp_tools") is True
+    plugin = manager.get_plugin("timestamp_tools")
+    assert plugin is not None
+    assert plugin.get_sidebar_label() == "时间戳工具"
+
+
+def test_timestamp_to_datetime_uses_seconds_in_requested_timezone():
+    converter = _load_converter()
+
+    state = converter.timestamp_to_datetime("0", "+08:00")
+
+    assert state["datetime"] == "1970-01-01 08:00:00"
+    assert state["unit"] == "seconds"
+    assert state["timezone"] == "+0800"
+
+
+def test_timestamp_to_datetime_auto_detects_milliseconds():
+    converter = _load_converter()
+
+    state = converter.timestamp_to_datetime("1000", "UTC", unit="milliseconds")
+
+    assert state["datetime"] == "1970-01-01 00:00:01"
+    assert state["unit"] == "milliseconds"
+
+
+def test_datetime_to_timestamp_defaults_to_configured_timezone():
+    converter = _load_converter()
+
+    state = converter.datetime_to_timestamp("1970-01-01 08:00:01", "+08:00")
+
+    assert state["seconds"] == 1
+    assert state["milliseconds"] == 1000
+
+
+def test_invalid_timezone_offset_is_rejected():
+    converter = _load_converter()
+
+    try:
+        converter.timestamp_to_datetime("0", "+25:00")
+    except converter.TimestampToolError as exc:
+        assert "时区偏移超出范围" in str(exc)
+    else:
+        raise AssertionError("invalid timezone should be rejected")
