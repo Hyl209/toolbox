@@ -38,7 +38,7 @@ class PluginDiscovery:
             return {}
 
         # 扫描插件目录
-        for plugin_path in self.plugins_dir.iterdir():
+        for plugin_path in sorted(self.plugins_dir.iterdir(), key=lambda path: path.name.lower()):
             if self._should_skip_path(plugin_path):
                 continue
             if plugin_path.is_dir():
@@ -80,10 +80,21 @@ class PluginDiscovery:
                 info.plugin_path = str(plugin_path)
                 # entry 格式: 文件名:类名 (用第一个匹配的 PluginBase 子类)
                 info.entry = f"{plugin_path.name}:{matches[0]}"
-                self._discovered_plugins[info.name] = info
+                self._remember_plugin_info(info, plugin_path)
 
         except Exception as e:
             logger.error(f"扫描插件文件失败 {plugin_path}: {e}")
+
+    def _remember_plugin_info(self, plugin_info: PluginInfo, plugin_path: Path) -> bool:
+        if plugin_info.name in self._discovered_plugins:
+            existing = self._discovered_plugins[plugin_info.name].plugin_path
+            logger.error(
+                f"插件名称重复，已跳过: {plugin_info.name} "
+                f"({plugin_path}, existing={existing})"
+            )
+            return False
+        self._discovered_plugins[plugin_info.name] = plugin_info
+        return True
 
     @staticmethod
     def _extract_info_from_source(source: str, fallback_name: str) -> Optional[PluginInfo]:
@@ -204,8 +215,8 @@ class PluginDiscovery:
                 sidebar_label=self._optional_manifest_text(manifest, 'sidebar_label', ''),
             )
 
-            self._discovered_plugins[plugin_info.name] = plugin_info
-            logger.debug(f"发现插件: {plugin_info.name} v{plugin_info.version}")
+            if self._remember_plugin_info(plugin_info, plugin_path):
+                logger.debug(f"发现插件: {plugin_info.name} v{plugin_info.version}")
 
         except Exception as e:
             logger.error(f"加载 manifest.json 失败 {manifest_path}: {e}")

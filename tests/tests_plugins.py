@@ -265,6 +265,31 @@ class TestPluginDiscovery:
 
         assert "bad_type" not in disc.discover_plugins()
 
+    def test_duplicate_manifest_plugin_names_keep_first_discovered_plugin(self, tmp_plugins_dir):
+        first_dir = tmp_plugins_dir / "aaa_first"
+        second_dir = tmp_plugins_dir / "zzz_second"
+        first_dir.mkdir()
+        second_dir.mkdir()
+        base_manifest = {
+            "name": "shared_tool",
+            "version": "1.0",
+            "description": "d",
+            "author": "a",
+            "entry": "plugin.py:X",
+        }
+        first_manifest = dict(base_manifest, sidebar_label="First")
+        second_manifest = dict(base_manifest, sidebar_label="Second")
+        (first_dir / "manifest.json").write_text(json.dumps(first_manifest), encoding="utf-8")
+        (second_dir / "manifest.json").write_text(json.dumps(second_manifest), encoding="utf-8")
+        (first_dir / "plugin.py").write_text("pass", encoding="utf-8")
+        (second_dir / "plugin.py").write_text("pass", encoding="utf-8")
+
+        disc = PluginDiscovery(tmp_plugins_dir)
+        found = disc.discover_plugins()
+
+        assert found["shared_tool"].plugin_path == str(first_dir)
+        assert found["shared_tool"].sidebar_label == "First"
+
 
 # ---------------------------------------------------------------------------
 # PluginRegistry tests
