@@ -21,6 +21,10 @@ def generate_spec() -> str:
     extra_datas = [
         ('themes/dark.qss', 'themes'),
         ('themes/light.qss', 'themes'),
+        ('arrow-dark.svg', '.'),
+        ('arrow-light.svg', '.'),
+        ('check.svg', '.'),
+        ('uncheck.svg', '.'),
         ('logo.png', '.'),
         ('sound.mp3', '.'),
         ('modules/ncm-converter/weixin_base64.txt', 'modules/ncm-converter'),

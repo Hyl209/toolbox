@@ -430,9 +430,21 @@ def build_settings_dialog_class(deps: dict):
             save_setting(self.settings, 'auth/auto_login', '1' if self.auto_login_checkbox.isChecked() else '0')
             # 内置工具
             disabled_tools = set()
+            enabled_tools = 0
             for tid, cb in self._tool_checkboxes.items():
-                if not cb.isChecked():
+                if cb.isChecked():
+                    enabled_tools += 1
+                else:
                     disabled_tools.add(tid)
+            # 外部插件（也计入）
+            enabled_plugins = 0
+            for name, cb in self._plugin_checkboxes.items():
+                if cb.isChecked():
+                    enabled_plugins += 1
+            if enabled_tools + enabled_plugins == 0:
+                from toolbox_app.widgets.dialogs import show_themed_warning
+                show_themed_warning(self, '无法保存', '至少需要保留一个功能或插件处于启用状态。')
+                return
             save_setting(self.settings, 'tools/disabled', ','.join(sorted(disabled_tools)))
             # 外部插件
             if self.plugin_manager is not None:

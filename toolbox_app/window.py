@@ -379,8 +379,10 @@ def build_toolbox_window_class(deps: dict):
             # 清理插件
             if hasattr(self, '_plugin_manager') and self._plugin_manager is not None:
                 try:
-                    # 先保存禁用列表（cleanup 后 registry 已清空）
-                    disabled = self._plugin_manager.get_disabled_plugin_names()
+                    # 合并：启动时未加载的禁用插件（不在 registry 中）+ 运行时禁用的
+                    orig_disabled_str = load_setting(self.settings, 'plugins/disabled', '')
+                    orig_disabled = set(orig_disabled_str.split(',')) if orig_disabled_str.strip() else set()
+                    disabled = self._plugin_manager.get_disabled_plugin_names() | orig_disabled
                     save_setting(self.settings, 'plugins/disabled', ','.join(sorted(disabled)))
                     for name, plugin in self._plugin_manager.get_enabled_plugins().items():
                         try:
@@ -444,8 +446,9 @@ def build_toolbox_window_class(deps: dict):
                 self._sidebar_to_stack.append(self._get_stack_index(tid))
                 self.sidebar.addItem(sidebar_texts[tid])
             self.sidebar.blockSignals(False)
-            self.sidebar.setCurrentRow(0)
-            self.stack.setCurrentIndex(self._sidebar_to_stack[0])
+            if self._sidebar_to_stack:
+                self.sidebar.setCurrentRow(0)
+                self.stack.setCurrentIndex(self._sidebar_to_stack[0])
 
         def _get_stack_index(self, tab_id: str) -> int:
             widget = self._tabs.get(tab_id)
