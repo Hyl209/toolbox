@@ -1,0 +1,11 @@
+{
+  "name": "csv_tools",
+  "version": "1.0.0",
+  "description": "格式化 CSV，转换 TSV 和 JSON",
+  "author": "HylToolbox",
+  "sidebar_label": "CSV 工具",
+  "entry": "plugin.py:CsvToolsPlugin",
+  "type": "gui",
+  "enabled": true,
+  "priority": 0
+}
