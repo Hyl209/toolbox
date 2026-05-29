@@ -56,8 +56,11 @@ def animate_stack_switch(stack: QStackedWidget, index: int):
     prev = getattr(page, '_slide_animation', None)
     if prev is not None:
         for anim in prev:
-            if anim is not None and anim.state() == QPropertyAnimation.State.Running:
-                anim.stop()
+            try:
+                if anim is not None and anim.state() == QPropertyAnimation.State.Running:
+                    anim.stop()
+            except RuntimeError:
+                pass  # C++ object already deleted by DeleteWhenStopped
     end_pos = page.pos()
     offset = 100 if index > current_index else -100
     start_pos = QPoint(end_pos.x(), end_pos.y() + offset)
