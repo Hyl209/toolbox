@@ -996,6 +996,60 @@ def test_settings_dialog_reuses_plugin_metadata_and_ignores_invalid_nav_rows():
             app.processEvents()
 
 
+def test_settings_dialog_disables_plugin_dependents_when_dependency_is_disabled():
+    toolbox = load_module()
+    if toolbox.QWidget is None:
+        return
+    from toolbox_app.plugins.base import PluginInfo
+
+    class FakeDiscovery:
+        def get_all_plugins(self):
+            return {
+                'core_dep': PluginInfo(
+                    name='core_dep',
+                    version='1.0',
+                    description='core dependency',
+                    author='tester',
+                    plugin_type='gui',
+                ),
+                'dependent': PluginInfo(
+                    name='dependent',
+                    version='1.0',
+                    description='dependent plugin',
+                    author='tester',
+                    dependencies=['core_dep'],
+                    plugin_type='gui',
+                ),
+            }
+
+    class FakePluginManager:
+        def __init__(self):
+            self.discovery = FakeDiscovery()
+            self.enabled_calls = []
+
+        def set_plugin_enabled(self, name, enabled):
+            self.enabled_calls.append((name, enabled))
+
+    with tempfile.TemporaryDirectory() as tmp:
+        app = toolbox.QApplication.instance() or toolbox.QApplication([])
+        settings = toolbox.make_settings(tmp)
+        manager = FakePluginManager()
+        dialog = toolbox.SettingsDialog(settings, manager, None)
+        try:
+            dialog._plugin_checkboxes['core_dep'].setChecked(False)
+            dialog._save_and_close()
+            disabled = toolbox.load_setting(settings, 'plugins/disabled', '')
+            assert disabled == 'core_dep,dependent'
+            assert not dialog._plugin_checkboxes['dependent'].isChecked()
+            assert set(manager.enabled_calls) == {
+                ('core_dep', False),
+                ('dependent', False),
+            }
+        finally:
+            dialog.close()
+            app.processEvents()
+
+
 def test_settings_dialog_order_uses_stable_ids_when_labels_duplicate():
     toolbox = load_module()
     if toolbox.QWidget is None:

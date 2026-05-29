@@ -450,6 +450,25 @@ def build_settings_dialog_class(deps: dict):
             if checked and not self.remember_checkbox.isChecked():
                 self.remember_checkbox.setChecked(True)
 
+        def _resolve_disabled_plugins_from_checkboxes(self) -> set[str]:
+            disabled = {name for name, cb in self._plugin_checkboxes.items() if not cb.isChecked()}
+            visible_plugins = set(self._plugin_checkboxes)
+            changed = True
+            while changed:
+                changed = False
+                for name, info in self._iter_user_visible_plugin_infos():
+                    if name in disabled:
+                        continue
+                    dependencies = getattr(info, 'dependencies', None) or []
+                    if any(dep in disabled or dep not in visible_plugins for dep in dependencies):
+                        disabled.add(name)
+                        changed = True
+            for name in disabled:
+                cb = self._plugin_checkboxes.get(name)
+                if cb is not None and cb.isChecked():
+                    cb.setChecked(False)
+            return disabled
+
         def _save_and_close(self):
             save_setting(self.settings, 'auth/remember_password', '1' if self.remember_checkbox.isChecked() else '0')
             save_setting(self.settings, 'auth/auto_login', '1' if self.auto_login_checkbox.isChecked() else '0')
@@ -462,10 +481,12 @@ def build_settings_dialog_class(deps: dict):
                 else:
                     disabled_tools.add(tid)
             # 外部插件（也计入）
-            enabled_plugins = 0
-            for name, cb in self._plugin_checkboxes.items():
-                if cb.isChecked():
-                    enabled_plugins += 1
+            disabled_plugins = (
+                self._resolve_disabled_plugins_from_checkboxes()
+                if self.plugin_manager is not None
+                else set()
+            )
+            enabled_plugins = len(self._plugin_checkboxes) - len(disabled_plugins)
             if enabled_tools + enabled_plugins == 0:
                 from toolbox_app.widgets.dialogs import show_themed_warning
                 show_themed_warning(self, '无法保存', '至少需要保留一个功能或插件处于启用状态。')
@@ -473,14 +494,9 @@ def build_settings_dialog_class(deps: dict):
             save_setting(self.settings, 'tools/disabled', ','.join(sorted(disabled_tools)))
             # 外部插件
             if self.plugin_manager is not None:
-                disabled = set()
                 for name, cb in self._plugin_checkboxes.items():
-                    if cb.isChecked():
-                        self.plugin_manager.set_plugin_enabled(name, True)
-                    else:
-                        disabled.add(name)
-                        self.plugin_manager.set_plugin_enabled(name, False)
-                save_setting(self.settings, 'plugins/disabled', ','.join(sorted(disabled)))
+                    self.plugin_manager.set_plugin_enabled(name, name not in disabled_plugins)
+                save_setting(self.settings, 'plugins/disabled', ','.join(sorted(disabled_plugins)))
             order_ids = self._get_current_order_ids()
             save_setting(self.settings, 'sidebar/order', ','.join(order_ids))
             self.accept()
