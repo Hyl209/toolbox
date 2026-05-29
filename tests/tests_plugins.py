@@ -142,6 +142,16 @@ class TestPluginDiscovery:
         found = disc.discover_plugins()
         assert len(found) == 0
 
+    def test_discover_missing_dir_returns_empty(self, tmp_path):
+        disc = PluginDiscovery(tmp_path / "missing_plugins")
+        assert disc.discover_plugins() == {}
+
+    def test_discover_file_path_returns_empty(self, tmp_path):
+        plugin_file = tmp_path / "plugins"
+        plugin_file.write_text("not a directory", encoding="utf-8")
+        disc = PluginDiscovery(plugin_file)
+        assert disc.discover_plugins() == {}
+
     def test_validate_missing_dependency(self, tmp_plugins_dir):
         plugin_dir = tmp_plugins_dir / "dep_plugin"
         plugin_dir.mkdir()
@@ -279,6 +289,11 @@ class TestPluginManager:
         mgr = PluginManager(tmp_plugins_dir)
         results = mgr.load_all_plugins()
         assert results.get("bad_plugin") is False
+
+    def test_load_all_plugins_missing_dir_returns_empty(self, tmp_path):
+        reset_plugin_manager()
+        mgr = PluginManager(tmp_path / "missing_plugins")
+        assert mgr.load_all_plugins() == {}
 
     def test_real_example_plugin_is_disabled_by_default(self):
         reset_plugin_manager()

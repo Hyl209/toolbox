@@ -29,6 +29,12 @@ class PluginDiscovery:
     def discover_plugins(self) -> dict[str, PluginInfo]:
         """发现所有插件（只读 metadata，不执行插件代码）"""
         self._discovered_plugins.clear()
+        if not self.plugins_dir.exists():
+            logger.info(f"插件目录不存在: {self.plugins_dir}")
+            return {}
+        if not self.plugins_dir.is_dir():
+            logger.warning(f"插件路径不是目录: {self.plugins_dir}")
+            return {}
 
         # 扫描插件目录
         for plugin_path in self.plugins_dir.iterdir():
