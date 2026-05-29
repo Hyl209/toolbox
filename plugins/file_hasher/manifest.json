@@ -1,0 +1,10 @@
+{
+  "name": "file_hasher",
+  "version": "1.0.0",
+  "description": "计算并校验文件 MD5 / SHA1 / SHA256 哈希",
+  "author": "HylToolbox",
+  "entry": "plugin.py:FileHasherPlugin",
+  "type": "gui",
+  "enabled": true,
+  "priority": 0
+}
