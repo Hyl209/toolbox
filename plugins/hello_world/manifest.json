@@ -5,6 +5,6 @@
   "author": "HylToolbox",
   "entry": "plugin.py:HelloWorldPlugin",
   "type": "gui",
-  "enabled": true,
+  "enabled": false,
   "priority": 0
 }

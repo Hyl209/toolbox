@@ -14,6 +14,9 @@ from toolbox_app.plugins.registry import PluginRegistry
 from toolbox_app.plugins.manager import PluginManager, reset_plugin_manager
 
 
+ROOT = Path(__file__).resolve().parents[1]
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -273,3 +276,11 @@ class TestPluginManager:
         mgr = PluginManager(tmp_plugins_dir)
         results = mgr.load_all_plugins()
         assert results.get("bad_plugin") is False
+
+    def test_real_example_plugin_is_disabled_by_default(self):
+        reset_plugin_manager()
+        mgr = PluginManager(ROOT / "plugins")
+        results = mgr.load_all_plugins()
+        assert results.get("hello_world") is False
+        assert mgr.get_plugin("hello_world") is None
+        assert results.get("file_hasher") is True
