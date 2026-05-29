@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import importlib.util
 import threading
+from collections import deque
 from pathlib import Path
 
 from toolbox_app.plugins.base import PluginBase, PluginInfo
 
 
-def _load_converter():
+def _load_converter():  # -> types.ModuleType
     converter_path = Path(__file__).with_name("converter.py")
     spec = importlib.util.spec_from_file_location("archive_extractor_converter", converter_path)
     if spec is None or spec.loader is None:
@@ -20,7 +21,7 @@ def _load_converter():
 _converter = _load_converter()
 
 
-def _get_qtimer(deps: dict):
+def _get_qtimer(deps: dict):  # -> type[QTimer] | None
     qtimer = deps.get("QTimer")
     if qtimer is not None:
         return qtimer
@@ -34,21 +35,22 @@ def _get_qtimer(deps: dict):
 class ArchiveExtractorPlugin(PluginBase):
     def __init__(self):
         super().__init__()
-        self._deps = {}
+        self._deps: dict = {}
         self._widget = None
-        self._detect_generation = 0
+        self._detect_generation: int = 0
         self._detect_lock = threading.Lock()
-        self._detect_result = None
-        self._extract_generation = 0
+        self._detect_result: tuple[int, str, str, str] | None = None
+        self._extracting: bool = False
+        self._abort: threading.Event | None = None
+        self._extract_logs: deque[str] = deque()
+        self._extract_result: tuple[int, str, str] | None = None
         self._extract_lock = threading.Lock()
-        self._extract_result = None
-        self._extracting = False
 
     def get_plugin_info(self) -> PluginInfo:
         return PluginInfo(
             name="archive_extractor",
             version="1.0.0",
-            description="解压 ZIP 和 TAR 压缩包的 GUI 插件",
+            description="解压 ZIP / TAR / 7z 压缩包的 GUI 插件",
             author="HylToolbox",
             plugin_type="gui",
         )
@@ -86,14 +88,22 @@ class ArchiveExtractorPlugin(PluginBase):
         widget = QWidget()
         root = QVBoxLayout(widget)
         root.setContentsMargins(0, 0, 0, 0)
-        self.archive_path = ""
+        self.archive_path: str = ""
         self.settings = self._deps.get("settings")
+
         self._detect_timer = QTimer(widget) if QTimer else None
         if self._detect_timer is not None:
+            self._detect_timer.setSingleShot(True)
             self._detect_timer.setInterval(80)
             self._detect_timer.timeout.connect(self._finish_pending_detection)
+
+        self._extract_timer = QTimer(widget) if QTimer else None
+        if self._extract_timer is not None:
+            self._extract_timer.setInterval(80)
+            self._extract_timer.timeout.connect(self._finish_pending_extraction)
+
         if make_card:
-            card, layout = make_card("压缩包解压", "拖入任意文件，自动检测 ZIP / TAR 压缩包，不依赖后缀")
+            card, layout = make_card("压缩包解压", "拖入任意文件，自动检测 ZIP / TAR / 7z 压缩包")
         else:
             card = QWidget()
             layout = QVBoxLayout(card)
@@ -105,7 +115,7 @@ class ArchiveExtractorPlugin(PluginBase):
             DropBase = QFrame or QWidget
 
             class DropArea(DropBase):
-                def __init__(self, owner):
+                def __init__(self, owner: ArchiveExtractorPlugin):
                     super().__init__()
                     self._owner = owner
                     self.setAcceptDrops(True)
@@ -141,7 +151,7 @@ class ArchiveExtractorPlugin(PluginBase):
         self.output_edit = QLineEdit()
         if self.settings is not None:
             self.output_edit.setText(load_setting(self.settings, "archive_extractor/output_dir", ""))
-        self.output_edit.setPlaceholderText("默认使用压缩包同目录下的“文件名_解压”")
+        self.output_edit.setPlaceholderText("默认使用压缩包同目录下的"文件名_解压"")
         output_btn = QPushButton("选择路径")
         output_btn.clicked.connect(self._choose_output)
         output_row = QHBoxLayout()
@@ -151,7 +161,7 @@ class ArchiveExtractorPlugin(PluginBase):
 
         layout.addWidget(QLabel("解压密码"))
         self.password_edit = QLineEdit()
-        self.password_edit.setPlaceholderText("无密码可留空，仅 ZIP 加密压缩包需要")
+        self.password_edit.setPlaceholderText("无密码可留空，支持 ZIP / 7z 加密压缩包")
         layout.addWidget(self.password_edit)
 
         action_row = QHBoxLayout()
@@ -163,6 +173,11 @@ class ArchiveExtractorPlugin(PluginBase):
         self.clear_button.clicked.connect(self._clear_form)
         self.clear_button.setEnabled(False)
         action_row.addWidget(self.clear_button)
+        self.cancel_button = QPushButton("取消解压")
+        self.cancel_button.clicked.connect(self._cancel_extraction)
+        self.cancel_button.setEnabled(False)
+        self.cancel_button.setVisible(False)
+        action_row.addWidget(self.cancel_button)
         self.run_button = QPushButton("开始解压")
         self.run_button.clicked.connect(self._extract)
         self.run_button.setEnabled(False)
@@ -209,6 +224,8 @@ class ArchiveExtractorPlugin(PluginBase):
                 save_setting(self.settings, "archive_extractor/output_dir", path)
 
     def _extract(self):
+        if self._extracting:
+            return
         archive = self.archive_path
         output = self.output_edit.text().strip()
         if not archive:
@@ -218,16 +235,85 @@ class ArchiveExtractorPlugin(PluginBase):
             source = Path(archive)
             output = str(source.with_name(f"{source.name}_解压"))
             self.output_edit.setText(output)
+        self._start_extraction(archive, output)
+
+    def _start_extraction(self, archive: str, output: str):
+        self._extracting = True
+        self._abort = threading.Event()
+        self._extract_logs.clear()
+        with self._extract_lock:
+            self._extract_result = None
         if self.progress is not None:
             self.progress.setValue(0)
         self._set_status("正在解压...")
-        try:
-            count = _converter.extract_archive(archive, output, self.password_edit.text())
-        except Exception as exc:
-            self.log.appendPlainText(f"解压失败：{exc}")
-            self._set_status("解压失败")
-            self._show_message("解压失败", str(exc), error=True)
+        self._set_extract_ui(True)
+        self.log.appendPlainText(f"开始解压：{archive} -> {output}")
+
+        if self._extract_timer is None:
+            # No QTimer: run synchronously (fallback)
+            try:
+                count = _converter.extract_archive_sync(
+                    archive, output, self.password_edit.text()
+                )
+            except Exception as exc:
+                self.log.appendPlainText(f"解压失败：{exc}")
+                self._set_status("解压失败")
+                self._show_message("解压失败", str(exc), error=True)
+            else:
+                self._finish_extraction_success(count, output)
+            finally:
+                self._extracting = False
+                self._set_extract_ui(False)
             return
+
+        password = self.password_edit.text()
+        self._extract_timer.start()
+
+        def worker():
+            count = 0
+            error = ""
+            try:
+                gen = _converter.extract_archive(archive, output, password, self._abort)
+                for line in gen:
+                    self._extract_logs.append(line)
+                try:
+                    gen.send(None)
+                except StopIteration as exc:
+                    count = exc.value or 0
+            except Exception as exc:
+                error = str(exc)
+            with self._extract_lock:
+                self._extract_result = (count, error, output)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _finish_pending_extraction(self):
+        # Drain log lines
+        while self._extract_logs:
+            self.log.appendPlainText(self._extract_logs.popleft())
+
+        with self._extract_lock:
+            result = self._extract_result
+        if result is None:
+            return
+
+        self._extract_timer.stop()
+        self._extracting = False
+        self._set_extract_ui(False)
+
+        # Drain any remaining logs
+        while self._extract_logs:
+            self.log.appendPlainText(self._extract_logs.popleft())
+
+        count, error, output = result
+        if error:
+            self.log.appendPlainText(f"解压失败：{error}")
+            self._set_status("解压失败")
+            self._show_message("解压失败", error, error=True)
+            return
+        self._finish_extraction_success(count, output)
+
+    def _finish_extraction_success(self, count: int, output: str):
         if self.progress is not None:
             self.progress.setValue(100)
         self.log.appendPlainText(f"解压完成：{count} 个条目 -> {output}")
@@ -236,6 +322,18 @@ class ArchiveExtractorPlugin(PluginBase):
             save_setting(self.settings, "archive_extractor/output_dir", output)
         self._set_status(f"解压完成：{count} 个条目")
         self._show_message("解压完成", f"已解压 {count} 个条目")
+
+    def _cancel_extraction(self):
+        if self._abort is not None:
+            self._abort.set()
+        self.log.appendPlainText("正在取消解压...")
+
+    def _set_extract_ui(self, extracting: bool):
+        """Toggle UI elements during extraction."""
+        self.run_button.setEnabled(not extracting)
+        self.clear_button.setEnabled(not extracting)
+        self.cancel_button.setEnabled(extracting)
+        self.cancel_button.setVisible(extracting)
 
     def _handle_archive_drop(self, paths: list[str]):
         if paths:
@@ -279,12 +377,11 @@ class ArchiveExtractorPlugin(PluginBase):
             result = self._detect_result
             self._detect_result = None
         if result is None:
+            self._detect_timer.start()  # single-shot: restart if still waiting
             return
         generation, path, archive_type, error = result
         if generation != self._detect_generation:
             return
-        if self._detect_timer is not None:
-            self._detect_timer.stop()
         if error:
             self.log.appendPlainText(f"识别失败：{error}")
         self._apply_detected_archive(path, archive_type)
@@ -315,6 +412,8 @@ class ArchiveExtractorPlugin(PluginBase):
         self._detect_generation += 1
         with self._detect_lock:
             self._detect_result = None
+        if self._abort is not None:
+            self._abort.set()
         if hasattr(self, "_detect_timer") and self._detect_timer is not None:
             self._detect_timer.stop()
         self.archive_path = ""
@@ -357,7 +456,7 @@ class ArchiveExtractorPlugin(PluginBase):
 
     def handle_command(self, command: str, **kwargs):
         if command == "extract_archive":
-            return _converter.extract_archive(
+            return _converter.extract_archive_sync(
                 kwargs.get("archive_path", ""),
                 kwargs.get("output_dir", ""),
                 kwargs.get("password", ""),
@@ -368,7 +467,11 @@ class ArchiveExtractorPlugin(PluginBase):
 
     def cleanup(self):
         self._detect_generation += 1
+        if self._abort is not None:
+            self._abort.set()
         if hasattr(self, "_detect_timer") and self._detect_timer is not None:
             self._detect_timer.stop()
+        if hasattr(self, "_extract_timer") and self._extract_timer is not None:
+            self._extract_timer.stop()
         self._widget = None
         super().cleanup()
