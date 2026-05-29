@@ -1,0 +1,11 @@
+{
+  "name": "regex_tools",
+  "version": "1.0.0",
+  "description": "正则提取、替换和匹配统计",
+  "author": "HylToolbox",
+  "sidebar_label": "正则工具",
+  "entry": "plugin.py:RegexToolsPlugin",
+  "type": "gui",
+  "enabled": true,
+  "priority": 0
+}
