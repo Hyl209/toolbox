@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import textwrap
 import tempfile
 from pathlib import Path
@@ -249,6 +250,29 @@ class TestPluginManager:
         results = mgr.load_all_plugins(disabled_names={"my_gui_tool"})
         assert results.get("my_gui_tool") is False
         assert mgr.get_plugin("my_gui_tool") is None
+
+    def test_repeated_load_all_plugins_is_idempotent(self, gui_plugin_dir, tmp_plugins_dir):
+        reset_plugin_manager()
+        mgr = PluginManager(tmp_plugins_dir)
+        first = mgr.load_all_plugins()
+        plugin = mgr.get_plugin("my_gui_tool")
+        second = mgr.load_all_plugins()
+        assert first.get("my_gui_tool") is True
+        assert second.get("my_gui_tool") is True
+        assert mgr.get_plugin("my_gui_tool") is plugin
+
+    def test_disabled_plugin_is_unregistered_on_reload(self, gui_plugin_dir, tmp_plugins_dir):
+        reset_plugin_manager()
+        mgr = PluginManager(tmp_plugins_dir)
+        assert mgr.load_all_plugins().get("my_gui_tool") is True
+        module_name = mgr._loaded_module_names["my_gui_tool"]
+        assert module_name in sys.modules
+
+        results = mgr.load_all_plugins(disabled_names={"my_gui_tool"})
+
+        assert results.get("my_gui_tool") is False
+        assert mgr.get_plugin("my_gui_tool") is None
+        assert module_name not in sys.modules
 
     def test_initialize_with_deps(self, gui_plugin_dir, tmp_plugins_dir):
         reset_plugin_manager()

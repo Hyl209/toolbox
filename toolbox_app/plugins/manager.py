@@ -41,7 +41,10 @@ class PluginManager:
 
     def unregister_plugin(self, plugin_name: str) -> bool:
         """注销插件"""
-        return self._registry.unregister(plugin_name)
+        removed = self._registry.unregister(plugin_name)
+        if removed:
+            self._unload_plugin_module(plugin_name)
+        return removed
 
     def initialize_plugin(self, plugin_name: str, deps: dict = None) -> bool:
         """初始化插件"""
@@ -62,6 +65,11 @@ class PluginManager:
         for name, module_name in self._loaded_module_names.items():
             sys.modules.pop(module_name, None)
         self._loaded_module_names.clear()
+
+    def _unload_plugin_module(self, plugin_name: str) -> None:
+        module_name = self._loaded_module_names.pop(plugin_name, None)
+        if module_name:
+            sys.modules.pop(module_name, None)
 
     def get_plugin(self, plugin_name: str) -> Optional[PluginBase]:
         """获取插件"""
@@ -98,13 +106,22 @@ class PluginManager:
             logger.error(f"插件未发现: {plugin_name}")
             return False
 
+        registered_plugin = self._registry.get_plugin(plugin_name)
+
         # 跳过 manifest 中标记为 disabled 或被用户禁用的插件
         if not plugin_info.enabled:
             logger.info(f"插件已禁用 (manifest): {plugin_name}")
+            if registered_plugin is not None:
+                self.unregister_plugin(plugin_name)
             return False
         if disabled_names and plugin_name in disabled_names:
             logger.info(f"插件已禁用 (用户设置): {plugin_name}")
+            if registered_plugin is not None:
+                self.unregister_plugin(plugin_name)
             return False
+
+        if registered_plugin is not None:
+            return True
 
         if not self._discovery.validate_plugin(plugin_name):
             logger.error(f"插件验证失败: {plugin_name}")
