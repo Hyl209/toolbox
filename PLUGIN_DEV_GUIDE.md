@@ -209,7 +209,7 @@ class MyHookPlugin(PluginBase):
 | `type` | string | 否 | `"gui"` | `"gui"` 或 `"hook"` |
 | `enabled` | bool | 否 | `true` | 是否默认启用 |
 | `priority` | int | 否 | `0` | 加载优先级，越大越先加载 |
-| `dependencies` | list | 否 | `[]` | 依赖的其他插件 `name` 列表 |
+| `dependencies` | list | 否 | `[]` | 依赖的其他插件 `name` 列表；不能自引用或形成循环 |
 
 ---
 

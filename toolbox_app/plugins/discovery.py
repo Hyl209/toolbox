@@ -47,6 +47,7 @@ class PluginDiscovery:
             elif plugin_path.suffix == '.py' and not plugin_path.name.startswith('_'):
                 self._scan_plugin_file(plugin_path)
 
+        self._drop_cyclic_dependency_plugins()
         logger.info(f"发现 {len(self._discovered_plugins)} 个插件")
         return self._discovered_plugins.copy()
 
@@ -154,6 +155,11 @@ class PluginDiscovery:
             )
         for item in normalized:
             PluginDiscovery._validate_plugin_name(item, plugin_name, 'dependencies')
+            if item == plugin_name:
+                raise PluginError(
+                    "manifest.json dependencies cannot reference the plugin itself",
+                    plugin_name,
+                )
         return normalized
 
     @staticmethod
@@ -224,18 +230,19 @@ class PluginDiscovery:
                     manifest.get('name'),
                 )
 
+            plugin_name = self._validate_plugin_name(
+                self._required_manifest_text(manifest, 'name'),
+                manifest.get('name'),
+            )
             # 创建插件信息
             plugin_info = PluginInfo(
-                name=self._validate_plugin_name(
-                    self._required_manifest_text(manifest, 'name'),
-                    manifest.get('name'),
-                ),
+                name=plugin_name,
                 version=self._required_manifest_text(manifest, 'version'),
                 description=self._required_manifest_text(manifest, 'description'),
                 author=self._required_manifest_text(manifest, 'author'),
                 dependencies=self._normalize_dependencies(
                     manifest.get('dependencies'),
-                    manifest['name'],
+                    plugin_name,
                 ),
                 enabled=self._optional_manifest_bool(manifest, 'enabled', True),
                 priority=self._optional_manifest_int(manifest, 'priority', 0),
@@ -250,6 +257,33 @@ class PluginDiscovery:
 
         except Exception as e:
             logger.error(f"加载 manifest.json 失败 {manifest_path}: {e}")
+
+    def _drop_cyclic_dependency_plugins(self) -> None:
+        cyclic_plugins: set[str] = set()
+        visiting: list[str] = []
+        visited: set[str] = set()
+
+        def visit(name: str):
+            if name in visiting:
+                cyclic_plugins.update(visiting[visiting.index(name):])
+                return
+            if name in visited:
+                return
+            info = self._discovered_plugins.get(name)
+            if info is None:
+                return
+            visiting.append(name)
+            for dep_name in info.dependencies:
+                if dep_name in self._discovered_plugins:
+                    visit(dep_name)
+            visiting.pop()
+            visited.add(name)
+
+        for plugin_name in list(self._discovered_plugins):
+            visit(plugin_name)
+        for plugin_name in sorted(cyclic_plugins):
+            logger.error(f"插件依赖存在循环，已跳过: {plugin_name}")
+            self._discovered_plugins.pop(plugin_name, None)
 
     def get_plugin_info(self, plugin_name: str) -> Optional[PluginInfo]:
         """获取指定插件信息"""

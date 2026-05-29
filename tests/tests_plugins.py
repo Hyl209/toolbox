@@ -276,6 +276,37 @@ class TestPluginDiscovery:
 
         assert "bad_dep_name" not in disc.discover_plugins()
 
+    def test_manifest_self_dependency_is_skipped(self, tmp_plugins_dir):
+        plugin_dir = tmp_plugins_dir / "self_dep"
+        plugin_dir.mkdir()
+        manifest = {
+            "name": "self_dep", "version": "1.0", "description": "d", "author": "a",
+            "entry": "plugin.py:X", "dependencies": ["self_dep"],
+        }
+        (plugin_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        (plugin_dir / "plugin.py").write_text("pass", encoding="utf-8")
+
+        disc = PluginDiscovery(tmp_plugins_dir)
+
+        assert "self_dep" not in disc.discover_plugins()
+
+    def test_manifest_dependency_cycle_is_skipped(self, tmp_plugins_dir):
+        for name, dep in (("cycle_a", "cycle_b"), ("cycle_b", "cycle_a")):
+            plugin_dir = tmp_plugins_dir / name
+            plugin_dir.mkdir()
+            manifest = {
+                "name": name, "version": "1.0", "description": "d", "author": "a",
+                "entry": "plugin.py:X", "dependencies": [dep],
+            }
+            (plugin_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            (plugin_dir / "plugin.py").write_text("pass", encoding="utf-8")
+
+        disc = PluginDiscovery(tmp_plugins_dir)
+        found = disc.discover_plugins()
+
+        assert "cycle_a" not in found
+        assert "cycle_b" not in found
+
     def test_manifest_invalid_dependencies_type_is_skipped(self, tmp_plugins_dir):
         plugin_dir = tmp_plugins_dir / "bad_deps"
         plugin_dir.mkdir()
@@ -589,8 +620,8 @@ class TestPluginManager:
         mgr = PluginManager(tmp_plugins_dir)
         results = mgr.load_all_plugins()
 
-        assert results["first"] is False
-        assert results["second"] is False
+        assert "first" not in results
+        assert "second" not in results
         assert mgr.get_plugin_count() == 0
 
     def test_repeated_load_all_plugins_is_idempotent(self, gui_plugin_dir, tmp_plugins_dir):
