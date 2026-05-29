@@ -325,6 +325,28 @@ def test_frozen_app_prefers_source_dir_when_user_store_exists_next_to_script():
                 toolbox.sys.frozen = original_frozen
 
 
+def test_resolve_plugins_dir_prefers_bundled_plugins_when_available():
+    toolbox = load_module()
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp) / 'bundle'
+        app_dir = pathlib.Path(tmp) / 'app'
+        (root / 'plugins').mkdir(parents=True)
+        app_dir.mkdir()
+
+        assert toolbox.resolve_plugins_dir(root, app_dir) == root / 'plugins'
+
+
+def test_resolve_plugins_dir_falls_back_to_app_plugins_for_external_plugins():
+    toolbox = load_module()
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp) / 'bundle'
+        app_dir = pathlib.Path(tmp) / 'app'
+        root.mkdir()
+        app_dir.mkdir()
+
+        assert toolbox.resolve_plugins_dir(root, app_dir) == app_dir / 'plugins'
+
+
 def test_should_auto_login_only_when_saved_credentials_are_valid():
     toolbox = load_module()
     prefs = {

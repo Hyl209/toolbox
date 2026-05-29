@@ -91,8 +91,21 @@ except ModuleNotFoundError:
 
 ROOT = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
 SOURCE_DIR = Path(__file__).resolve().parent
-APP_DIR = SOURCE_DIR if getattr(sys, 'frozen', False) and (SOURCE_DIR / 'users.json').exists() else (Path(sys.executable).resolve().parent if getattr(sys, 'frozen', False) else SOURCE_DIR)
-PLUGINS_DIR = APP_DIR / 'plugins'
+
+
+def resolve_app_dir(source_dir: Path, executable_path: str, frozen: bool) -> Path:
+    if frozen and (source_dir / 'users.json').exists():
+        return source_dir
+    return Path(executable_path).resolve().parent if frozen else source_dir
+
+
+def resolve_plugins_dir(root: Path, app_dir: Path) -> Path:
+    bundled_plugins = root / 'plugins'
+    return bundled_plugins if bundled_plugins.exists() else app_dir / 'plugins'
+
+
+APP_DIR = resolve_app_dir(SOURCE_DIR, sys.executable, getattr(sys, 'frozen', False))
+PLUGINS_DIR = resolve_plugins_dir(ROOT, APP_DIR)
 MUSIC_DIR = ROOT / 'modules' / 'ncm-converter'
 ZIP_DIR = ROOT / 'modules' / 'file-disguise'
 MP4_DIR = ROOT / 'modules' / 'audio-extractor'

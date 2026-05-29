@@ -10,6 +10,7 @@ from toolbox_app.tool_registry import (
     get_packaging_datas,
     get_tool_definitions,
 )
+from generate_spec import get_plugin_packaging_datas
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SPEC_PATH = ROOT / 'HylToolbox.spec'
@@ -58,6 +59,22 @@ def test_spec_includes_all_packaging_datas():
     for src, dest in get_packaging_datas():
         normalized = _norm(src)
         assert normalized in spec_text, f'spec missing {normalized}'
+
+
+def test_spec_includes_real_plugin_files():
+    spec_text = _norm(SPEC_PATH.read_text(encoding='utf-8'))
+    plugin_datas = get_plugin_packaging_datas(ROOT)
+    expected = {
+        'plugins/archive_extractor/manifest.json',
+        'plugins/file_hasher/plugin.py',
+        'plugins/json_tools/converter.py',
+        'plugins/url_tools/plugin.py',
+        'plugins/app_logger.py',
+    }
+    data_srcs = {_norm(src) for src, _dest in plugin_datas}
+    assert expected <= data_srcs
+    for src in expected:
+        assert src in spec_text, f'spec missing {src}'
 
 
 def test_packaging_datas_covers_all_registered_tools():

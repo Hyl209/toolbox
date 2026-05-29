@@ -14,6 +14,29 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from toolbox_app.tool_registry import get_packaging_datas
 
 
+PLUGIN_DATA_SUFFIXES = {'.json', '.md', '.py'}
+PLUGIN_DATA_SKIP_PARTS = {'__pycache__', 'logs', '.codex-pytest-tmp', '.pytest-tmp'}
+
+
+def get_plugin_packaging_datas(root: Path | None = None) -> list[tuple[str, str]]:
+    root = root or Path(__file__).resolve().parent
+    plugins_dir = root / 'plugins'
+    if not plugins_dir.exists():
+        return []
+
+    datas: list[tuple[str, str]] = []
+    for path in sorted(plugins_dir.rglob('*')):
+        if not path.is_file():
+            continue
+        rel = path.relative_to(root)
+        if any(part in PLUGIN_DATA_SKIP_PARTS for part in rel.parts):
+            continue
+        if path.suffix.lower() not in PLUGIN_DATA_SUFFIXES:
+            continue
+        datas.append((rel.as_posix(), rel.parent.as_posix()))
+    return datas
+
+
 def generate_spec() -> str:
     datas = get_packaging_datas()
 
@@ -32,6 +55,10 @@ def generate_spec() -> str:
     # Deduplicate
     seen = {src for src, _ in datas}
     for src, dest in extra_datas:
+        if src not in seen:
+            datas.append((src, dest))
+            seen.add(src)
+    for src, dest in get_plugin_packaging_datas():
         if src not in seen:
             datas.append((src, dest))
             seen.add(src)
