@@ -114,6 +114,11 @@ def build_settings_dialog_class(deps: dict):
                 return {}
             return self.plugin_manager.discovery.get_all_plugins()
 
+        def _iter_user_visible_plugin_infos(self):
+            for name, info in sorted(self._plugin_infos.items()):
+                if getattr(info, 'enabled', True):
+                    yield name, info
+
         def _build_label_map(self) -> dict[str, str]:
             labels = {t.id: t.sidebar_label for t in TOOL_DEFINITIONS}
             labels.update({f'plugin:{name}': name for name in self._plugin_infos})
@@ -256,7 +261,7 @@ def build_settings_dialog_class(deps: dict):
             # 外部插件
             if self._plugin_infos:
                 disabled = self._setting_set('plugins/disabled')
-                for name, info in sorted(self._plugin_infos.items()):
+                for name, info in self._iter_user_visible_plugin_infos():
                     sidebar_label = self._label_map.get(f'plugin:{name}', name)
                     self._plugin_layout.addWidget(self._make_plugin_card(name, info, sidebar_label, name not in disabled))
             if not self._plugin_checkboxes:
@@ -356,7 +361,7 @@ def build_settings_dialog_class(deps: dict):
             # 构建所有可能的 id 集合
             all_ids = [t.id for t in TOOL_DEFINITIONS]
             if self._plugin_infos:
-                for name, plugin in self._plugin_infos.items():
+                for name, plugin in self._iter_user_visible_plugin_infos():
                     if plugin.plugin_type == 'gui':
                         all_ids.append(f'plugin:{name}')
             # 补全 saved_order 中缺失的新 id
@@ -398,7 +403,7 @@ def build_settings_dialog_class(deps: dict):
                 if t.id not in self._disabled_tools:
                     self._order_list.addItem(self._label_map.get(t.id, t.sidebar_label))
             if self._plugin_infos:
-                for name, plugin in self._plugin_infos.items():
+                for name, plugin in self._iter_user_visible_plugin_infos():
                     pid = f'plugin:{name}'
                     if plugin.plugin_type == 'gui' and name not in self._disabled_plugins:
                         self._order_list.addItem(self._label_map.get(pid, name))

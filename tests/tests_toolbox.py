@@ -960,6 +960,32 @@ def test_settings_dialog_reuses_plugin_metadata_and_ignores_invalid_nav_rows():
             app.processEvents()
 
 
+def test_settings_dialog_hides_manifest_disabled_demo_plugin_when_pyside_available():
+    toolbox = load_module()
+    if toolbox.QWidget is None:
+        return
+    from toolbox_app.plugins.manager import PluginManager, reset_plugin_manager
+
+    reset_plugin_manager()
+    with tempfile.TemporaryDirectory() as tmp:
+        app = toolbox.QApplication.instance() or toolbox.QApplication([])
+        settings = toolbox.make_settings(tmp)
+        manager = PluginManager(ROOT / 'plugins')
+        manager.discover_plugins()
+        dialog = toolbox.SettingsDialog(settings, manager, None)
+        try:
+            assert 'hello_world' not in dialog._plugin_checkboxes
+            assert 'file_hasher' in dialog._plugin_checkboxes
+            assert 'json_tools' in dialog._plugin_checkboxes
+            order_items = [dialog._order_list.item(i).text() for i in range(dialog._order_list.count())]
+            assert 'hello_world' not in order_items
+        finally:
+            dialog.close()
+            app.processEvents()
+            manager.cleanup_all_plugins()
+            reset_plugin_manager()
+
+
 def test_drop_zone_accepts_files():
     """测试拖放区域接受文件"""
     toolbox = load_module()
