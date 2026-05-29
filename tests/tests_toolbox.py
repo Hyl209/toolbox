@@ -831,6 +831,21 @@ def test_build_main_window_sidebar_includes_image_convert_pdf_split_video_downlo
         app.quit()
 
 
+def test_main_window_loads_promotable_plugins_without_demo_sidebar_item_when_pyside_available():
+    toolbox = load_module()
+    if toolbox.QWidget is None:
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        window, app = toolbox.build_main_window_for_test(tmp)
+        try:
+            sidebar_titles = [window.sidebar.item(i).text() for i in range(window.sidebar.count())]
+            assert '哈希校验' in sidebar_titles
+            assert not any('Hello' in title for title in sidebar_titles)
+        finally:
+            window.close()
+            app.quit()
+
+
 def test_file_sorter_tab_exposes_choose_button_and_idle_state_when_pyside_available():
     toolbox = load_module()
     if toolbox.QWidget is None:
