@@ -280,3 +280,30 @@ QLabel[dropBody='true'] {
     color: #7a8796;
     font-size: 13px;
 }
+QLabel[menuAvatar='true'] {
+    background-color: rgba(111, 149, 199, 0.22);
+    color: #1f252d;
+}
+QListWidget[orderList='true'] {
+    background-color: transparent;
+    border: none;
+    outline: none;
+    padding: 2px;
+}
+QListWidget[orderList='true']::item {
+    padding: 10px 14px;
+    border-radius: 12px;
+    margin: 3px 4px;
+    color: #243447;
+    background-color: rgba(216, 222, 230, 0.50);
+}
+QListWidget[orderList='true']::item:selected {
+    background-color: rgba(223, 234, 252, 0.85);
+    color: #1f252d;
+}
+QListWidget[orderList='true']::item:hover {
+    background-color: rgba(216, 226, 246, 0.65);
+}
+QListWidget[orderList='true']::item:pressed {
+    background-color: rgba(196, 212, 240, 0.70);
+}

@@ -242,23 +242,57 @@ def build_toolbox_window_class(deps: dict):
         def _build_user_menu(self):
             self.user_menu = QFrame(self)
             self.user_menu.setVisible(False)
-            self.user_menu.setFrameShape(QFrame.StyledPanel)
-            self.user_menu.setStyleSheet('border-radius: 18px; padding: 0px;')
+            self.user_menu.setProperty('card', True)
+            self.user_menu.setStyleSheet('QFrame { border-radius: 18px; }')
             layout = QVBoxLayout(self.user_menu)
-            layout.setContentsMargins(20, 20, 20, 20)
-            layout.setSpacing(14)
+            layout.setContentsMargins(20, 22, 20, 18)
+            layout.setSpacing(0)
+            # 头像圆圈
+            avatar_row = QHBoxLayout()
+            avatar_row.setAlignment(Qt.AlignCenter)
+            self.user_menu_avatar = QLabel('')
+            self.user_menu_avatar.setAlignment(Qt.AlignCenter)
+            self.user_menu_avatar.setMinimumSize(56, 56)
+            self.user_menu_avatar.setMaximumSize(56, 56)
+            self.user_menu_avatar.setProperty('menuAvatar', True)
+            avatar_row.addWidget(self.user_menu_avatar)
+            layout.addLayout(avatar_row)
+            layout.addSpacing(10)
+            # 用户名
             self.user_menu_name_label = QLabel('')
-            self.user_menu_name_label.setProperty('brandSub', True)
+            self.user_menu_name_label.setAlignment(Qt.AlignCenter)
+            self.user_menu_name_label.setProperty('brandTitle', True)
+            self.user_menu_name_label.setStyleSheet('font-size: 15px;')
             layout.addWidget(self.user_menu_name_label)
-            self.settings_button = QPushButton('⚙ 设置')
-            self.settings_button.setMinimumHeight(40)
+            layout.addSpacing(4)
+            # 状态标签
+            self.user_menu_status = QLabel('已登录')
+            self.user_menu_status.setAlignment(Qt.AlignCenter)
+            self.user_menu_status.setProperty('cardSub', True)
+            layout.addWidget(self.user_menu_status)
+            layout.addSpacing(14)
+            # 分隔线
+            sep = QFrame()
+            sep.setFrameShape(QFrame.HLine)
+            sep.setStyleSheet('background: rgba(128,128,128,0.18); max-height: 1px;')
+            layout.addWidget(sep)
+            layout.addSpacing(10)
+            # 设置按钮
+            self.settings_button = QPushButton('  ⚙  设置')
+            self.settings_button.setMinimumHeight(38)
             self.settings_button.clicked.connect(self.open_settings)
             layout.addWidget(self.settings_button)
-            self.logout_button = QPushButton('退出账号')
-            self.logout_button.setMinimumHeight(40)
+            layout.addSpacing(6)
+            # 退出按钮
+            self.logout_button = QPushButton('  ↗  退出账号')
+            self.logout_button.setMinimumHeight(38)
             self.logout_button.clicked.connect(self.logout)
+            self.logout_button.setStyleSheet(
+                'QPushButton { color: #e07070; } '
+                'QPushButton:hover { color: #f08080; }'
+            )
             layout.addWidget(self.logout_button)
-            self.user_menu.resize(236, 200)
+            self.user_menu.resize(240, 248)
 
         def _build_help_popup(self):
             state = build_help_popup_state(WEIXIN_IMAGE_PATH)
@@ -312,15 +346,19 @@ def build_toolbox_window_class(deps: dict):
             self.user_avatar_button.setStyleSheet(
                 f'border-radius: {state["avatar_border_radius"]}px; font-weight: 700; padding: 0px;'
             )
-            self.user_menu.layout().setContentsMargins(
-                state['menu_padding'],
-                state['menu_padding'],
-                state['menu_padding'],
-                state['menu_padding'],
+            # 弹框内大头像
+            avatar_size = state['menu_avatar_size']
+            radius = avatar_size // 2
+            self.user_menu_avatar.setText(state['avatar_text'])
+            self.user_menu_avatar.setMinimumSize(avatar_size, avatar_size)
+            self.user_menu_avatar.setMaximumSize(avatar_size, avatar_size)
+            self.user_menu_avatar.setStyleSheet(
+                f'QLabel[menuAvatar="true"] {{ border-radius: {radius}px; font-size: 22px; font-weight: 700; }}'
             )
-            self.user_menu.layout().setSpacing(state['menu_spacing'])
             self.user_menu.resize(state['menu_width'], state['menu_height'])
-            self.user_menu_name_label.setText(f'当前用户：{state["username"]}')
+            self.user_menu_name_label.setText(state['username'])
+            is_logged_in = state['username'] != '未登录'
+            self.user_menu_status.setText('已登录' if is_logged_in else '未登录')
             self.logout_button.setText(state['logout_text'])
 
         def toggle_user_menu(self):

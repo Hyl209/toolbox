@@ -327,6 +327,7 @@ def build_settings_dialog_class(deps: dict):
             card_layout.setContentsMargins(6, 6, 6, 6)
             card_layout.setSpacing(0)
             self._order_list = _DragScrollList()
+            self._order_list.setProperty('orderList', True)
             self._order_list.setDragEnabled(True)
             self._order_list.setDragDropMode(QListWidget.InternalMove)
             self._order_list.setDefaultDropAction(Qt.MoveAction)

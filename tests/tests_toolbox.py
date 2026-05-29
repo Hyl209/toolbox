@@ -682,9 +682,8 @@ def test_build_user_menu_state_exposes_avatar_button_and_roomier_popup_style():
     assert state['avatar_border_radius'] == 19
     assert state['avatar_uses_theme_toggle_style'] is True
     assert state['menu_width'] >= 220
-    assert state['menu_height'] >= 132
-    assert state['menu_padding'] >= 18
-    assert state['menu_spacing'] >= 12
+    assert state['menu_height'] >= 200
+    assert state['menu_avatar_size'] >= 48
 
 
 def test_build_main_window_sidebar_includes_image_convert_pdf_split_video_downloaders_batch_rename_base64_file_sorter_and_same_tab_when_pyside_available():

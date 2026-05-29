@@ -91,8 +91,9 @@ def build_user_menu_state(username: str) -> dict[str, str]:
         'avatar_button_size': 38,
         'avatar_border_radius': 19,
         'avatar_uses_theme_toggle_style': True,
-        'menu_width': 236,
-        'menu_height': 200,
-        'menu_padding': 20,
-        'menu_spacing': 14,
+        'menu_avatar_size': 56,
+        'menu_width': 240,
+        'menu_height': 248,
+        'menu_padding': 0,
+        'menu_spacing': 0,
     }
