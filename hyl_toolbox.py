@@ -9,6 +9,7 @@ from pathlib import Path
 from toolbox_app.dynamic_modules import DynamicModuleLoader
 from toolbox_app.tool_tabs import build_external_tab_classes
 from toolbox_app.auth_dialog import build_auth_dialog_class
+from toolbox_app.settings_dialog import build_settings_dialog_class
 from toolbox_app.window import build_toolbox_window_class
 from toolbox_app.plugins.manager import get_plugin_manager
 
@@ -258,7 +259,7 @@ from toolbox_app.auth import (
 
 
 
-from toolbox_app.tool_registry import get_tool_definitions  # noqa: F401
+from toolbox_app.tool_registry import TOOL_DEFINITIONS, get_tool_definitions  # noqa: F401
 
 
 # TODO: Proxy functions below exist solely for backward compatibility.
@@ -568,6 +569,27 @@ if QWidget is not None:
         'update_user_password': update_user_password,
     })
 
+    SettingsDialog = build_settings_dialog_class({
+        'QDialog': QDialog,
+        'QVBoxLayout': QVBoxLayout,
+        'QHBoxLayout': QHBoxLayout,
+        'QPushButton': QPushButton,
+        'QLabel': QLabel,
+        'QCheckBox': QCheckBox,
+        'QWidget': QWidget,
+        'QFrame': QFrame,
+        'QListWidget': QListWidget,
+        'QStackedWidget': QStackedWidget,
+        'QScrollArea': QScrollArea,
+        'Qt': Qt,
+        'DragTitleBar': DragTitleBar,
+        'load_setting': load_setting,
+        'save_setting': save_setting,
+        'get_theme_stylesheet': get_theme_stylesheet,
+        'build_global_scrollbar_style': build_global_scrollbar_style,
+        'TOOL_DEFINITIONS': TOOL_DEFINITIONS,
+        'QTimer': QTimer,
+    })
 
     _external_tab_classes = build_external_tab_classes(
         {
@@ -809,6 +831,7 @@ if QWidget is not None:
         'build_global_scrollbar_style': build_global_scrollbar_style,
         'build_help_popup_state': build_help_popup_state,
         'build_user_menu_state': build_user_menu_state,
+        'SettingsDialog': SettingsDialog,
         'style_combo_popup': style_combo_popup,
         'animate_stack_switch': animate_stack_switch,
         'LOGO_PATH': LOGO_PATH,

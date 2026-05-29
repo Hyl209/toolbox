@@ -199,6 +199,32 @@ QPushButton[themeToggle='true'] {
 QCheckBox {
     color: #c8d0dc;
     spacing: 8px;
+    background: transparent;
+}
+QCheckBox::indicator {
+    width: 18px;
+    height: 18px;
+    border-radius: 5px;
+    border: 1.5px solid #5a6577;
+    background-color: #2a3038;
+}
+QCheckBox::indicator:hover {
+    border-color: #7ea6d9;
+}
+QCheckBox::indicator:checked {
+    background-color: #5a9a6b;
+    border-color: #5a9a6b;
+    image: url(check.svg);
+}
+QCheckBox::indicator:checked:hover {
+    background-color: #6aad7c;
+    border-color: #6aad7c;
+}
+QCheckBox::indicator:unchecked {
+    image: url(uncheck.svg);
+}
+QCheckBox::indicator:unchecked:hover {
+    border-color: #e07070;
 }
 QProgressBar {
     border: none;

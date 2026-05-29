@@ -30,6 +30,7 @@ def build_toolbox_window_class(deps: dict):
     build_global_scrollbar_style = deps['build_global_scrollbar_style']
     build_help_popup_state = deps['build_help_popup_state']
     build_user_menu_state = deps['build_user_menu_state']
+    SettingsDialog = deps['SettingsDialog']
     style_combo_popup = deps['style_combo_popup']
     animate_stack_switch = deps['animate_stack_switch']
     LOGO_PATH = deps['LOGO_PATH']
@@ -110,12 +111,17 @@ def build_toolbox_window_class(deps: dict):
             self.theme_button.setMinimumSize(44, 44)
             self.theme_button.setMaximumSize(44, 44)
             self.theme_button.clicked.connect(self.toggle_theme)
+            disabled_tools_str = load_setting(settings, 'tools/disabled', '')
+            self._disabled_tools = set(disabled_tools_str.split(',')) if disabled_tools_str.strip() else set()
             self.sidebar = QListWidget()
             self.sidebar.setProperty('navList', True)
             self.sidebar.setFixedWidth(196)
             self.sidebar.setStyleSheet(build_global_scrollbar_style())
+            self._sidebar_to_stack: list[int] = []
             for tool_def in TOOL_DEFINITIONS:
-                self.sidebar.addItem(tool_def.sidebar_label)
+                if tool_def.id not in self._disabled_tools:
+                    self._sidebar_to_stack.append(TOOL_DEFINITIONS.index(tool_def))
+                    self.sidebar.addItem(tool_def.sidebar_label)
             self.sidebar.setCurrentRow(0)
             side_layout.addWidget(self.sidebar, 1)
             bottom_row = QHBoxLayout()
@@ -176,6 +182,8 @@ def build_toolbox_window_class(deps: dict):
                             tab_widget = plugin.get_tab_widget()
                             if tab_widget is not None:
                                 label = plugin.get_sidebar_label()
+                                stack_idx = self.stack.count()
+                                self._sidebar_to_stack.append(stack_idx)
                                 self.sidebar.addItem(label)
                                 self.stack.addWidget(tab_widget)
                                 self._tabs[f'plugin:{name}'] = tab_widget
@@ -187,6 +195,8 @@ def build_toolbox_window_class(deps: dict):
                             logger.error(f"插件 on_app_start 异常: {name}", exc_info=True)
                 except Exception:
                     logger.error("插件加载/初始化异常", exc_info=True)
+            # --- 应用导航栏排序 ---
+            self._apply_sidebar_order(settings)
             shell.addWidget(self.stack, 1)
             self.sidebar.currentRowChanged.connect(self.switch_tool_page)
             content_layout.addWidget(central, 1)
@@ -240,11 +250,15 @@ def build_toolbox_window_class(deps: dict):
             self.user_menu_name_label = QLabel('')
             self.user_menu_name_label.setProperty('brandSub', True)
             layout.addWidget(self.user_menu_name_label)
+            self.settings_button = QPushButton('⚙ 设置')
+            self.settings_button.setMinimumHeight(40)
+            self.settings_button.clicked.connect(self.open_settings)
+            layout.addWidget(self.settings_button)
             self.logout_button = QPushButton('退出账号')
             self.logout_button.setMinimumHeight(40)
             self.logout_button.clicked.connect(self.logout)
             layout.addWidget(self.logout_button)
-            self.user_menu.resize(236, 148)
+            self.user_menu.resize(236, 200)
 
         def _build_help_popup(self):
             state = build_help_popup_state(WEIXIN_IMAGE_PATH)
@@ -388,6 +402,60 @@ def build_toolbox_window_class(deps: dict):
                             pass
             super().closeEvent(event)
 
+        def open_settings(self):
+            self.user_menu.hide()
+            dialog = SettingsDialog(self.settings, self._plugin_manager, self)
+            if dialog.exec() == SettingsDialog.Accepted:
+                self._apply_sidebar_order(self.settings)
+
+        def _apply_sidebar_order(self, settings):
+            saved_order = load_setting(settings, 'sidebar/order', '')
+            if not saved_order.strip():
+                return
+            order_ids = [s.strip() for s in saved_order.split(',') if s.strip()]
+            if not order_ids:
+                return
+            # 当前 sidebar 中的 id 列表（按 sidebar 顺序）
+            sidebar_ids = []
+            for i in range(self.sidebar.count()):
+                # 通过 _sidebar_to_stack 找到 stack index，再通过 stack widget 找到 tab id
+                stack_idx = self._sidebar_to_stack[i]
+                widget = self.stack.widget(stack_idx)
+                for tid, tab in self._tabs.items():
+                    if tab is widget:
+                        sidebar_ids.append(tid)
+                        break
+            # 按保存的顺序重排（只排当前 sidebar 中的项）
+            ordered_set = set()
+            new_ids = []
+            for tid in order_ids:
+                if tid in sidebar_ids and tid not in ordered_set:
+                    new_ids.append(tid)
+                    ordered_set.add(tid)
+            for tid in sidebar_ids:
+                if tid not in ordered_set:
+                    new_ids.append(tid)
+            # 保存文本和 widget
+            sidebar_texts = {tid: self.sidebar.item(i).text() for i, tid in enumerate(sidebar_ids)}
+            self.sidebar.blockSignals(True)
+            self.sidebar.clear()
+            self._sidebar_to_stack = []
+            for tid in new_ids:
+                self._sidebar_to_stack.append(self._get_stack_index(tid))
+                self.sidebar.addItem(sidebar_texts[tid])
+            self.sidebar.blockSignals(False)
+            self.sidebar.setCurrentRow(0)
+            self.stack.setCurrentIndex(self._sidebar_to_stack[0])
+
+        def _get_stack_index(self, tab_id: str) -> int:
+            widget = self._tabs.get(tab_id)
+            if widget is None:
+                return 0
+            for i in range(self.stack.count()):
+                if self.stack.widget(i) is widget:
+                    return i
+            return 0
+
         def logout(self):
             self.relogin_requested = True
             save_setting(self.settings, 'auth/auto_login', '0')
@@ -395,7 +463,10 @@ def build_toolbox_window_class(deps: dict):
             self.close()
 
         def switch_tool_page(self, index: int):
-            animate_stack_switch(self.stack, index)
+            if 0 <= index < len(self._sidebar_to_stack):
+                animate_stack_switch(self.stack, self._sidebar_to_stack[index])
+            else:
+                animate_stack_switch(self.stack, index)
 
         def changeEvent(self, event):
             super().changeEvent(event)
