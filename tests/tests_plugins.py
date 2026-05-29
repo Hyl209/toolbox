@@ -252,6 +252,12 @@ class TestPluginManager:
         assert plugin.plugin_info.plugin_type == "gui"
         assert plugin.get_sidebar_label() == "My GUI Tool"
 
+    def test_load_plugin_discovers_when_called_directly(self, gui_plugin_dir, tmp_plugins_dir):
+        reset_plugin_manager()
+        mgr = PluginManager(tmp_plugins_dir)
+        assert mgr.load_plugin("my_gui_tool") is True
+        assert mgr.get_plugin("my_gui_tool") is not None
+
     def test_load_hook_plugin(self, hook_plugin_file, tmp_plugins_dir):
         reset_plugin_manager()
         mgr = PluginManager(tmp_plugins_dir)

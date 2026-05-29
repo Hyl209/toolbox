@@ -108,6 +108,9 @@ class PluginManager:
 
         plugin_info = self._discovery.get_plugin_info(plugin_name)
         if plugin_info is None:
+            self._discovery.discover_plugins()
+            plugin_info = self._discovery.get_plugin_info(plugin_name)
+        if plugin_info is None:
             logger.error(f"插件未发现: {plugin_name}")
             return False
 

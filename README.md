@@ -57,7 +57,7 @@ pyinstaller HylToolbox.spec
 ```bash
 pip install -r requirements-dev.txt
 
-# 全量 (374 个用例)
+# 全量 (375 个用例)
 python -m pytest --tb=short -q
 
 # 单模块
