@@ -212,6 +212,59 @@ class TestPluginDiscovery:
 
         assert "bad_deps" not in disc.discover_plugins()
 
+    def test_manifest_required_text_fields_must_be_non_empty_strings(self, tmp_plugins_dir):
+        plugin_dir = tmp_plugins_dir / "bad_name"
+        plugin_dir.mkdir()
+        manifest = {
+            "name": "",
+            "version": "1.0",
+            "description": "d",
+            "author": "a",
+            "entry": "plugin.py:X",
+        }
+        (plugin_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        (plugin_dir / "plugin.py").write_text("pass", encoding="utf-8")
+
+        disc = PluginDiscovery(tmp_plugins_dir)
+
+        assert "bad_name" not in disc.discover_plugins()
+
+    def test_manifest_optional_fields_have_strict_types(self, tmp_plugins_dir):
+        plugin_dir = tmp_plugins_dir / "bad_enabled"
+        plugin_dir.mkdir()
+        manifest = {
+            "name": "bad_enabled",
+            "version": "1.0",
+            "description": "d",
+            "author": "a",
+            "entry": "plugin.py:X",
+            "enabled": "yes",
+        }
+        (plugin_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        (plugin_dir / "plugin.py").write_text("pass", encoding="utf-8")
+
+        disc = PluginDiscovery(tmp_plugins_dir)
+
+        assert "bad_enabled" not in disc.discover_plugins()
+
+    def test_manifest_type_must_be_known_plugin_type(self, tmp_plugins_dir):
+        plugin_dir = tmp_plugins_dir / "bad_type"
+        plugin_dir.mkdir()
+        manifest = {
+            "name": "bad_type",
+            "version": "1.0",
+            "description": "d",
+            "author": "a",
+            "entry": "plugin.py:X",
+            "type": "service",
+        }
+        (plugin_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        (plugin_dir / "plugin.py").write_text("pass", encoding="utf-8")
+
+        disc = PluginDiscovery(tmp_plugins_dir)
+
+        assert "bad_type" not in disc.discover_plugins()
+
 
 # ---------------------------------------------------------------------------
 # PluginRegistry tests

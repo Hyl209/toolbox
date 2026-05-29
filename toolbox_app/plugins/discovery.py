@@ -127,6 +127,46 @@ class PluginDiscovery:
             plugin_name,
         )
 
+    @staticmethod
+    def _required_manifest_text(manifest: dict, field: str) -> str:
+        value = manifest.get(field)
+        if not isinstance(value, str) or not value.strip():
+            raise PluginError(
+                f"manifest.json field must be a non-empty string: {field}",
+                manifest.get('name'),
+            )
+        return value
+
+    @staticmethod
+    def _optional_manifest_text(manifest: dict, field: str, default: str = '') -> str:
+        value = manifest.get(field, default)
+        if not isinstance(value, str):
+            raise PluginError(
+                f"manifest.json field must be a string: {field}",
+                manifest.get('name'),
+            )
+        return value
+
+    @staticmethod
+    def _optional_manifest_bool(manifest: dict, field: str, default: bool) -> bool:
+        value = manifest.get(field, default)
+        if not isinstance(value, bool):
+            raise PluginError(
+                f"manifest.json field must be a boolean: {field}",
+                manifest.get('name'),
+            )
+        return value
+
+    @staticmethod
+    def _optional_manifest_int(manifest: dict, field: str, default: int) -> int:
+        value = manifest.get(field, default)
+        if not isinstance(value, int) or isinstance(value, bool):
+            raise PluginError(
+                f"manifest.json field must be an integer: {field}",
+                manifest.get('name'),
+            )
+        return value
+
     def _load_manifest(self, plugin_path: Path, manifest_path: Path):
         """加载 manifest.json"""
         try:
@@ -139,22 +179,29 @@ class PluginDiscovery:
                 if field not in manifest:
                     raise PluginError(f"manifest.json 缺少必需字段: {field}", manifest.get('name'))
 
+            plugin_type = self._optional_manifest_text(manifest, 'type', 'gui')
+            if plugin_type not in {'gui', 'hook'}:
+                raise PluginError(
+                    "manifest.json type must be gui or hook",
+                    manifest.get('name'),
+                )
+
             # 创建插件信息
             plugin_info = PluginInfo(
-                name=manifest['name'],
-                version=manifest['version'],
-                description=manifest['description'],
-                author=manifest['author'],
+                name=self._required_manifest_text(manifest, 'name'),
+                version=self._required_manifest_text(manifest, 'version'),
+                description=self._required_manifest_text(manifest, 'description'),
+                author=self._required_manifest_text(manifest, 'author'),
                 dependencies=self._normalize_dependencies(
                     manifest.get('dependencies'),
                     manifest['name'],
                 ),
-                enabled=manifest.get('enabled', True),
-                priority=manifest.get('priority', 0),
-                plugin_type=manifest.get('type', 'gui'),
-                entry=manifest.get('entry', ''),
+                enabled=self._optional_manifest_bool(manifest, 'enabled', True),
+                priority=self._optional_manifest_int(manifest, 'priority', 0),
+                plugin_type=plugin_type,
+                entry=self._required_manifest_text(manifest, 'entry'),
                 plugin_path=str(plugin_path),
-                sidebar_label=manifest.get('sidebar_label', ''),
+                sidebar_label=self._optional_manifest_text(manifest, 'sidebar_label', ''),
             )
 
             self._discovered_plugins[plugin_info.name] = plugin_info
