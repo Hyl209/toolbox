@@ -138,6 +138,56 @@ class TestPluginDiscovery:
         assert info.plugin_type == "hook"
         assert "MyHookPlugin" in info.entry
 
+    def test_single_file_plugin_metadata_is_trimmed(self, tmp_plugins_dir):
+        plugin_file = tmp_plugins_dir / "trimmed_source.py"
+        plugin_file.write_text(textwrap.dedent('''\
+            from toolbox_app.plugins.base import PluginBase, PluginInfo
+
+            class TrimmedSourcePlugin(PluginBase):
+                def get_plugin_info(self):
+                    return PluginInfo(
+                        name=" trimmed_source ", version=" 1.0 ",
+                        description=" d ", author=" a ",
+                        plugin_type=" hook ", sidebar_label=" Trimmed Source ",
+                    )
+                def initialize(self, deps=None):
+                    return True
+                def cleanup(self):
+                    pass
+        '''), encoding="utf-8")
+
+        disc = PluginDiscovery(tmp_plugins_dir)
+        found = disc.discover_plugins()
+
+        info = found["trimmed_source"]
+        assert info.version == "1.0"
+        assert info.description == "d"
+        assert info.author == "a"
+        assert info.plugin_type == "hook"
+        assert info.sidebar_label == "Trimmed Source"
+
+    def test_single_file_plugin_invalid_metadata_is_skipped(self, tmp_plugins_dir):
+        plugin_file = tmp_plugins_dir / "bad_source.py"
+        plugin_file.write_text(textwrap.dedent('''\
+            from toolbox_app.plugins.base import PluginBase, PluginInfo
+
+            class BadSourcePlugin(PluginBase):
+                def get_plugin_info(self):
+                    return PluginInfo(
+                        name="bad-source", version="1.0",
+                        description="d", author="a",
+                        plugin_type="service",
+                    )
+                def initialize(self, deps=None):
+                    return True
+                def cleanup(self):
+                    pass
+        '''), encoding="utf-8")
+
+        disc = PluginDiscovery(tmp_plugins_dir)
+
+        assert "bad-source" not in disc.discover_plugins()
+
     def test_discover_empty_dir(self, tmp_plugins_dir):
         disc = PluginDiscovery(tmp_plugins_dir)
         found = disc.discover_plugins()

@@ -117,13 +117,20 @@ class PluginDiscovery:
         sidebar_match = _field_re('sidebar_label').search(cleaned)
         if not (name_match and version_match):
             return None
+        plugin_name = PluginDiscovery._validate_plugin_name(
+            (name_match.group(1) if name_match else fallback_name).strip(),
+            fallback_name,
+        )
+        plugin_type = (type_match.group(1) if type_match else 'gui').strip()
+        if plugin_type not in {'gui', 'hook'}:
+            raise PluginError("source plugin_type must be gui or hook", plugin_name)
         return PluginInfo(
-            name=name_match.group(1) if name_match else fallback_name,
-            version=version_match.group(1) if version_match else '0.0.0',
-            description=desc_match.group(1) if desc_match else '',
-            author=author_match.group(1) if author_match else '',
-            plugin_type=type_match.group(1) if type_match else 'gui',
-            sidebar_label=sidebar_match.group(1) if sidebar_match else '',
+            name=plugin_name,
+            version=(version_match.group(1) if version_match else '0.0.0').strip(),
+            description=(desc_match.group(1) if desc_match else '').strip(),
+            author=(author_match.group(1) if author_match else '').strip(),
+            plugin_type=plugin_type,
+            sidebar_label=(sidebar_match.group(1) if sidebar_match else '').strip(),
         )
 
     @staticmethod
