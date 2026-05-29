@@ -332,7 +332,7 @@ def build_settings_dialog_class(deps: dict):
             cb.setMinimumWidth(48)
             cb.setToolTip(f'启用/禁用 {sidebar_label}')
             cb.setAccessibleName(sidebar_label)
-            cb.toggled.connect(self._on_plugin_checkbox_toggled)
+            cb.toggled.connect(lambda checked, plugin_name=name: self._on_plugin_checkbox_toggled(plugin_name, checked))
             self._plugin_checkboxes[name] = cb
             h.addWidget(cb, 0, Qt.AlignVCenter)
             return card
@@ -452,9 +452,26 @@ def build_settings_dialog_class(deps: dict):
             if checked and not self.remember_checkbox.isChecked():
                 self.remember_checkbox.setChecked(True)
 
-        def _on_plugin_checkbox_toggled(self, checked: bool):
-            if not checked:
-                self._resolve_disabled_plugins_from_checkboxes()
+        def _on_plugin_checkbox_toggled(self, plugin_name: str, checked: bool):
+            if checked:
+                self._enable_plugin_dependencies(plugin_name)
+            self._resolve_disabled_plugins_from_checkboxes()
+
+        def _enable_plugin_dependencies(self, plugin_name: str, seen: set[str] | None = None):
+            seen = seen or set()
+            if plugin_name in seen:
+                return
+            seen.add(plugin_name)
+            info = self._plugin_infos.get(plugin_name)
+            if info is None:
+                return
+            for dep_name in getattr(info, 'dependencies', None) or []:
+                dep_cb = self._plugin_checkboxes.get(dep_name)
+                if dep_cb is None:
+                    continue
+                if not dep_cb.isChecked():
+                    dep_cb.setChecked(True)
+                self._enable_plugin_dependencies(dep_name, seen)
 
         def _resolve_disabled_plugins_from_checkboxes(self) -> set[str]:
             disabled = {name for name, cb in self._plugin_checkboxes.items() if not cb.isChecked()}

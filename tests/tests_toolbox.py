@@ -1060,6 +1060,63 @@ def test_settings_dialog_disables_plugin_dependents_when_dependency_is_disabled(
             app.processEvents()
 
 
+def test_settings_dialog_enables_plugin_dependencies_when_dependent_is_enabled():
+    toolbox = load_module()
+    if toolbox.QWidget is None:
+        return
+    from toolbox_app.plugins.base import PluginInfo
+
+    class FakeDiscovery:
+        def get_all_plugins(self):
+            return {
+                'core_dep': PluginInfo(
+                    name='core_dep',
+                    version='1.0',
+                    description='core dependency',
+                    author='tester',
+                    plugin_type='gui',
+                ),
+                'dependent': PluginInfo(
+                    name='dependent',
+                    version='1.0',
+                    description='dependent plugin',
+                    author='tester',
+                    dependencies=['core_dep'],
+                    plugin_type='gui',
+                ),
+            }
+
+    class FakePluginManager:
+        def __init__(self):
+            self.discovery = FakeDiscovery()
+            self.enabled_calls = []
+
+        def set_plugin_enabled(self, name, enabled):
+            self.enabled_calls.append((name, enabled))
+
+    with tempfile.TemporaryDirectory() as tmp:
+        app = toolbox.QApplication.instance() or toolbox.QApplication([])
+        settings = toolbox.make_settings(tmp)
+        toolbox.save_setting(settings, 'plugins/disabled', 'core_dep,dependent')
+        manager = FakePluginManager()
+        dialog = toolbox.SettingsDialog(settings, manager, None)
+        try:
+            assert not dialog._plugin_checkboxes['core_dep'].isChecked()
+            assert not dialog._plugin_checkboxes['dependent'].isChecked()
+            dialog._plugin_checkboxes['dependent'].setChecked(True)
+            assert dialog._plugin_checkboxes['core_dep'].isChecked()
+            assert dialog._plugin_checkboxes['dependent'].isChecked()
+            dialog._save_and_close()
+            assert toolbox.load_setting(settings, 'plugins/disabled', '') == ''
+            assert set(manager.enabled_calls) == {
+                ('core_dep', True),
+                ('dependent', True),
+            }
+        finally:
+            dialog.close()
+            app.processEvents()
+
+
 def test_settings_dialog_order_uses_stable_ids_when_labels_duplicate():
     toolbox = load_module()
     if toolbox.QWidget is None:
