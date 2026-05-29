@@ -4,7 +4,7 @@
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
 [![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)]()
 
-PySide6 桌面工具箱，集成 12 种常用文件处理工具，支持暗色/亮色主题切换，自定义无边框窗口。
+PySide6 桌面工具箱，集成 13 种常用文件处理工具，支持暗色/亮色主题切换，自定义无边框窗口。
 
 ## 功能一览
 
@@ -22,6 +22,7 @@ PySide6 桌面工具箱，集成 12 种常用文件处理工具，支持暗色/�
 | 重复文件 | 精确哈希 + 视频指纹检测 |
 | 图片 Base64 | 编解码互转 |
 | 哈希校验 | 计算并校验文件 MD5 / SHA1 / SHA256 |
+| JSON 工具 | 格式化、压缩和校验 JSON 文本 |
 
 ## 快速开始
 
@@ -51,7 +52,7 @@ pyinstaller HylToolbox.spec
 ```bash
 pip install -r requirements-dev.txt
 
-# 全量 (328 个用例)
+# 全量 (333 个用例)
 python -m pytest --tb=short -q
 
 # 单模块

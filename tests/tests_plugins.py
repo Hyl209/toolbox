@@ -284,3 +284,4 @@ class TestPluginManager:
         assert results.get("hello_world") is False
         assert mgr.get_plugin("hello_world") is None
         assert results.get("file_hasher") is True
+        assert results.get("json_tools") is True

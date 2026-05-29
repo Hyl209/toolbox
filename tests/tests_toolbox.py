@@ -840,6 +840,7 @@ def test_main_window_loads_promotable_plugins_without_demo_sidebar_item_when_pys
         try:
             sidebar_titles = [window.sidebar.item(i).text() for i in range(window.sidebar.count())]
             assert '哈希校验' in sidebar_titles
+            assert 'JSON 工具' in sidebar_titles
             assert not any('Hello' in title for title in sidebar_titles)
         finally:
             window.close()
