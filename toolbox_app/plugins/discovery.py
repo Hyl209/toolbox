@@ -114,6 +114,19 @@ class PluginDiscovery:
             sidebar_label=sidebar_match.group(1) if sidebar_match else '',
         )
 
+    @staticmethod
+    def _normalize_dependencies(raw, plugin_name: str) -> list[str]:
+        if raw is None:
+            return []
+        if isinstance(raw, str):
+            return [raw]
+        if isinstance(raw, list) and all(isinstance(item, str) for item in raw):
+            return raw
+        raise PluginError(
+            "manifest.json dependencies must be a string or list of strings",
+            plugin_name,
+        )
+
     def _load_manifest(self, plugin_path: Path, manifest_path: Path):
         """加载 manifest.json"""
         try:
@@ -132,7 +145,10 @@ class PluginDiscovery:
                 version=manifest['version'],
                 description=manifest['description'],
                 author=manifest['author'],
-                dependencies=manifest.get('dependencies', []),
+                dependencies=self._normalize_dependencies(
+                    manifest.get('dependencies'),
+                    manifest['name'],
+                ),
                 enabled=manifest.get('enabled', True),
                 priority=manifest.get('priority', 0),
                 plugin_type=manifest.get('type', 'gui'),

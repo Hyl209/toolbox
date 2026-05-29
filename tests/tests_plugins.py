@@ -183,6 +183,35 @@ class TestPluginDiscovery:
         disc.discover_plugins()
         assert disc.validate_plugin("dep_plugin") is False
 
+    def test_manifest_dependency_string_is_normalized(self, tmp_plugins_dir):
+        plugin_dir = tmp_plugins_dir / "string_dep"
+        plugin_dir.mkdir()
+        manifest = {
+            "name": "string_dep", "version": "1.0", "description": "d", "author": "a",
+            "entry": "plugin.py:X", "dependencies": "dep_tool",
+        }
+        (plugin_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        (plugin_dir / "plugin.py").write_text("pass", encoding="utf-8")
+
+        disc = PluginDiscovery(tmp_plugins_dir)
+        found = disc.discover_plugins()
+
+        assert found["string_dep"].dependencies == ["dep_tool"]
+
+    def test_manifest_invalid_dependencies_type_is_skipped(self, tmp_plugins_dir):
+        plugin_dir = tmp_plugins_dir / "bad_deps"
+        plugin_dir.mkdir()
+        manifest = {
+            "name": "bad_deps", "version": "1.0", "description": "d", "author": "a",
+            "entry": "plugin.py:X", "dependencies": 123,
+        }
+        (plugin_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        (plugin_dir / "plugin.py").write_text("pass", encoding="utf-8")
+
+        disc = PluginDiscovery(tmp_plugins_dir)
+
+        assert "bad_deps" not in disc.discover_plugins()
+
 
 # ---------------------------------------------------------------------------
 # PluginRegistry tests
