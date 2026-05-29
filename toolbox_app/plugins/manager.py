@@ -55,9 +55,9 @@ class PluginManager:
         """初始化所有插件"""
         return self._registry.initialize_all(deps)
 
-    def cleanup_plugin(self, plugin_name: str):
+    def cleanup_plugin(self, plugin_name: str) -> bool:
         """清理插件"""
-        self._registry.cleanup_plugin(plugin_name)
+        return self.unregister_plugin(plugin_name)
 
     def cleanup_all_plugins(self):
         """清理所有插件"""

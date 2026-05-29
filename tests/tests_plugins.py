@@ -407,6 +407,19 @@ class TestPluginManager:
         mgr.cleanup_all_plugins()
         assert mgr.get_plugin_count() == 0
 
+    def test_cleanup_plugin_unregisters_and_unloads_module(self, gui_plugin_dir, tmp_plugins_dir):
+        reset_plugin_manager()
+        mgr = PluginManager(tmp_plugins_dir)
+        mgr.load_all_plugins()
+        module_name = mgr._loaded_module_names["my_gui_tool"]
+        assert module_name in sys.modules
+
+        assert mgr.cleanup_plugin("my_gui_tool") is True
+
+        assert mgr.get_plugin("my_gui_tool") is None
+        assert mgr.has_plugin("my_gui_tool") is False
+        assert module_name not in sys.modules
+
     def test_disabled_persistence(self, gui_plugin_dir, tmp_plugins_dir):
         reset_plugin_manager()
         mgr = PluginManager(tmp_plugins_dir)
