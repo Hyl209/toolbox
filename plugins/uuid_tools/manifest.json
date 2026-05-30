@@ -1,0 +1,11 @@
+{
+  "name": "uuid_tools",
+  "version": "1.0.0",
+  "description": "生成、校验和规范化 UUID",
+  "author": "HylToolbox",
+  "sidebar_label": "UUID 工具",
+  "entry": "plugin.py:UuidToolsPlugin",
+  "type": "gui",
+  "enabled": true,
+  "priority": 0
+}

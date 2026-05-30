@@ -858,3 +858,4 @@ class TestPluginManager:
         assert results.get("json_tools") is True
         assert results.get("timestamp_tools") is True
         assert results.get("url_tools") is True
+        assert results.get("uuid_tools") is True

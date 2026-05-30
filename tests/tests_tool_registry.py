@@ -72,6 +72,7 @@ def test_spec_includes_real_plugin_files():
         'plugins/text_tools/converter.py',
         'plugins/timestamp_tools/converter.py',
         'plugins/url_tools/plugin.py',
+        'plugins/uuid_tools/plugin.py',
         'plugins/app_logger.py',
     }
     data_srcs = {_norm(src) for src, _dest in plugin_datas}

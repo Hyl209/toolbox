@@ -1,0 +1,90 @@
+from __future__ import annotations
+
+import importlib.util
+import uuid
+from pathlib import Path
+
+from toolbox_app.plugins.manager import PluginManager, reset_plugin_manager
+
+
+ROOT = Path(__file__).resolve().parents[1]
+PLUGIN_DIR = ROOT / "plugins" / "uuid_tools"
+
+
+def _load_converter():
+    spec = importlib.util.spec_from_file_location("uuid_tools_converter_test", PLUGIN_DIR / "converter.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_uuid_tools_plugin_loads():
+    reset_plugin_manager()
+    manager = PluginManager(ROOT / "plugins")
+    found = manager.discover_plugins()
+    assert "uuid_tools" in found
+    assert found["uuid_tools"].sidebar_label == "UUID 工具"
+    results = manager.load_all_plugins()
+    assert results.get("uuid_tools") is True
+    plugin = manager.get_plugin("uuid_tools")
+    assert plugin is not None
+    assert plugin.get_sidebar_label() == "UUID 工具"
+
+
+def test_generate_uuid4_returns_valid_v4_uuid():
+    converter = _load_converter()
+
+    value = converter.generate_uuid4()
+
+    parsed = uuid.UUID(value)
+    assert parsed.version == 4
+    assert str(parsed) == value
+
+
+def test_generate_uuid4_can_emit_uppercase_without_hyphens():
+    converter = _load_converter()
+
+    value = converter.generate_uuid4(uppercase=True, hyphenated=False)
+
+    assert len(value) == 32
+    assert value == value.upper()
+    assert converter.validate_uuid(value)
+
+
+def test_generate_uuid_batch_respects_count():
+    converter = _load_converter()
+
+    values = converter.generate_uuid_batch(3)
+
+    assert len(values) == 3
+    assert all(converter.validate_uuid(value) for value in values)
+    assert len(set(values)) == 3
+
+
+def test_generate_uuid_batch_rejects_out_of_range_count():
+    converter = _load_converter()
+
+    try:
+        converter.generate_uuid_batch(0)
+    except converter.UuidToolError as exc:
+        assert "数量范围必须是" in str(exc)
+    else:
+        raise AssertionError("out-of-range count should be rejected")
+
+
+def test_normalize_uuid_accepts_compact_uuid():
+    converter = _load_converter()
+
+    value = converter.normalize_uuid("12345678123456781234567812345678")
+
+    assert value == "12345678-1234-5678-1234-567812345678"
+
+
+def test_describe_uuid_reports_nil_uuid():
+    converter = _load_converter()
+
+    state = converter.describe_uuid("00000000-0000-0000-0000-000000000000")
+
+    assert state["is_nil"] is True
+    assert state["canonical"] == "00000000-0000-0000-0000-000000000000"
+    assert state["hex"] == "00000000000000000000000000000000"

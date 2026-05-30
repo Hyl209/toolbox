@@ -1174,20 +1174,24 @@ def test_settings_dialog_hides_manifest_disabled_demo_plugin_when_pyside_availab
             assert 'json_tools' in dialog._plugin_checkboxes
             assert 'timestamp_tools' in dialog._plugin_checkboxes
             assert 'url_tools' in dialog._plugin_checkboxes
+            assert 'uuid_tools' in dialog._plugin_checkboxes
             assert dialog._label_map['plugin:file_hasher'] == '哈希校验'
             assert dialog._label_map['plugin:json_tools'] == 'JSON 工具'
             assert dialog._label_map['plugin:timestamp_tools'] == '时间戳工具'
             assert dialog._label_map['plugin:url_tools'] == 'URL 工具'
+            assert dialog._label_map['plugin:uuid_tools'] == 'UUID 工具'
             order_items = [dialog._order_list.item(i).text() for i in range(dialog._order_list.count())]
             assert 'hello_world' not in order_items
             assert 'file_hasher' not in order_items
             assert 'json_tools' not in order_items
             assert 'timestamp_tools' not in order_items
             assert 'url_tools' not in order_items
+            assert 'uuid_tools' not in order_items
             assert '哈希校验' in order_items
             assert 'JSON 工具' in order_items
             assert '时间戳工具' in order_items
             assert 'URL 工具' in order_items
+            assert 'UUID 工具' in order_items
         finally:
             dialog.close()
             app.processEvents()
