@@ -8,6 +8,7 @@ Authoritative implementation: ``toolbox_app/task_framework/manager.py``
 """
 from __future__ import annotations
 
+import threading
 from typing import Any, Callable, Optional
 from .worker import Worker
 from .logger import get_logger
@@ -24,6 +25,7 @@ class TaskManager:
         self._workers: dict[str, Worker] = {}
         self._task_queue: list[tuple[str, Callable, tuple, dict]] = []
         self._running_count = 0
+        self._lock = threading.Lock()
 
     def create_worker(self, task_id: str = None) -> Worker:
         """创建新的 Worker"""
@@ -53,18 +55,19 @@ class TaskManager:
         self.cleanup_completed()
         worker = self.create_worker(task_id)
 
-        if self._running_count >= self.max_concurrent:
-            self._task_queue.append((task_id, func, args, kwargs))
-            logger.info(f"任务 {task_id} 已加入队列，当前队列长度: {len(self._task_queue)}")
-            return worker
-
-        self._running_count += 1
+        with self._lock:
+            if self._running_count >= self.max_concurrent:
+                self._task_queue.append((task_id, func, args, kwargs))
+                logger.info(f"任务 {task_id} 已加入队列，当前队列长度: {len(self._task_queue)}")
+                return worker
+            self._running_count += 1
 
         def wrapper():
             try:
                 worker.execute(func, *args, **kwargs)
             finally:
-                self._running_count -= 1
+                with self._lock:
+                    self._running_count -= 1
                 self._process_queue()
 
         worker.execute_async(wrapper)
@@ -72,11 +75,11 @@ class TaskManager:
 
     def _process_queue(self):
         """处理任务队列"""
-        if not self._task_queue or self._running_count >= self.max_concurrent:
-            return
-
-        task_id, func, args, kwargs = self._task_queue.pop(0)
-        self._running_count += 1
+        with self._lock:
+            if not self._task_queue or self._running_count >= self.max_concurrent:
+                return
+            task_id, func, args, kwargs = self._task_queue.pop(0)
+            self._running_count += 1
 
         worker = self.get_worker(task_id)
         if worker is None:
@@ -86,7 +89,8 @@ class TaskManager:
             try:
                 worker.execute(func, *args, **kwargs)
             finally:
-                self._running_count -= 1
+                with self._lock:
+                    self._running_count -= 1
                 self._process_queue()
 
         worker.execute_async(wrapper)
@@ -133,11 +137,14 @@ class TaskManager:
 
 # 全局任务管理器实例
 _task_manager: Optional[TaskManager] = None
+_task_manager_lock = threading.Lock()
 
 
 def get_task_manager(max_concurrent: int = 5) -> TaskManager:
     """获取全局任务管理器实例"""
     global _task_manager
     if _task_manager is None:
-        _task_manager = TaskManager(max_concurrent)
+        with _task_manager_lock:
+            if _task_manager is None:
+                _task_manager = TaskManager(max_concurrent)
     return _task_manager

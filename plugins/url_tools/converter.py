@@ -8,7 +8,7 @@ class UrlToolError(Exception):
 
 
 def require_text(text: str) -> str:
-    value = str(text)
+    value = str(text).strip()
     if not value:
         raise UrlToolError("请输入要处理的文本")
     return value

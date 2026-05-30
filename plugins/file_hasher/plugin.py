@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from toolbox_app.plugins.base import PluginBase, PluginInfo, load_sibling_converter
 
 _converter = load_sibling_converter(__file__, "file_hasher_converter")

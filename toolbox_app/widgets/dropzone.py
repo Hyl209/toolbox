@@ -146,6 +146,9 @@ class DropZoneCard(QFrame):
         self.style().unpolish(self)
         self.style().polish(self)
         paths = [url.toLocalFile() for url in event.mimeData().urls() if url.isLocalFile()]
-        if self.on_files_dropped:
-            self.on_files_dropped(paths)
+        try:
+            if self.on_files_dropped:
+                self.on_files_dropped(paths)
+        except Exception:
+            pass
         event.acceptProposedAction()

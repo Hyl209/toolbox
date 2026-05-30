@@ -42,13 +42,13 @@ class StartupManager:
         """检查依赖是否满足，返回缺失依赖列表"""
         missing: list[str] = []
         optional_deps = {
-            'PySide6': 'GUI 框架',
-            'Pillow': '图片处理',
-            'pypdf': 'PDF 处理',
+            'PySide6': ('PySide6', 'GUI 框架'),
+            'Pillow': ('PIL', '图片处理'),
+            'pypdf': ('pypdf', 'PDF 处理'),
         }
-        for package, desc in optional_deps.items():
+        for package, (import_name, desc) in optional_deps.items():
             try:
-                importlib.import_module(package.lower().replace('-', '_'))
+                importlib.import_module(import_name)
             except ImportError:
                 missing.append(f'{package} ({desc})')
                 logger.warning(f'缺失依赖: {package}')

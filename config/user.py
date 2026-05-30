@@ -36,6 +36,8 @@ class UserConfig:
     }
 
     def __init__(self, config_dir: str | Path, username: str):
+        if any(c in str(username) for c in ('..', '/', '\\')):
+            raise ValueError(f"Invalid username: {username!r}")
         self.config_dir = Path(config_dir)
         self.username = username
         self.user_dir = self.config_dir / "users" / username
@@ -50,7 +52,7 @@ class UserConfig:
                 with open(self.config_file, 'r', encoding='utf-8') as f:
                     self._config = json.load(f)
                 logger.debug(f"用户配置加载成功: {self.username}")
-            except Exception as e:
+            except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
                 logger.error(f"加载用户配置失败: {e}")
                 self._config = {}
         else:
@@ -76,7 +78,7 @@ class UserConfig:
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(self._config, f, indent=2, ensure_ascii=False)
             logger.debug(f"用户配置保存成功: {self.username}")
-        except Exception as e:
+        except (OSError, TypeError) as e:
             logger.error(f"保存用户配置失败: {e}")
 
     def get(self, section: str, key: str, default: Any = None) -> Any:

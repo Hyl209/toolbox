@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
 from typing import Any, Optional
 from .app import AppConfig
@@ -63,6 +64,13 @@ class ConfigManager:
     # ------------------------------------------------------------------
     # 版本控制 & 迁移
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _parse_version(v: str) -> tuple[int, ...]:
+        try:
+            return tuple(int(x) for x in v.split('.'))
+        except (ValueError, AttributeError):
+            return (0,)
 
     def _check_version(self):
         """启动时检查配置版本，若有可用迁移则自动执行"""
@@ -307,21 +315,30 @@ class ConfigManager:
         }
 
         for username, user_config in self._user_configs.items():
-            results['users'][username] = True  # 简化验证
+            try:
+                results['users'][username] = isinstance(user_config.get_section('preferences'), dict)
+            except Exception:
+                results['users'][username] = False
 
         for plugin_name, plugin_config in self._plugin_configs.items():
-            results['plugins'][plugin_name] = True  # 简化验证
+            try:
+                results['plugins'][plugin_name] = isinstance(plugin_config.get_all(), dict)
+            except Exception:
+                results['plugins'][plugin_name] = False
 
         return results
 
 
 # 全局配置管理器实例
 _config_manager: Optional[ConfigManager] = None
+_config_manager_lock = threading.Lock()
 
 
 def get_config_manager(config_dir: str | Path = "config") -> ConfigManager:
     """获取全局配置管理器实例"""
     global _config_manager
     if _config_manager is None:
-        _config_manager = ConfigManager(config_dir)
+        with _config_manager_lock:
+            if _config_manager is None:
+                _config_manager = ConfigManager(config_dir)
     return _config_manager

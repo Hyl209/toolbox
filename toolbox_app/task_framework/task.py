@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 import uuid
 from abc import ABC, abstractmethod
 from enum import Enum
@@ -65,7 +66,7 @@ class Task(ABC):
         """任务持续时间（秒）"""
         if self._start_time is None:
             return None
-        end_time = self._end_time or self._start_time
+        end_time = self._end_time or time.time()
         return end_time - self._start_time
 
     def set_metadata(self, key: str, value: Any):

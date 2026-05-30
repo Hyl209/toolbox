@@ -111,7 +111,7 @@ def datetime_to_timestamp(text: str, tz_offset: str = "+08:00") -> dict[str, int
     seconds = int(ts)
     return {
         "seconds": seconds,
-        "milliseconds": round(ts * 1000),
+        "milliseconds": int(ts * 1000),
         "iso": dt.isoformat(timespec="seconds"),
     }
 
@@ -123,6 +123,6 @@ def current_time(tz_offset: str = "+08:00") -> dict[str, int | str]:
     return {
         "datetime": now.strftime("%Y-%m-%d %H:%M:%S"),
         "seconds": seconds,
-        "milliseconds": round(ts * 1000),
+        "milliseconds": int(ts * 1000),
         "iso": now.isoformat(timespec="seconds"),
     }

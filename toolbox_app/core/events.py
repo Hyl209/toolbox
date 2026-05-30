@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from typing import Any, Callable
 from .logger import get_logger
 
@@ -101,11 +102,14 @@ class EventSystem:
 
 # 全局事件系统实例
 _event_system: EventSystem = None
+_event_system_lock = threading.Lock()
 
 
 def get_event_system() -> EventSystem:
     """获取全局事件系统实例"""
     global _event_system
     if _event_system is None:
-        _event_system = EventSystem()
+        with _event_system_lock:
+            if _event_system is None:
+                _event_system = EventSystem()
     return _event_system

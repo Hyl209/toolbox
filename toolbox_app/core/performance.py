@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 import time
 import functools
 from collections import deque
@@ -204,13 +205,17 @@ class MemoryMonitor:
 # 全局性能监控器实例
 _performance_monitor: PerformanceMonitor = None
 _memory_monitor: MemoryMonitor = None
+_perf_lock = threading.Lock()
+_mem_lock = threading.Lock()
 
 
 def get_performance_monitor() -> PerformanceMonitor:
     """获取全局性能监控器实例"""
     global _performance_monitor
     if _performance_monitor is None:
-        _performance_monitor = PerformanceMonitor()
+        with _perf_lock:
+            if _performance_monitor is None:
+                _performance_monitor = PerformanceMonitor()
     return _performance_monitor
 
 
@@ -218,5 +223,7 @@ def get_memory_monitor() -> MemoryMonitor:
     """获取全局内存监控器实例"""
     global _memory_monitor
     if _memory_monitor is None:
-        _memory_monitor = MemoryMonitor()
+        with _mem_lock:
+            if _memory_monitor is None:
+                _memory_monitor = MemoryMonitor()
     return _memory_monitor

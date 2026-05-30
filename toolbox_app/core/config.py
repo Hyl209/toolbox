@@ -9,6 +9,7 @@ Authoritative implementation: ``config/manager.py``
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
 from typing import Any, Optional
 from .logger import get_logger
@@ -115,11 +116,14 @@ class ConfigManager:
 
 # 全局配置管理器实例
 _config_manager: Optional[ConfigManager] = None
+_config_lock = threading.Lock()
 
 
 def get_config_manager(config_dir: str | Path = "config") -> ConfigManager:
     """获取全局配置管理器实例"""
     global _config_manager
     if _config_manager is None:
-        _config_manager = ConfigManager(config_dir)
+        with _config_lock:
+            if _config_manager is None:
+                _config_manager = ConfigManager(config_dir)
     return _config_manager

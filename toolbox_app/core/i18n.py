@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
 from typing import Any, Optional
 from .logger import get_logger
@@ -49,8 +50,11 @@ class I18nManager:
         if locale not in self._loaded_locales:
             self.load_locale(locale)
 
-        self.current_locale = locale
-        logger.info(f"设置语言: {locale}")
+        if locale in self._loaded_locales:
+            self.current_locale = locale
+            logger.info(f"设置语言: {locale}")
+        else:
+            logger.warning(f"语言包加载失败，保持当前语言: {self.current_locale}")
 
     def get(self, key: str, default: str = None) -> str:
         """获取翻译"""
@@ -66,7 +70,7 @@ class I18nManager:
                 return translation
 
         # 返回默认值或键名
-        return default or key
+        return default if default is not None else key
 
     def _get_translation(self, locale: str, key: str) -> Optional[str]:
         """获取指定语言的翻译"""
@@ -117,7 +121,8 @@ class I18nManager:
         template = self.get(key)
         try:
             return template.format(**kwargs)
-        except Exception:
+        except (KeyError, ValueError, IndexError) as e:
+            logger.debug(f"翻译格式化失败 key={key!r}: {e}")
             return template
 
     def has_translation(self, key: str) -> bool:
@@ -132,13 +137,16 @@ class I18nManager:
 
 # 全局国际化管理器实例
 _i18n_manager: Optional[I18nManager] = None
+_i18n_lock = threading.Lock()
 
 
 def get_i18n_manager(locale_dir: str | Path = None, default_locale: str = "zh_CN") -> I18nManager:
     """获取全局国际化管理器实例"""
     global _i18n_manager
     if _i18n_manager is None:
-        _i18n_manager = I18nManager(locale_dir, default_locale)
+        with _i18n_lock:
+            if _i18n_manager is None:
+                _i18n_manager = I18nManager(locale_dir, default_locale)
     return _i18n_manager
 
 

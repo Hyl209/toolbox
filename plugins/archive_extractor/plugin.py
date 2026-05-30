@@ -363,12 +363,14 @@ class ArchiveExtractorPlugin(PluginBase):
         with self._detect_lock:
             result = self._detect_result
             self._detect_result = None
+            if result is not None:
+                generation, path, archive_type, error = result
+                if generation != self._detect_generation:
+                    result = None
         if result is None:
             self._detect_timer.start()  # single-shot: restart if still waiting
             return
-        generation, path, archive_type, error = result
-        if generation != self._detect_generation:
-            return
+        _, path, archive_type, error = result
         if error:
             self.log.appendPlainText(f"识别失败：{error}")
         self._apply_detected_archive(path, archive_type)

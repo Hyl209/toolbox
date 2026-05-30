@@ -19,7 +19,7 @@ class TaskQueue:
         self.max_workers = max_workers
         self._queue: deque[Task] = deque()
         self._workers: dict[str, TaskWorker] = {}
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._signals = TaskSignals()
         self._is_running = False
 

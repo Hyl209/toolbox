@@ -402,7 +402,7 @@ def build_toolbox_window_class(deps: dict):
             if not self.help_popup.isVisible():
                 return
             local_pos = self.mapFromGlobal(global_pos)
-            if self.rect().contains(local_pos):
+            if self.rect().contains(local_pos) and not self.help_popup.geometry().contains(local_pos):
                 self.hide_help_popup()
 
         def mousePressEvent(self, event):

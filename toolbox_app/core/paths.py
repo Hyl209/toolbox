@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 import tempfile
+import threading
 from pathlib import Path
 from typing import Optional
 from .logger import get_logger
@@ -94,15 +95,15 @@ class PathManager:
         current_time = time.time()
         max_age_seconds = max_age_hours * 3600
 
-        try:
-            for item in self.temp_dir.rglob("*"):
-                if item.is_file():
+        for item in self.temp_dir.rglob("*"):
+            if item.is_file():
+                try:
                     file_age = current_time - item.stat().st_mtime
                     if file_age > max_age_seconds:
                         item.unlink()
                         logger.debug(f"清理临时文件: {item}")
-        except Exception as e:
-            logger.error(f"清理临时文件失败: {e}")
+                except (PermissionError, FileNotFoundError, OSError):
+                    pass
 
     def ensure_dir(self, path: Path) -> Path:
         """确保目录存在"""
@@ -112,11 +113,14 @@ class PathManager:
 
 # 全局路径管理器实例
 _path_manager: Optional[PathManager] = None
+_path_lock = threading.Lock()
 
 
 def get_path_manager(app_name: str = "HylToolbox") -> PathManager:
     """获取全局路径管理器实例"""
     global _path_manager
     if _path_manager is None:
-        _path_manager = PathManager(app_name)
+        with _path_lock:
+            if _path_manager is None:
+                _path_manager = PathManager(app_name)
     return _path_manager

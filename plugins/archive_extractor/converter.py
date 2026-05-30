@@ -148,9 +148,9 @@ def _safe_tar_extract(archive_path: Path, output_dir: Path) -> int:
         except TypeError:
             # Python < 3.12 lacks filter= support; extra safety for dangerous members
             for m in members:
-                if m.isdev() or m.isfifo():
-                    continue  # skip device files and FIFOs
-                tf.extract(output_dir, member=m)
+                if m.isdev() or m.isfifo() or m.issym() or m.islnk():
+                    continue  # skip device files, FIFOs, and symlinks
+                tf.extract(m, path=output_dir)
         return len(members)
 
 
@@ -158,8 +158,9 @@ def _escape_bat_value(value: str) -> str:
     """Escape a value for safe use inside double-quoted batch file strings."""
     # % must be doubled (variable expansion); ^ & | < > need caret escaping
     # " must be escaped as ^" to prevent breaking out of the quoted set "..." syntax
+    # ( ) and ! also need escaping to avoid breaking if/for blocks and delayed expansion
     value = value.replace("%", "%%")
-    for ch in '"^&|<>':
+    for ch in '"^&|<>()!':
         value = value.replace(ch, f"^{ch}")
     return value
 

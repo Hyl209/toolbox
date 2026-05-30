@@ -7,6 +7,7 @@ should import ``get_logger`` from here.
 from __future__ import annotations
 
 import logging
+import threading
 from pathlib import Path
 from typing import Optional
 
@@ -25,6 +26,8 @@ class LoggerManager:
         import logging.handlers as _handlers
 
         root = logging.getLogger()
+        if getattr(root, '_hyl_configured', False):
+            return
         root.setLevel(logging.DEBUG)
 
         # 控制台处理器
@@ -60,6 +63,7 @@ class LoggerManager:
         error_handler.setLevel(logging.ERROR)
         error_handler.setFormatter(app_format)
         root.addHandler(error_handler)
+        root._hyl_configured = True
 
     def get_logger(self, name: str) -> logging.Logger:
         """获取或创建指定名称的日志记录器"""
@@ -71,13 +75,16 @@ class LoggerManager:
 
 # 全局日志管理器实例
 _logger_manager: Optional[LoggerManager] = None
+_logger_lock = threading.Lock()
 
 
 def setup_logger(log_dir: str | Path = "logs") -> LoggerManager:
     """初始化全局日志管理器"""
     global _logger_manager
     if _logger_manager is None:
-        _logger_manager = LoggerManager(log_dir)
+        with _logger_lock:
+            if _logger_manager is None:
+                _logger_manager = LoggerManager(log_dir)
     return _logger_manager
 
 

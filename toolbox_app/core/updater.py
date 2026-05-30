@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import threading
+import time
 import requests
 from pathlib import Path
 from typing import Optional, Callable
@@ -55,12 +57,17 @@ class UpdateChecker:
             logger.warning("未配置更新 URL")
             return None
 
+        if not self.update_url.startswith('https://'):
+            logger.error("更新 URL 必须使用 HTTPS")
+            return None
+
         try:
             response = requests.get(self.update_url, timeout=10)
             response.raise_for_status()
 
             data = response.json()
             update_info = UpdateInfo.from_dict(data)
+            self._last_check = time.time()
 
             # 比较版本
             if self._is_newer_version(update_info.version, self.current_version):
@@ -209,8 +216,13 @@ class UpdateInstaller:
         """解压更新"""
         import zipfile
 
+        dest = app_dir.resolve()
         with zipfile.ZipFile(update_path, 'r') as zip_ref:
-            zip_ref.extractall(app_dir)
+            for member in zip_ref.infolist():
+                member_path = (dest / member.filename).resolve()
+                if not str(member_path).startswith(str(dest) + '\\') and not str(member_path).startswith(str(dest) + '/'):
+                    raise RuntimeError(f"Zip Slip detected: {member.filename}")
+            zip_ref.extractall(dest)
 
         logger.info(f"解压更新到: {app_dir}")
 
@@ -257,11 +269,14 @@ class UpdateManager:
 
 # 全局更新管理器实例
 _update_manager: Optional[UpdateManager] = None
+_update_manager_lock = threading.Lock()
 
 
 def get_update_manager(update_url: str = None, current_version: str = "2.0.0") -> UpdateManager:
     """获取全局更新管理器实例"""
     global _update_manager
     if _update_manager is None:
-        _update_manager = UpdateManager(update_url, current_version)
+        with _update_manager_lock:
+            if _update_manager is None:
+                _update_manager = UpdateManager(update_url, current_version)
     return _update_manager

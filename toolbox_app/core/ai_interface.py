@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import mimetypes
+import threading
 from abc import ABC, abstractmethod
 from typing import Any, Optional
 from .logger import get_logger
@@ -68,7 +70,7 @@ class OpenAIProvider(AIProvider):
         if not self._initialized:
             raise RuntimeError("OpenAI 未初始化")
 
-        messages = context or []
+        messages = list(context or [])
         messages.append({"role": "user", "content": message})
 
         try:
@@ -88,6 +90,7 @@ class OpenAIProvider(AIProvider):
 
         try:
             import base64
+            mime_type = mimetypes.guess_type(image_path)[0] or "image/jpeg"
             with open(image_path, "rb") as f:
                 image_data = base64.b64encode(f.read()).decode()
 
@@ -98,14 +101,14 @@ class OpenAIProvider(AIProvider):
                         {"type": "text", "text": prompt or "描述这张图片"},
                         {
                             "type": "image_url",
-                            "image_url": {"url": f"data:image/jpeg;base64,{image_data}"}
+                            "image_url": {"url": f"data:{mime_type};base64,{image_data}"}
                         }
                     ]
                 }
             ]
 
             response = self._client.chat.completions.create(
-                model="gpt-4-vision-preview",
+                model=self.model,
                 messages=messages,
                 max_tokens=1000
             )
@@ -116,7 +119,19 @@ class OpenAIProvider(AIProvider):
 
     def generate_text(self, prompt: str, max_tokens: int = 1000) -> str:
         """生成文本"""
-        return self.chat(prompt)
+        if not self._initialized:
+            raise RuntimeError("OpenAI 未初始化")
+        messages = [{"role": "user", "content": prompt}]
+        try:
+            response = self._client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                max_tokens=max_tokens
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            logger.error(f"OpenAI 文本生成失败: {e}")
+            raise
 
 
 class ClaudeProvider(AIProvider):
@@ -147,7 +162,7 @@ class ClaudeProvider(AIProvider):
         if not self._initialized:
             raise RuntimeError("Claude 未初始化")
 
-        messages = context or []
+        messages = list(context or [])
         messages.append({"role": "user", "content": message})
 
         try:
@@ -168,6 +183,7 @@ class ClaudeProvider(AIProvider):
 
         try:
             import base64
+            mime_type = mimetypes.guess_type(image_path)[0] or "image/jpeg"
             with open(image_path, "rb") as f:
                 image_data = base64.b64encode(f.read()).decode()
 
@@ -179,7 +195,7 @@ class ClaudeProvider(AIProvider):
                             "type": "image",
                             "source": {
                                 "type": "base64",
-                                "media_type": "image/jpeg",
+                                "media_type": mime_type,
                                 "data": image_data
                             }
                         },
@@ -200,7 +216,19 @@ class ClaudeProvider(AIProvider):
 
     def generate_text(self, prompt: str, max_tokens: int = 1000) -> str:
         """生成文本"""
-        return self.chat(prompt)
+        if not self._initialized:
+            raise RuntimeError("Claude 未初始化")
+        messages = [{"role": "user", "content": prompt}]
+        try:
+            response = self._client.messages.create(
+                model=self.model,
+                max_tokens=max_tokens,
+                messages=messages
+            )
+            return response.content[0].text
+        except Exception as e:
+            logger.error(f"Claude 文本生成失败: {e}")
+            raise
 
 
 class AIManager:
@@ -267,11 +295,14 @@ class AIManager:
 
 # 全局 AI 管理器实例
 _ai_manager: Optional[AIManager] = None
+_ai_manager_lock = threading.Lock()
 
 
 def get_ai_manager() -> AIManager:
     """获取全局 AI 管理器实例"""
     global _ai_manager
     if _ai_manager is None:
-        _ai_manager = AIManager()
+        with _ai_manager_lock:
+            if _ai_manager is None:
+                _ai_manager = AIManager()
     return _ai_manager

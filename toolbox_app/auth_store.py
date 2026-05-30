@@ -42,22 +42,40 @@ def save_users(store_path: str | Path, users: list[dict[str, str]]) -> None:
         for item in users
         if item.get('username') and item.get('password_hash')
     ]
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
+    import tempfile
+    fd, tmp_path = tempfile.mkstemp(dir=str(path.parent), suffix='.tmp')
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+        os.replace(tmp_path, str(path))
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
 
 
 def hash_password(password: str) -> str:
-    salt = os.urandom(16).hex()
-    digest = hashlib.sha256(f'{salt}:{password}'.encode('utf-8')).hexdigest()
-    return f'{salt}${digest}'
+    salt = os.urandom(16)
+    digest = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, 300_000)
+    return f'pbkdf2${salt.hex()}${digest.hex()}'
 
 
 def verify_password(password: str, stored_hash: str) -> bool:
+    parts = stored_hash.split('$')
+    if len(parts) == 3 and parts[0] == 'pbkdf2':
+        salt = bytes.fromhex(parts[1])
+        expected = bytes.fromhex(parts[2])
+        actual = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, 300_000)
+        return hmac.compare_digest(actual, expected)
+    # Legacy SHA-256 format (backward compat)
     try:
-        salt, expected = stored_hash.split('$', 1)
+        salt_hex, expected_hex = stored_hash.split('$', 1)
     except ValueError:
         return False
-    actual = hashlib.sha256(f'{salt}:{password}'.encode('utf-8')).hexdigest()
-    return hmac.compare_digest(actual, expected)
+    actual = hashlib.sha256(f'{salt_hex}:{password}'.encode('utf-8')).hexdigest()
+    return hmac.compare_digest(actual, expected_hex)
 
 
 def find_user(users: list[dict[str, str]], username: str):

@@ -12,6 +12,8 @@ class PluginConfig:
     """插件配置"""
 
     def __init__(self, config_dir: str | Path, plugin_name: str):
+        if any(c in str(plugin_name) for c in ('..', '/', '\\')):
+            raise ValueError(f"Invalid plugin_name: {plugin_name!r}")
         self.config_dir = Path(config_dir)
         self.plugin_name = plugin_name
         self.plugin_dir = self.config_dir / "plugins" / plugin_name
@@ -26,7 +28,7 @@ class PluginConfig:
                 with open(self.config_file, 'r', encoding='utf-8') as f:
                     self._config = json.load(f)
                 logger.debug(f"插件配置加载成功: {self.plugin_name}")
-            except Exception as e:
+            except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
                 logger.error(f"加载插件配置失败: {e}")
                 self._config = {}
         else:
@@ -39,7 +41,7 @@ class PluginConfig:
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(self._config, f, indent=2, ensure_ascii=False)
             logger.debug(f"插件配置保存成功: {self.plugin_name}")
-        except Exception as e:
+        except (OSError, TypeError) as e:
             logger.error(f"保存插件配置失败: {e}")
 
     def get(self, key: str, default: Any = None) -> Any:
@@ -141,7 +143,10 @@ class PluginConfig:
     def increment(self, key: str, amount: int = 1) -> int:
         """递增配置值"""
         current = self.get(key, 0)
-        new_value = current + amount
+        try:
+            new_value = int(current) + amount
+        except (TypeError, ValueError):
+            new_value = amount
         self.set(key, new_value)
         return new_value
 
@@ -167,7 +172,7 @@ class PluginConfig:
 
         current.insert(0, item)
 
-        if max_length and len(current) > max_length:
+        if max_length is not None and len(current) > max_length:
             current = current[:max_length]
 
         self.set(key, current)

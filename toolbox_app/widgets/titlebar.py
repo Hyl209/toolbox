@@ -19,7 +19,7 @@ class WindowControlButton(QPushButton):
         super().paintEvent(event)
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing, True)
-        color = '#f5f7fa' if self.window().current_theme == 'dark' else '#4d5866'
+        color = '#f5f7fa' if getattr(self.window(), 'current_theme', 'light') == 'dark' else '#4d5866'
         pen = QPen(color)
         pen.setWidthF(1.8)
         painter.setPen(pen)
@@ -44,7 +44,7 @@ class WindowControlButton(QPushButton):
 class DragTitleBar(QFrame):
     def __init__(self, window):
         super().__init__(window)
-        self.window = window
+        self._host_window = window
         self.setProperty('dragBar', True)
         self.setFixedHeight(34)
         layout = QHBoxLayout(self)
@@ -53,34 +53,34 @@ class DragTitleBar(QFrame):
         self.title_label = QLabel('')
         self.title_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         layout.addWidget(self.title_label, 1)
-        self.window.window_controls_layout = QHBoxLayout()
-        self.window.window_controls_layout.setContentsMargins(0, 0, 0, 0)
-        self.window.window_controls_layout.setSpacing(10)
-        self.window.min_button = WindowControlButton('min', '最小化', self)
-        self.window.max_button = WindowControlButton('max', '最大化', self)
-        self.window.close_button = WindowControlButton('close', '关闭', self)
-        self.window.min_button.clicked.connect(self.window.showMinimized)
-        self.window.max_button.clicked.connect(self.window.toggle_max_restore)
-        self.window.close_button.clicked.connect(self.window.close)
-        self.window.window_controls_layout.addWidget(self.window.min_button)
-        self.window.window_controls_layout.addWidget(self.window.max_button)
-        self.window.window_controls_layout.addWidget(self.window.close_button)
-        layout.addLayout(self.window.window_controls_layout)
+        self._host_window.window_controls_layout = QHBoxLayout()
+        self._host_window.window_controls_layout.setContentsMargins(0, 0, 0, 0)
+        self._host_window.window_controls_layout.setSpacing(10)
+        self._host_window.min_button = WindowControlButton('min', '最小化', self)
+        self._host_window.max_button = WindowControlButton('max', '最大化', self)
+        self._host_window.close_button = WindowControlButton('close', '关闭', self)
+        self._host_window.min_button.clicked.connect(self._host_window.showMinimized)
+        self._host_window.max_button.clicked.connect(self._host_window.toggle_max_restore)
+        self._host_window.close_button.clicked.connect(self._host_window.close)
+        self._host_window.window_controls_layout.addWidget(self._host_window.min_button)
+        self._host_window.window_controls_layout.addWidget(self._host_window.max_button)
+        self._host_window.window_controls_layout.addWidget(self._host_window.close_button)
+        layout.addLayout(self._host_window.window_controls_layout)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
-            self.window.start_window_drag(event.globalPosition().toPoint())
+            self._host_window.start_window_drag(event.globalPosition().toPoint())
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
-        self.window.update_window_drag(event.globalPosition().toPoint())
+        self._host_window.update_window_drag(event.globalPosition().toPoint())
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
-        self.window.stop_window_drag()
+        self._host_window.stop_window_drag()
         super().mouseReleaseEvent(event)
 
     def mouseDoubleClickEvent(self, event):
         if event.button() == Qt.LeftButton:
-            self.window.toggle_max_restore()
+            self._host_window.toggle_max_restore()
         super().mouseDoubleClickEvent(event)

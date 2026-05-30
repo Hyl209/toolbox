@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -26,10 +27,18 @@ class CrashRecoveryManager:
         """保存应用状态到磁盘。"""
         try:
             self._state_file.parent.mkdir(parents=True, exist_ok=True)
-            self._state_file.write_text(
-                json.dumps(state, ensure_ascii=False, indent=2),
-                encoding="utf-8",
-            )
+            import tempfile
+            fd, tmp_path = tempfile.mkstemp(dir=str(self._state_file.parent), suffix='.tmp')
+            try:
+                with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                    json.dump(state, f, ensure_ascii=False, indent=2)
+                os.replace(tmp_path, str(self._state_file))
+            except BaseException:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise
             logger.info("Recovery state saved to %s", self._state_file)
         except Exception:
             logger.exception("Failed to save recovery state")
@@ -49,9 +58,10 @@ class CrashRecoveryManager:
     def clear_state(self) -> None:
         """删除保存的状态文件。"""
         try:
-            if self._state_file.exists():
-                self._state_file.unlink()
-                logger.info("Recovery state cleared: %s", self._state_file)
+            self._state_file.unlink()
+            logger.info("Recovery state cleared: %s", self._state_file)
+        except FileNotFoundError:
+            pass
         except Exception:
             logger.exception("Failed to clear recovery state")
 

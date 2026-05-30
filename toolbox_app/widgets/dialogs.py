@@ -121,10 +121,11 @@ def show_themed_success(parent, title: str, lines: list[str]):
             player.setSource(QUrl.fromLocalFile(str(_SOUND_PATH.resolve())))
             player.play()
             # Prevent GC while audio is playing
-            _active_audio_players.append((player, audio))
+            _ref = (player, audio)
+            _active_audio_players.append(_ref)
             player.mediaStatusChanged.connect(
-                lambda status: _active_audio_players.clear()
-                if status == QMediaPlayer.MediaStatus.EndOfMedia else None
+                lambda status, r=_ref: _active_audio_players.remove(r)
+                if status == QMediaPlayer.MediaStatus.EndOfMedia and r in _active_audio_players else None
             )
         except Exception:
             pass

@@ -31,8 +31,8 @@ class FileUtils:
                 shutil.rmtree(path)
                 logger.debug(f"删除目录: {path}")
             return True
-        except Exception as e:
-            logger.error(f"删除失败 {path}: {e}")
+        except (PermissionError, FileNotFoundError, OSError) as e:
+            logger.warning(f"删除失败 {path}: {e}")
             return False
 
     @staticmethod
