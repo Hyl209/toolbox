@@ -40,12 +40,17 @@ def csv_to_tsv(text: str, delimiter: str = ",") -> str:
 
 
 def _unique_headers(headers: list[str]) -> list[str]:
-    counts: dict[str, int] = {}
+    used: set[str] = set()
     result: list[str] = []
     for index, header in enumerate(headers, 1):
         base = header.strip() or f"column_{index}"
-        counts[base] = counts.get(base, 0) + 1
-        result.append(base if counts[base] == 1 else f"{base}_{counts[base]}")
+        name = base
+        counter = 2
+        while name in used:
+            name = f"{base}_{counter}"
+            counter += 1
+        used.add(name)
+        result.append(name)
     return result
 
 

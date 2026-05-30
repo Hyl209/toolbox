@@ -150,7 +150,10 @@ def build_toolbox_window_class(deps: dict):
             self.stack = QStackedWidget()
             self._tabs = {}
             for tool_def in TOOL_DEFINITIONS:
-                builder = _TAB_BUILDERS[tool_def.id]
+                builder = _TAB_BUILDERS.get(tool_def.id)
+                if builder is None:
+                    logger.warning("跳过未知工具 id: %s", tool_def.id)
+                    continue
                 tab = builder(settings)
                 self._tabs[tool_def.id] = tab
                 self.stack.addWidget(tab)
@@ -508,8 +511,10 @@ def build_toolbox_window_class(deps: dict):
         def switch_tool_page(self, index: int):
             if 0 <= index < len(self._sidebar_to_stack):
                 animate_stack_switch(self.stack, self._sidebar_to_stack[index])
-            else:
+            elif 0 <= index < self.stack.count():
                 animate_stack_switch(self.stack, index)
+            else:
+                logger.warning("switch_tool_page: 无效索引 %d", index)
 
         def changeEvent(self, event):
             super().changeEvent(event)

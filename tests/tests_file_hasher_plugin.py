@@ -78,3 +78,47 @@ def test_verify_file_hash_rejects_unknown_checksum_length(tmp_path):
         assert "无法根据校验值长度识别算法" in str(exc)
     else:
         raise AssertionError("short checksum should be rejected")
+
+
+def test_calculate_file_hash_single_algorithm(tmp_path):
+    converter = _load_converter()
+    sample = tmp_path / "sample.txt"
+    sample.write_text("hello", encoding="utf-8")
+
+    result = converter.calculate_file_hash(sample, "md5")
+
+    assert result == hashlib.md5(b"hello").hexdigest()
+
+
+def test_calculate_file_hash_rejects_unsupported_algorithm(tmp_path):
+    converter = _load_converter()
+    sample = tmp_path / "sample.txt"
+    sample.write_text("hello", encoding="utf-8")
+
+    try:
+        converter.calculate_file_hash(sample, "sha512")
+    except converter.FileHashError as exc:
+        assert "不支持" in str(exc)
+    else:
+        raise AssertionError("unsupported algorithm should be rejected")
+
+
+def test_calculate_file_hash_rejects_missing_file():
+    converter = _load_converter()
+
+    try:
+        converter.calculate_file_hash("/nonexistent/file.txt")
+    except converter.FileHashError as exc:
+        assert "请选择有效文件" in str(exc)
+    else:
+        raise AssertionError("missing file should be rejected")
+
+
+def test_verify_file_hash_reports_mismatch(tmp_path):
+    converter = _load_converter()
+    sample = tmp_path / "sample.txt"
+    sample.write_text("hello", encoding="utf-8")
+
+    state = converter.verify_file_hash(sample, hashlib.sha256(b"wrong").hexdigest())
+
+    assert state["matched"] is False

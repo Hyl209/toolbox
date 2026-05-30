@@ -1,22 +1,8 @@
 from __future__ import annotations
 
-import importlib.util
-from pathlib import Path
+from toolbox_app.plugins.base import PluginBase, PluginInfo, load_sibling_converter
 
-from toolbox_app.plugins.base import PluginBase, PluginInfo
-
-
-def _load_converter():
-    converter_path = Path(__file__).with_name("converter.py")
-    spec = importlib.util.spec_from_file_location("regex_tools_converter", converter_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError("无法加载正则工具 converter.py")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-_converter = _load_converter()
+_converter = load_sibling_converter(__file__, "regex_tools_converter")
 
 
 class RegexToolsPlugin(PluginBase):

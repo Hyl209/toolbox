@@ -107,20 +107,22 @@ def parse_datetime_text(text: str, tz_offset: str = "+08:00") -> datetime:
 
 def datetime_to_timestamp(text: str, tz_offset: str = "+08:00") -> dict[str, int | str]:
     dt = parse_datetime_text(text, tz_offset)
-    seconds = int(dt.timestamp())
+    ts = dt.timestamp()
+    seconds = int(ts)
     return {
         "seconds": seconds,
-        "milliseconds": seconds * 1000,
+        "milliseconds": round(ts * 1000),
         "iso": dt.isoformat(timespec="seconds"),
     }
 
 
 def current_time(tz_offset: str = "+08:00") -> dict[str, int | str]:
     now = datetime.now(parse_timezone_offset(tz_offset))
-    seconds = int(now.timestamp())
+    ts = now.timestamp()
+    seconds = int(ts)
     return {
         "datetime": now.strftime("%Y-%m-%d %H:%M:%S"),
         "seconds": seconds,
-        "milliseconds": seconds * 1000,
+        "milliseconds": round(ts * 1000),
         "iso": now.isoformat(timespec="seconds"),
     }

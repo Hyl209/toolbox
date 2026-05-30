@@ -77,3 +77,11 @@ def test_missing_group_reports_clear_error():
         assert "分组不存在" in str(exc)
     else:
         raise AssertionError("missing group should fail")
+
+
+def test_extract_matches_text_joins_results():
+    converter = _load_converter()
+
+    result = converter.extract_matches_text("a1 b2 c3", r"\d")
+
+    assert result == "1\n2\n3"

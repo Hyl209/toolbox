@@ -88,3 +88,43 @@ def test_describe_uuid_reports_nil_uuid():
     assert state["is_nil"] is True
     assert state["canonical"] == "00000000-0000-0000-0000-000000000000"
     assert state["hex"] == "00000000000000000000000000000000"
+
+
+def test_describe_uuid_reports_v4_uuid_details():
+    converter = _load_converter()
+
+    state = converter.describe_uuid("f47ac10b-58cc-4372-a567-0e02b2c3d479")
+
+    assert state["is_nil"] is False
+    assert state["version"] == 4
+    assert "urn" in state
+    assert state["variant"] is not None
+
+
+def test_validate_uuid_returns_false_for_invalid():
+    converter = _load_converter()
+
+    assert converter.validate_uuid("not-a-uuid") is False
+    assert converter.validate_uuid("f47ac10b-58cc-4372-a567-0e02b2c3d479") is True
+
+
+def test_normalize_uuid_raises_on_invalid():
+    converter = _load_converter()
+
+    try:
+        converter.normalize_uuid("invalid")
+    except converter.UuidToolError as exc:
+        assert "UUID 格式无效" in str(exc)
+    else:
+        raise AssertionError("invalid UUID should be rejected")
+
+
+def test_parse_count_rejects_above_maximum():
+    converter = _load_converter()
+
+    try:
+        converter.parse_count(501)
+    except converter.UuidToolError as exc:
+        assert "数量范围必须是" in str(exc)
+    else:
+        raise AssertionError("count above max should be rejected")

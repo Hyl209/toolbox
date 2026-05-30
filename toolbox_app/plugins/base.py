@@ -1,11 +1,25 @@
 from __future__ import annotations
 
+import importlib.util
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from pathlib import Path
+from types import ModuleType
 from typing import Any, Optional
 from ..core.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def load_sibling_converter(caller_file: str, module_name: str) -> ModuleType:
+    """Load converter.py next to the caller's plugin.py."""
+    converter_path = Path(caller_file).with_name("converter.py")
+    spec = importlib.util.spec_from_file_location(module_name, converter_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"无法加载 {converter_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 @dataclass
@@ -79,9 +93,8 @@ class PluginBase(ABC):
         """
         pass
 
-    @abstractmethod
     def cleanup(self):
-        """清理插件（子类实现，仅调用一次）"""
+        """清理插件（子类可覆盖，建议调用 super().cleanup()）"""
         if self._is_cleaned:
             return
         self._is_cleaned = True

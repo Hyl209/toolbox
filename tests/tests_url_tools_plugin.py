@@ -62,3 +62,23 @@ def test_summarize_url_requires_full_url():
         assert "请输入完整 URL" in str(exc)
     else:
         raise AssertionError("partial query should be rejected")
+
+
+def test_build_query_string_from_pairs():
+    converter = _load_converter()
+
+    result = converter.build_query_string([("key", "value"), ("q", "hello world")])
+
+    assert "key=value" in result
+    assert "q=hello+world" in result
+
+
+def test_build_query_string_rejects_empty_pairs():
+    converter = _load_converter()
+
+    try:
+        converter.build_query_string([])
+    except converter.UrlToolError as exc:
+        assert "没有可生成的查询参数" in str(exc)
+    else:
+        raise AssertionError("empty pairs should be rejected")

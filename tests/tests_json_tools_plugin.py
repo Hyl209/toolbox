@@ -63,3 +63,21 @@ def test_parse_json_reports_line_and_column():
         assert "第 1 行" in message
     else:
         raise AssertionError("invalid JSON should be rejected")
+
+
+def test_validate_json_reports_dict_type_and_key_count():
+    converter = _load_converter()
+
+    state = converter.validate_json('{"a": 1, "b": 2}')
+
+    assert state == {"valid": True, "type": "dict", "items": 2}
+
+
+def test_validate_json_reports_scalar_type():
+    converter = _load_converter()
+
+    state = converter.validate_json('"hello"')
+
+    assert state["valid"] is True
+    assert state["type"] == "str"
+    assert state["items"] == 1

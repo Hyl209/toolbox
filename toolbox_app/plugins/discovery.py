@@ -81,6 +81,8 @@ class PluginDiscovery:
             if info:
                 info.plugin_path = str(plugin_path)
                 # entry 格式: 文件名:类名 (用第一个匹配的 PluginBase 子类)
+                if len(matches) > 1:
+                    logger.warning(f"插件文件包含多个 PluginBase 子类，使用第一个: {plugin_path} ({matches})")
                 info.entry = f"{plugin_path.name}:{matches[0]}"
                 self._remember_plugin_info(info, plugin_path)
 
@@ -104,18 +106,29 @@ class PluginDiscovery:
         # 去掉注释行，避免注释中的字段被误匹配
         cleaned = re.sub(r'^\s*#.*$', '', source, flags=re.MULTILINE)
 
+        # Only scan within the PluginBase subclass body to reduce false matches
+        class_match = re.search(r'class\s+\w+\s*\(.*PluginBase.*\)\s*:', cleaned)
+        if class_match:
+            # Find the class body: from the class line to the next class def or end
+            body_start = class_match.start()
+            rest = cleaned[class_match.end():]
+            next_class = re.search(r'\nclass\s+\w+', rest)
+            body = cleaned[body_start:class_match.end() + (next_class.start() if next_class else len(rest))]
+        else:
+            body = cleaned
+
         # Match both dict style ("name": "val") and keyword arg style (name="val")
         def _field_re(field: str) -> re.Pattern:
             return re.compile(
                 rf"""(?:['"]{field}['"]\s*:\s*|{field}\s*=\s*)['"]([^'"]+)['"]"""
             )
 
-        name_match = _field_re('name').search(cleaned)
-        version_match = _field_re('version').search(cleaned)
-        desc_match = _field_re('description').search(cleaned)
-        author_match = _field_re('author').search(cleaned)
-        type_match = _field_re('plugin_type').search(cleaned)
-        sidebar_match = _field_re('sidebar_label').search(cleaned)
+        name_match = _field_re('name').search(body)
+        version_match = _field_re('version').search(body)
+        desc_match = _field_re('description').search(body)
+        author_match = _field_re('author').search(body)
+        type_match = _field_re('plugin_type').search(body)
+        sidebar_match = _field_re('sidebar_label').search(body)
         if not (name_match and version_match):
             return None
         plugin_name = PluginDiscovery._validate_plugin_name(

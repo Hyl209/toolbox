@@ -470,7 +470,9 @@ def build_settings_dialog_class(deps: dict):
                 if dep_cb is None:
                     continue
                 if not dep_cb.isChecked():
+                    dep_cb.blockSignals(True)
                     dep_cb.setChecked(True)
+                    dep_cb.blockSignals(False)
                 self._enable_plugin_dependencies(dep_name, seen)
 
         def _resolve_disabled_plugins_from_checkboxes(self) -> set[str]:
@@ -489,7 +491,9 @@ def build_settings_dialog_class(deps: dict):
             for name in disabled:
                 cb = self._plugin_checkboxes.get(name)
                 if cb is not None and cb.isChecked():
+                    cb.blockSignals(True)
                     cb.setChecked(False)
+                    cb.blockSignals(False)
             return disabled
 
         def _save_and_close(self):

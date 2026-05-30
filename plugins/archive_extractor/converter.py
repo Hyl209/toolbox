@@ -146,17 +146,22 @@ def _safe_tar_extract(archive_path: Path, output_dir: Path) -> int:
         try:
             tf.extractall(output_dir, members=members, filter="data")
         except TypeError:
-            tf.extractall(output_dir, members=members)
+            # Python < 3.12 lacks filter= support; extra safety for dangerous members
+            for m in members:
+                if m.isdev() or m.isfifo():
+                    continue  # skip device files and FIFOs
+                tf.extract(output_dir, member=m)
         return len(members)
 
 
-def _escape_bat_password(password: str) -> str:
-    """Escape password for safe use in a batch file `set "VAR=..."` command."""
+def _escape_bat_value(value: str) -> str:
+    """Escape a value for safe use inside double-quoted batch file strings."""
     # % must be doubled (variable expansion); ^ & | < > need caret escaping
-    password = password.replace("%", "%%")
-    for ch in "^&|<>":
-        password = password.replace(ch, f"^{ch}")
-    return password
+    # " must be escaped as ^" to prevent breaking out of the quoted set "..." syntax
+    value = value.replace("%", "%%")
+    for ch in '"^&|<>':
+        value = value.replace(ch, f"^{ch}")
+    return value
 
 
 def _build_7z_cmd(seven_zip: str, output_dir: Path, archive_path: Path, password: str) -> tuple[list[str], dict]:
@@ -167,10 +172,13 @@ def _build_7z_cmd(seven_zip: str, output_dir: Path, archive_path: Path, password
         return args, env
     # On Windows, write a temp batch file to avoid password in process list
     if os.name == "nt":
-        escaped = _escape_bat_password(password)
+        escaped_pw = _escape_bat_value(password)
+        escaped_out = _escape_bat_value(str(output_dir))
+        escaped_arc = _escape_bat_value(str(archive_path))
+        escaped_7z = _escape_bat_value(seven_zip)
         bat = tempfile.NamedTemporaryFile("w", suffix=".bat", delete=False, encoding="utf-8")
-        bat.write(f'@echo off\nset "ARCHIVE_PASS={escaped}"\n')
-        bat.write(f'"{seven_zip}" x -y "-o{output_dir}" "-p%ARCHIVE_PASS%" "{archive_path}"\n')
+        bat.write(f'@echo off\nset "ARCHIVE_PASS={escaped_pw}"\n')
+        bat.write(f'"{escaped_7z}" x -y "-o{escaped_out}" "-p%ARCHIVE_PASS%" "{escaped_arc}"\n')
         bat.write("exit /b %errorlevel%\n")
         bat.close()
         return ["cmd", "/c", bat.name], {"_bat_path": bat.name, **env}

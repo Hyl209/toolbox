@@ -7,5 +7,6 @@
   "entry": "plugin.py:JsonToolsPlugin",
   "type": "gui",
   "enabled": true,
-  "priority": 0
+  "priority": 0,
+  "dependencies": []
 }

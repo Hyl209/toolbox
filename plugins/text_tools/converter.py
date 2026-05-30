@@ -7,7 +7,7 @@ class TextToolError(Exception):
 
 def _require_text(text: str) -> str:
     value = str(text)
-    if not value:
+    if not value.strip():
         raise TextToolError("请输入文本")
     return value
 

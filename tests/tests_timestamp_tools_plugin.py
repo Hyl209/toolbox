@@ -87,3 +87,25 @@ def test_non_numeric_timezone_offset_reports_tool_error():
         assert "无法识别时区偏移" in str(exc)
     else:
         raise AssertionError("invalid timezone text should be rejected")
+
+
+def test_current_time_returns_datetime_and_timestamp():
+    converter = _load_converter()
+
+    state = converter.current_time("+08:00")
+
+    assert "datetime" in state
+    assert "seconds" in state
+    assert "milliseconds" in state
+    assert "iso" in state
+    assert state["seconds"] > 0
+    assert abs(state["milliseconds"] - state["seconds"] * 1000) < 1000
+
+
+def test_datetime_to_timestamp_preserves_millisecond_precision():
+    converter = _load_converter()
+
+    state = converter.datetime_to_timestamp("2026-05-30 12:00:00", "UTC")
+
+    # milliseconds should be close to seconds * 1000 (within 1s tolerance)
+    assert abs(state["milliseconds"] - state["seconds"] * 1000) < 1000

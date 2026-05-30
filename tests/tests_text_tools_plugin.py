@@ -64,3 +64,26 @@ def test_transform_case_rejects_unknown_mode():
         assert "不支持" in str(exc)
     else:
         raise AssertionError("unknown mode should fail")
+
+
+def test_transform_case_title_mode():
+    converter = _load_converter()
+
+    assert converter.transform_case("hello world", "title") == "Hello World"
+
+
+def test_sort_lines_reverse():
+    converter = _load_converter()
+
+    assert converter.sort_lines("a\nc\nb", reverse=True) == "c\nb\na"
+
+
+def test_require_text_rejects_whitespace_only():
+    converter = _load_converter()
+
+    try:
+        converter._require_text("   ")
+    except converter.TextToolError as exc:
+        assert "请输入文本" in str(exc)
+    else:
+        raise AssertionError("whitespace-only input should be rejected")

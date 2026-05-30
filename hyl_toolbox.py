@@ -15,7 +15,14 @@ from toolbox_app.plugins.manager import get_plugin_manager
 
 
 _WEIXIN_B64_FILE = Path(__file__).resolve().parent / "modules" / "ncm-converter" / "weixin_base64.txt"
-WEIXIN_IMAGE_BASE64 = _WEIXIN_B64_FILE.read_text(encoding="utf-8").strip() if _WEIXIN_B64_FILE.exists() else "" 
+_WEIXIN_IMAGE_BASE64_CACHE: str | None = None
+
+
+def _get_weixin_image_base64() -> str:
+    global _WEIXIN_IMAGE_BASE64_CACHE
+    if _WEIXIN_IMAGE_BASE64_CACHE is None:
+        _WEIXIN_IMAGE_BASE64_CACHE = _WEIXIN_B64_FILE.read_text(encoding="utf-8").strip() if _WEIXIN_B64_FILE.exists() else ""
+    return _WEIXIN_IMAGE_BASE64_CACHE 
 
 
 def build_help_popup_state(image_path: Path | None):
@@ -23,8 +30,8 @@ def build_help_popup_state(image_path: Path | None):
     image_bytes = b''
     if resolved and resolved.exists():
         image_bytes = resolved.read_bytes()
-    elif WEIXIN_IMAGE_BASE64:
-        image_bytes = base64.b64decode(WEIXIN_IMAGE_BASE64)
+    elif _get_weixin_image_base64():
+        image_bytes = base64.b64decode(_get_weixin_image_base64())
     return {
         'image_path': resolved if resolved and resolved.exists() else None,
         'image_bytes': image_bytes,

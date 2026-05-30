@@ -1,24 +1,11 @@
 from __future__ import annotations
 
-import importlib.util
 import threading
 from collections import deque
-from pathlib import Path
 
-from toolbox_app.plugins.base import PluginBase, PluginInfo
+from toolbox_app.plugins.base import PluginBase, PluginInfo, load_sibling_converter
 
-
-def _load_converter():  # -> types.ModuleType
-    converter_path = Path(__file__).with_name("converter.py")
-    spec = importlib.util.spec_from_file_location("archive_extractor_converter", converter_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError("无法加载解压插件 converter.py")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-_converter = _load_converter()
+_converter = load_sibling_converter(__file__, "archive_extractor_converter")
 
 
 def _get_qtimer(deps: dict):  # -> type[QTimer] | None
