@@ -143,7 +143,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
 
             self._build_log_section(layout, center_row, textedit_style, log_min_height)
 
-            card_root.addWidget(card)
+            card_root.addWidget(card, 1)
             if self.recent_count_edit is not None:
                 self.handle_all_messages_changed()
             if self.web_candidate_index_edit is not None:

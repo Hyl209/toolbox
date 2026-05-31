@@ -634,6 +634,18 @@ class TestPluginManager:
         assert second.get("my_gui_tool") is True
         assert mgr.get_plugin("my_gui_tool") is plugin
 
+    def test_real_plugin_converter_loads_on_first_command(self):
+        reset_plugin_manager()
+        mgr = PluginManager(ROOT / "plugins")
+        assert mgr.load_plugin("json_tools") is True
+        module = sys.modules[mgr._loaded_module_names["json_tools"]]
+        lazy_converter = module._converter
+        assert lazy_converter._module is None
+
+        plugin = mgr.get_plugin("json_tools")
+        assert plugin.handle_command("validate_json", text='{"a": 1}')["type"] == "dict"
+        assert lazy_converter._module is not None
+
     def test_disabled_plugin_is_unregistered_on_reload(self, gui_plugin_dir, tmp_plugins_dir):
         reset_plugin_manager()
         mgr = PluginManager(tmp_plugins_dir)

@@ -706,6 +706,7 @@ if QWidget is not None:
         'QProgressBar': QProgressBar,
         'QFileDialog': QFileDialog,
         'Qt': Qt,
+        'QScrollArea': QScrollArea,
         'DropZoneCard': DropZoneCard,
         'load_setting': load_setting,
         'save_setting': save_setting,

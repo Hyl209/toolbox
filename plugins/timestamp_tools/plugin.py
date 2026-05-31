@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from toolbox_app.plugins.base import PluginBase, PluginInfo, load_sibling_converter
+from toolbox_app.plugins.base import PluginBase, PluginInfo, lazy_sibling_converter
 
-_converter = load_sibling_converter(__file__, "timestamp_tools_converter")
+_converter = lazy_sibling_converter(__file__, "timestamp_tools_converter")
 
 
 class TimestampToolsPlugin(PluginBase):

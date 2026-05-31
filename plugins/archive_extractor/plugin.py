@@ -3,9 +3,9 @@ from __future__ import annotations
 import threading
 from collections import deque
 
-from toolbox_app.plugins.base import PluginBase, PluginInfo, load_sibling_converter
+from toolbox_app.plugins.base import PluginBase, PluginInfo, lazy_sibling_converter
 
-_converter = load_sibling_converter(__file__, "archive_extractor_converter")
+_converter = lazy_sibling_converter(__file__, "archive_extractor_converter")
 
 
 def _get_qtimer(deps: dict):  # -> type[QTimer] | None

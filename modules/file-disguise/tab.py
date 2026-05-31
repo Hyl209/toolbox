@@ -63,6 +63,7 @@ def build_zipandpng_tab_class(deps: dict[str, object]):
     QProgressBar = deps['QProgressBar']
     QFileDialog = deps['QFileDialog']
     Qt = deps['Qt']
+    QScrollArea = deps['QScrollArea']
     DropZoneCard = deps['DropZoneCard']
     load_setting = deps['load_setting']
     save_setting = deps['save_setting']
@@ -86,6 +87,24 @@ def build_zipandpng_tab_class(deps: dict[str, object]):
             super().__init__()
             self.settings = settings
             root = QVBoxLayout(self)
+            root.setContentsMargins(0, 0, 0, 0)
+            root.setSpacing(0)
+
+            content_host = QWidget()
+            content_host.setStyleSheet('background: transparent;')
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setStyleSheet(
+                'QScrollArea {border: none; background: transparent;} '
+                'QScrollArea > QWidget > QWidget {background: transparent;} '
+                + build_global_scrollbar_style()
+            )
+            scroll.setWidget(content_host)
+            root.addWidget(scroll)
+
+            card_root = QVBoxLayout(content_host)
+            card_root.setContentsMargins(0, 0, 0, 0)
+            card_root.setSpacing(0)
             card, layout = make_card('PNG伪装', '拖入任意文件与 PNG/JPG/GIF/WEBP 封面，输出伪装后的图片文件')
             self.payload_path = ''
             self.cover_path = ''
@@ -119,7 +138,7 @@ def build_zipandpng_tab_class(deps: dict[str, object]):
             self.log.setMinimumHeight(140)
             self.log.setStyleSheet(build_global_scrollbar_style())
             layout.addWidget(self.log)
-            root.addWidget(card)
+            card_root.addWidget(card, 1)
 
         def handle_payload_drop(self, paths: list[str]):
             result = split_dropped_files(paths)

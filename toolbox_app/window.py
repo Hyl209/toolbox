@@ -22,6 +22,9 @@ def build_toolbox_window_class(deps: dict):
     QStackedWidget = deps['QStackedWidget']
     QPixmap = deps['QPixmap']
     Qt = deps['Qt']
+    QEvent = deps.get('QEvent')
+    if QEvent is None:
+        from PySide6.QtCore import QEvent
     QIcon = deps.get('QIcon')
     DragTitleBar = deps['DragTitleBar']
     load_setting = deps['load_setting']
@@ -79,10 +82,16 @@ def build_toolbox_window_class(deps: dict):
             self.current_theme = load_setting(settings, 'ui/theme', 'dark')
             self._drag_offset = None
             self._normal_geometry = None
+            self._resize_margin = 8
+            self._resize_edge = None
+            self._resize_start_global_pos = None
+            self._resize_start_geometry = None
+            self._resize_handles = {}
             self.relogin_requested = False
             self.setWindowFlags(self.windowFlags() | Qt.FramelessWindowHint)
             self.setWindowTitle('格式转换工具')
             self.resize(1180, 820)
+            self.setMinimumSize(860, 560)
             self.setStyleSheet(get_theme_stylesheet(self.current_theme))
             self._apply_custom_theme_colors()
             if LOGO_PATH.exists() and QIcon is not None:
@@ -162,6 +171,9 @@ def build_toolbox_window_class(deps: dict):
             side_layout.addLayout(bottom_row)
             shell.addWidget(side_panel)
             self.stack = QStackedWidget()
+            stack_policy = self.stack.sizePolicy()
+            stack_policy.setVerticalPolicy(stack_policy.Policy.Ignored)
+            self.stack.setSizePolicy(stack_policy)
             self._tabs = {}
             self._tab_builders = dict(_TAB_BUILDERS)
             self._tab_settings = settings
@@ -221,11 +233,129 @@ def build_toolbox_window_class(deps: dict):
             content_layout.addWidget(central, 1)
             root_layout.addWidget(self.content_surface)
             self.setCentralWidget(root)
+            self._build_resize_handles()
             self.central_surface = self.content_surface
             self._build_user_menu()
             self._build_help_popup()
             self.update_user_menu_ui()
             self.update_window_controls()
+
+        def _build_resize_handles(self):
+            cursors = {
+                'left': Qt.SizeHorCursor,
+                'right': Qt.SizeHorCursor,
+                'top': Qt.SizeVerCursor,
+                'bottom': Qt.SizeVerCursor,
+                'top_left': Qt.SizeFDiagCursor,
+                'bottom_right': Qt.SizeFDiagCursor,
+                'top_right': Qt.SizeBDiagCursor,
+                'bottom_left': Qt.SizeBDiagCursor,
+            }
+            for edge, cursor in cursors.items():
+                handle = QWidget(self)
+                handle.setObjectName(f'resizeHandle_{edge}')
+                handle.setProperty('resizeHandle', True)
+                handle.setMouseTracking(True)
+                handle.setCursor(cursor)
+                handle.setStyleSheet('background: transparent;')
+                handle.installEventFilter(self)
+                self._resize_handles[edge] = handle
+            self._position_resize_handles()
+
+        def _position_resize_handles(self):
+            if not self._resize_handles:
+                return
+            margin = self._resize_margin
+            width = self.width()
+            height = self.height()
+            middle_width = max(0, width - margin * 2)
+            middle_height = max(0, height - margin * 2)
+            geometries = {
+                'top_left': (0, 0, margin, margin),
+                'top_right': (max(0, width - margin), 0, margin, margin),
+                'bottom_left': (0, max(0, height - margin), margin, margin),
+                'bottom_right': (max(0, width - margin), max(0, height - margin), margin, margin),
+                'left': (0, margin, margin, middle_height),
+                'right': (max(0, width - margin), margin, margin, middle_height),
+                'top': (margin, 0, middle_width, margin),
+                'bottom': (margin, max(0, height - margin), middle_width, margin),
+            }
+            visible = not self.isMaximized()
+            for edge, geometry in geometries.items():
+                handle = self._resize_handles[edge]
+                handle.setGeometry(*geometry)
+                handle.setVisible(visible)
+                handle.raise_()
+
+        def _event_global_pos(self, event):
+            if hasattr(event, 'globalPosition'):
+                return event.globalPosition().toPoint()
+            return event.globalPos()
+
+        def eventFilter(self, obj, event):
+            if obj in self._resize_handles.values():
+                event_type = event.type()
+                if event_type == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
+                    if self.isMaximized():
+                        return False
+                    edge = next((key for key, handle in self._resize_handles.items() if handle is obj), None)
+                    if edge is None:
+                        return False
+                    self._start_window_resize(edge, self._event_global_pos(event))
+                    event.accept()
+                    return True
+                if event_type == QEvent.MouseMove and self._resize_edge is not None:
+                    self._resize_window_to_global_pos(self._resize_edge, self._event_global_pos(event))
+                    event.accept()
+                    return True
+                if event_type == QEvent.MouseButtonRelease and self._resize_edge is not None:
+                    self._stop_window_resize()
+                    event.accept()
+                    return True
+            return super().eventFilter(obj, event)
+
+        def _start_window_resize(self, edge, global_pos):
+            self._resize_edge = edge
+            self._resize_start_global_pos = global_pos
+            self._resize_start_geometry = self.geometry()
+
+        def _stop_window_resize(self):
+            self._resize_edge = None
+            self._resize_start_global_pos = None
+            self._resize_start_geometry = None
+            if not self.isMaximized():
+                self._normal_geometry = self.geometry()
+
+        def _resize_window_to_global_pos(self, edge, global_pos):
+            start_pos = self._resize_start_global_pos
+            start_geometry = self._resize_start_geometry
+            if start_pos is None or start_geometry is None or self.isMaximized():
+                return
+            delta = global_pos - start_pos
+            left = start_geometry.left()
+            top = start_geometry.top()
+            width = start_geometry.width()
+            height = start_geometry.height()
+            min_width = self.minimumWidth()
+            min_height = self.minimumHeight()
+            max_width = self.maximumWidth()
+            max_height = self.maximumHeight()
+
+            if 'left' in edge:
+                new_width = max(min_width, min(max_width, width - delta.x()))
+                left = start_geometry.right() - new_width + 1
+                width = new_width
+            elif 'right' in edge:
+                width = max(min_width, min(max_width, width + delta.x()))
+
+            if 'top' in edge:
+                new_height = max(min_height, min(max_height, height - delta.y()))
+                top = start_geometry.bottom() - new_height + 1
+                height = new_height
+            elif 'bottom' in edge:
+                height = max(min_height, min(max_height, height + delta.y()))
+
+            self.setGeometry(left, top, width, height)
 
         def start_window_drag(self, global_pos):
             if self.isMaximized():
@@ -257,6 +387,7 @@ def build_toolbox_window_class(deps: dict):
             self.max_button.control_type = 'restore' if is_max else 'max'
             self.max_button.setToolTip('还原' if is_max else '最大化')
             self.max_button.update()
+            self._position_resize_handles()
 
         def _build_user_menu(self):
             self.user_menu = QFrame(self)
@@ -438,6 +569,7 @@ def build_toolbox_window_class(deps: dict):
             super().resizeEvent(event)
             if hasattr(self, 'help_overlay'):
                 self.help_overlay.setGeometry(self.rect())
+            self._position_resize_handles()
 
         def closeEvent(self, event):
             """Clean up tabs (threads, timers) before window closes."""

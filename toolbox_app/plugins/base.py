@@ -4,6 +4,7 @@ import importlib.util
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
+from threading import RLock
 from types import ModuleType
 from typing import Any, Optional
 from ..core.logger import get_logger
@@ -20,6 +21,28 @@ def load_sibling_converter(caller_file: str, module_name: str) -> ModuleType:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+class LazySiblingConverter:
+    def __init__(self, caller_file: str, module_name: str):
+        self._caller_file = caller_file
+        self._module_name = module_name
+        self._module: ModuleType | None = None
+        self._lock = RLock()
+
+    def _load(self) -> ModuleType:
+        if self._module is None:
+            with self._lock:
+                if self._module is None:
+                    self._module = load_sibling_converter(self._caller_file, self._module_name)
+        return self._module
+
+    def __getattr__(self, name: str):
+        return getattr(self._load(), name)
+
+
+def lazy_sibling_converter(caller_file: str, module_name: str) -> LazySiblingConverter:
+    return LazySiblingConverter(caller_file, module_name)
 
 
 @dataclass

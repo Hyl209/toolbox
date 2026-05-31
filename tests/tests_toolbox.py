@@ -757,6 +757,40 @@ def test_main_window_frame_and_drag_bar_properties():
             app.quit()
 
 
+def test_main_window_resize_handles_adjust_geometry():
+    toolbox = load_module()
+    if toolbox.QWidget is None:
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        window, app = toolbox.build_main_window_for_test(tmp)
+        try:
+            expected_edges = {
+                'left', 'right', 'top', 'bottom',
+                'top_left', 'top_right', 'bottom_left', 'bottom_right',
+            }
+            assert set(window._resize_handles) == expected_edges
+            assert window._resize_margin == 8
+            assert window.minimumWidth() == 860
+            assert window.minimumHeight() == 560
+            assert window._resize_handles['right'].cursor().shape() == toolbox.Qt.SizeHorCursor
+            assert window._resize_handles['bottom'].cursor().shape() == toolbox.Qt.SizeVerCursor
+
+            start_pos = window.mapToGlobal(toolbox.QPoint(0, 0))
+            window.setGeometry(100, 100, 900, 600)
+            window._start_window_resize('right', start_pos)
+            window._resize_window_to_global_pos('right', start_pos + toolbox.QPoint(80, 0))
+            window._stop_window_resize()
+            assert window.width() == 980
+
+            window._start_window_resize('left', start_pos)
+            window._resize_window_to_global_pos('left', start_pos + toolbox.QPoint(500, 0))
+            window._stop_window_resize()
+            assert window.width() == 860
+        finally:
+            window.close()
+            app.quit()
+
+
 def test_main_window_dark_and_light_stylesheet_contents():
     toolbox = load_module()
     if toolbox.QWidget is None:
@@ -1047,6 +1081,24 @@ def test_toolbox_window_sidebar_navigation():
             window.sidebar.setCurrentRow(0)
             app.processEvents()
             assert window.stack.currentIndex() == 0
+        finally:
+            window.close()
+            app.quit()
+
+
+def test_toolbox_window_tabs_do_not_grow_window_height_when_pyside_available():
+    toolbox = load_module()
+    if toolbox.QWidget is None:
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        window, app = toolbox.build_main_window_for_test(tmp)
+        try:
+            initial_height = window.size().height()
+            for row in range(window.sidebar.count()):
+                window.sidebar.setCurrentRow(row)
+                app.processEvents()
+                assert window.size().height() == initial_height
+                assert window.minimumSize().height() <= initial_height
         finally:
             window.close()
             app.quit()
