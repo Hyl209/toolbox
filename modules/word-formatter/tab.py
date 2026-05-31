@@ -258,6 +258,28 @@ def build_word_formatter_tab_class(deps: dict[str, object]):
         def apply_theme(self, theme_name: str) -> None:
             self.current_theme = theme_name
             safe = theme_name if theme_name in {'dark', 'light'} else 'dark'
+            if safe == 'light':
+                bg = 'rgba(255, 255, 255, 0.76)'
+                border = '#d8dee6'
+                focus_border = '#8fb4e8'
+                color = '#1f252d'
+                selection = '#d4e4ff'
+            else:
+                bg = 'rgba(44, 50, 59, 0.88)'
+                border = '#46505c'
+                focus_border = '#7ea6d9'
+                color = '#eef2f7'
+                selection = '#6d94c8'
+            te_style = (
+                build_global_scrollbar_style()
+                + f'QPlainTextEdit {{background-color: {bg}; border: 1px solid {border}; '
+                + f'border-radius: 16px; padding: 12px; color: {color}; selection-background-color: {selection};}} '
+                + f'QPlainTextEdit:focus {{background-color: {bg}; border: 1px solid {focus_border};}}'
+            )
+            for widget in (self.text_edit, self.log):
+                widget.setStyleSheet(te_style)
+                widget.viewport().setAutoFillBackground(False)
+                widget.viewport().setStyleSheet(f'background-color: {bg};')
             style_combo_popup(self.output_mode_combo, safe)
             style_combo_popup(self.style_combo, safe)
 

@@ -278,6 +278,14 @@ def _apply_named_styles(document, styles: dict[str, dict[str, object]]) -> None:
 
 
 def _normalize_paragraph_style(paragraph) -> str:
+    """Normalize paragraph style; returns 'heading1'-'heading4' or 'body'.
+
+    WARNING: When the paragraph text starts with markdown heading markers
+    (e.g. ``## Title``), assigning ``paragraph.text`` replaces all existing
+    runs — any run-level formatting (italic, color, underline, hyperlinks)
+    is permanently lost.  Downstream ``_apply_paragraph_format`` only
+    re-applies basic font settings from the style config.
+    """
     text = paragraph.text.strip()
     match = _MARKDOWN_HEADING_RE.match(text)
     if match:

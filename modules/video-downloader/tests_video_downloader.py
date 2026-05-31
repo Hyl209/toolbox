@@ -790,6 +790,13 @@ def test_download_url_with_ytdlp_uses_aria2_and_stability_options():
     module = load_module()
     wb = load_web_backend()
     sh = load_shared()
+    # Defensive: reset _resolve_aria2c_path to the real implementation in case
+    # a prior test left a monkeypatched lambda on the cached _shared module.
+    _sh_path = ROOT / '_shared.py'
+    _sh_spec = importlib.util.spec_from_file_location('_shared_fresh', _sh_path, submodule_search_locations=[])
+    _sh_fresh = importlib.util.module_from_spec(_sh_spec)
+    _sh_spec.loader.exec_module(_sh_fresh)
+    sh._resolve_aria2c_path = _sh_fresh._resolve_aria2c_path
     fake_ytdlp = types.ModuleType('yt_dlp')
     captured_opts: list[dict[str, object]] = []
 
@@ -1786,7 +1793,7 @@ def test_ffmpeg_m3u8_command_enables_reconnect_options():
 
 
 def test_hyltoolbox_spec_bundles_aria2c():
-    spec_text = (ROOT.parent / 'HylToolbox.spec').read_text(encoding='utf-8')
+    spec_text = (ROOT.parent.parent / 'HylToolbox.spec').read_text(encoding='utf-8')
     assert "video-downloader/bin/aria2c.exe" in spec_text
     assert "video-downloader/bin/aria2c.SHA256.txt" in spec_text
 
