@@ -119,9 +119,11 @@ def build_toolbox_window_class(deps: dict):
             self.sidebar.setFixedWidth(196)
             self.sidebar.setStyleSheet(build_global_scrollbar_style())
             self._sidebar_to_stack: list[int] = []
+            self._stack_to_tool_id: dict[int, str] = {}
             for stack_index, tool_def in enumerate(TOOL_DEFINITIONS):
                 if tool_def.id not in self._disabled_tools:
                     self._sidebar_to_stack.append(stack_index)
+                    self._stack_to_tool_id[stack_index] = tool_def.id
                     self.sidebar.addItem(tool_def.sidebar_label)
             self.sidebar.setCurrentRow(0)
             side_layout.addWidget(self.sidebar, 1)
@@ -149,27 +151,21 @@ def build_toolbox_window_class(deps: dict):
             shell.addWidget(side_panel)
             self.stack = QStackedWidget()
             self._tabs = {}
+            self._tab_builders = dict(_TAB_BUILDERS)
+            self._tab_settings = settings
+            # Create placeholder widgets; real tabs built on first selection
             for tool_def in TOOL_DEFINITIONS:
-                builder = _TAB_BUILDERS.get(tool_def.id)
+                builder = self._tab_builders.get(tool_def.id)
                 if builder is None:
                     logger.warning("跳过未知工具 id: %s", tool_def.id)
                     continue
-                tab = builder(settings)
-                self._tabs[tool_def.id] = tab
-                self.stack.addWidget(tab)
-            # backward-compat aliases
-            self.music_tab = self._tabs['music']
-            self.zip_tab = self._tabs['zipandpng']
-            self.mp4_tab = self._tabs['mp4mp3']
-            self.image_convert_tab = self._tabs['imageconvert']
-            self.pdf_tools_tab = self._tabs['pdftools']
-            self.tg_downloader_tab = self._tabs['tgdownloader']
-            self.web_video_downloader_tab = self._tabs['webvideodownloader']
-            self.video_downloader_tab = self.tg_downloader_tab
-            self.batch_rename_tab = self._tabs['batchrename']
-            self.file_sorter_tab = self._tabs['filesorter']
-            self.same_tab = self._tabs['same']
-            self.base64_tab = self._tabs['base64']
+                placeholder = QWidget()
+                self._tabs[tool_def.id] = placeholder
+                self.stack.addWidget(placeholder)
+            # Eagerly create only the first visible tab
+            first_id = next((td.id for td in TOOL_DEFINITIONS if td.id in self._tab_builders), None)
+            if first_id:
+                self._ensure_tab_created(first_id)
             # --- 加载插件 ---
             self._plugin_tabs = []
             self._plugin_manager = plugin_manager
@@ -508,9 +504,61 @@ def build_toolbox_window_class(deps: dict):
             self.user_menu.hide()
             self.close()
 
+        def _ensure_tab_created(self, tool_id: str):
+            """Lazily create a tab widget on first access."""
+            if tool_id not in self._tab_builders:
+                return
+            widget = self._tabs.get(tool_id)
+            if widget is not None and not isinstance(widget, QWidget) or (isinstance(widget, QWidget) and tool_id in self._tab_builders and type(widget).__name__ == 'QWidget' and not widget.layout()):
+                # It's a placeholder (plain QWidget with no layout)
+                builder = self._tab_builders[tool_id]
+                real_tab = builder(self._tab_settings)
+                # Find stack index and replace placeholder
+                for i in range(self.stack.count()):
+                    if self.stack.widget(i) is widget:
+                        self.stack.removeWidget(widget)
+                        widget.deleteLater()
+                        self.stack.insertWidget(i, real_tab)
+                        break
+                self._tabs[tool_id] = real_tab
+                # Apply current theme to newly created tab
+                if hasattr(real_tab, 'apply_theme'):
+                    real_tab.apply_theme(self.current_theme)
+
+        def _resolve_tab(self, tool_id: str):
+            """Get tab, creating it lazily if needed."""
+            self._ensure_tab_created(tool_id)
+            return self._tabs.get(tool_id)
+
+        def __getattr__(self, name):
+            # Backward-compat lazy aliases
+            _ALIAS_MAP = {
+                'music_tab': 'music',
+                'zip_tab': 'zipandpng',
+                'mp4_tab': 'mp4mp3',
+                'image_convert_tab': 'imageconvert',
+                'pdf_tools_tab': 'pdftools',
+                'tg_downloader_tab': 'tgdownloader',
+                'web_video_downloader_tab': 'webvideodownloader',
+                'batch_rename_tab': 'batchrename',
+                'file_sorter_tab': 'filesorter',
+                'same_tab': 'same',
+                'base64_tab': 'base64',
+            }
+            if name == 'video_downloader_tab':
+                return self._resolve_tab('tgdownloader')
+            tool_id = _ALIAS_MAP.get(name)
+            if tool_id is not None:
+                return self._resolve_tab(tool_id)
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+
         def switch_tool_page(self, index: int):
             if 0 <= index < len(self._sidebar_to_stack):
-                animate_stack_switch(self.stack, self._sidebar_to_stack[index])
+                stack_idx = self._sidebar_to_stack[index]
+                tool_id = self._stack_to_tool_id.get(stack_idx)
+                if tool_id:
+                    self._ensure_tab_created(tool_id)
+                animate_stack_switch(self.stack, stack_idx)
             elif 0 <= index < self.stack.count():
                 animate_stack_switch(self.stack, index)
             else:
