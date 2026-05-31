@@ -137,7 +137,7 @@ class LogManager:
             if not isinstance(handler, CrashHandler):
                 handler.setLevel(log_level)
 
-        logger.info(f"日志级别设置为: {level}")
+        logger.info("日志级别设置为: %s", level)
 
     def add_handler(self, name: str, handler: logging.Handler):
         """添加自定义处理器"""
@@ -189,9 +189,9 @@ class LogManager:
             if file_age > max_age_seconds:
                 try:
                     log_file.unlink()
-                    logger.info(f"清理旧日志: {log_file}")
+                    logger.info("清理旧日志: %s", log_file)
                 except Exception as e:
-                    logger.error(f"清理旧日志失败 {log_file}: {e}")
+                    logger.error("清理旧日志失败 %s: %s", log_file, e)
 
     def rotate_logs(self):
         """轮转日志"""
@@ -210,7 +210,7 @@ class LogManager:
                 all_lines = f.readlines()
                 return ''.join(all_lines[-lines:])
         except Exception as e:
-            logger.error(f"读取日志失败 {log_file}: {e}")
+            logger.error("读取日志失败 %s: %s", log_file, e)
             return ""
 
     def search_logs(self, keyword: str, log_name: str = None) -> list[str]:
@@ -232,7 +232,7 @@ class LogManager:
                         if keyword in line:
                             results.append(line.strip())
             except Exception as e:
-                logger.error(f"搜索日志失败 {log_file}: {e}")
+                logger.error("搜索日志失败 %s: %s", log_file, e)
 
         return results
 

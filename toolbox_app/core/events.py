@@ -71,7 +71,7 @@ class EventSystem:
             try:
                 callback(event)
             except Exception as e:
-                logger.error(f"事件监听器执行失败 {event_name}: {e}")
+                logger.error("事件监听器执行失败 %s: %s", event_name, e)
 
         # 执行一次性监听器
         for callback in self._once_listeners.get(event_name, []):
@@ -80,7 +80,7 @@ class EventSystem:
             try:
                 callback(event)
             except Exception as e:
-                logger.error(f"一次性事件监听器执行失败 {event_name}: {e}")
+                logger.error("一次性事件监听器执行失败 %s: %s", event_name, e)
 
         # 清空一次性监听器
         self._once_listeners.pop(event_name, None)

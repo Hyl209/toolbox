@@ -102,12 +102,12 @@ class PluginBase(ABC):
     def enable(self):
         """启用插件"""
         self._is_enabled = True
-        logger.info(f"插件已启用: {self.name}")
+        logger.info("插件已启用: %s", self.name)
 
     def disable(self):
         """禁用插件"""
         self._is_enabled = False
-        logger.info(f"插件已禁用: {self.name}")
+        logger.info("插件已禁用: %s", self.name)
 
     def on_app_start(self):
         """应用启动时的钩子"""

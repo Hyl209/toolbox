@@ -161,7 +161,7 @@ class UIHelpers:
         try:
             widget.setStyleSheet(stylesheet)
         except Exception as e:
-            logger.error(f"应用样式表失败: {e}")
+            logger.error("应用样式表失败: %s", e)
 
     @staticmethod
     def set_widget_enabled(widget, enabled: bool):
@@ -169,7 +169,7 @@ class UIHelpers:
         try:
             widget.setEnabled(enabled)
         except Exception as e:
-            logger.error(f"设置控件状态失败: {e}")
+            logger.error("设置控件状态失败: %s", e)
 
     @staticmethod
     def set_widget_visible(widget, visible: bool):
@@ -177,7 +177,7 @@ class UIHelpers:
         try:
             widget.setVisible(visible)
         except Exception as e:
-            logger.error(f"设置控件可见性失败: {e}")
+            logger.error("设置控件可见性失败: %s", e)
 
 
 # 全局 UI 辅助工具实例

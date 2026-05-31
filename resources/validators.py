@@ -19,11 +19,11 @@ class ResourceValidator:
         file_path = self.resources_dir.joinpath(*path_parts)
 
         if not file_path.exists():
-            logger.error(f"文件不存在: {file_path}")
+            logger.error("文件不存在: %s", file_path)
             return False
 
         if not file_path.is_file():
-            logger.error(f"不是文件: {file_path}")
+            logger.error("不是文件: %s", file_path)
             return False
 
         return True
@@ -33,11 +33,11 @@ class ResourceValidator:
         dir_path = self.resources_dir.joinpath(*path_parts)
 
         if not dir_path.exists():
-            logger.error(f"目录不存在: {dir_path}")
+            logger.error("目录不存在: %s", dir_path)
             return False
 
         if not dir_path.is_dir():
-            logger.error(f"不是目录: {dir_path}")
+            logger.error("不是目录: %s", dir_path)
             return False
 
         return True
@@ -54,7 +54,7 @@ class ResourceValidator:
                 f.read(1)
             return True
         except Exception as e:
-            logger.error(f"文件不可读 {file_path}: {e}")
+            logger.error("文件不可读 %s: %s", file_path, e)
             return False
 
     def validate_writable(self, *path_parts: str) -> bool:
@@ -79,7 +79,7 @@ class ResourceValidator:
                 f.write("")
             return True
         except Exception as e:
-            logger.error(f"文件不可写 {file_path}: {e}")
+            logger.error("文件不可写 %s: %s", file_path, e)
             return False
 
     def validate_image(self, *path_parts: str) -> bool:
@@ -91,7 +91,7 @@ class ResourceValidator:
 
         valid_extensions = {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.ico', '.webp'}
         if file_path.suffix.lower() not in valid_extensions:
-            logger.error(f"不是有效的图片格式: {file_path}")
+            logger.error("不是有效的图片格式: %s", file_path)
             return False
 
         try:
@@ -103,7 +103,7 @@ class ResourceValidator:
             logger.warning("Pillow 未安装，跳过图片验证")
             return True
         except Exception as e:
-            logger.error(f"图片验证失败 {file_path}: {e}")
+            logger.error("图片验证失败 %s: %s", file_path, e)
             return False
 
     def validate_json(self, *path_parts: str) -> bool:
@@ -119,7 +119,7 @@ class ResourceValidator:
                 json.load(f)
             return True
         except Exception as e:
-            logger.error(f"JSON 验证失败 {file_path}: {e}")
+            logger.error("JSON 验证失败 %s: %s", file_path, e)
             return False
 
     def validate_manifest(self, *path_parts: str) -> bool:
@@ -137,12 +137,12 @@ class ResourceValidator:
             required_fields = ['name', 'version', 'description', 'author']
             for field in required_fields:
                 if field not in manifest:
-                    logger.error(f"manifest 缺少必需字段: {field}")
+                    logger.error("manifest 缺少必需字段: %s", field)
                     return False
 
             return True
         except Exception as e:
-            logger.error(f"manifest 验证失败 {file_path}: {e}")
+            logger.error("manifest 验证失败 %s: %s", file_path, e)
             return False
 
     def validate_executable(self, *path_parts: str) -> bool:
@@ -154,7 +154,7 @@ class ResourceValidator:
 
         valid_extensions = {'.exe', '.bat', '.cmd', '.sh', '.ps1'}
         if file_path.suffix.lower() not in valid_extensions:
-            logger.error(f"不是有效的可执行文件格式: {file_path}")
+            logger.error("不是有效的可执行文件格式: %s", file_path)
             return False
 
         return True
@@ -168,7 +168,7 @@ class ResourceValidator:
 
         valid_extensions = {'.mp3', '.wav', '.flac', '.aac', '.m4a', '.ogg', '.wma'}
         if file_path.suffix.lower() not in valid_extensions:
-            logger.error(f"不是有效的音频格式: {file_path}")
+            logger.error("不是有效的音频格式: %s", file_path)
             return False
 
         return True
@@ -182,7 +182,7 @@ class ResourceValidator:
 
         valid_extensions = {'.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm'}
         if file_path.suffix.lower() not in valid_extensions:
-            logger.error(f"不是有效的视频格式: {file_path}")
+            logger.error("不是有效的视频格式: %s", file_path)
             return False
 
         return True
@@ -196,7 +196,7 @@ class ResourceValidator:
 
         valid_extensions = {'.ttf', '.otf', '.woff', '.woff2', '.eot'}
         if file_path.suffix.lower() not in valid_extensions:
-            logger.error(f"不是有效的字体格式: {file_path}")
+            logger.error("不是有效的字体格式: %s", file_path)
             return False
 
         return True
@@ -221,7 +221,7 @@ class ResourceValidator:
                 'is_dir': file_path.is_dir()
             }
         except Exception as e:
-            logger.error(f"获取文件信息失败 {file_path}: {e}")
+            logger.error("获取文件信息失败 %s: %s", file_path, e)
             return None
 
     def validate_all(self) -> dict[str, bool]:

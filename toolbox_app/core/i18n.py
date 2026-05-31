@@ -32,7 +32,7 @@ class I18nManager:
 
         locale_file = self.locale_dir / f"{locale}.json"
         if not locale_file.exists():
-            logger.warning(f"语言包不存在: {locale_file}")
+            logger.warning("语言包不存在: %s", locale_file)
             return
 
         try:
@@ -41,10 +41,10 @@ class I18nManager:
 
             self._translations[locale] = translations
             self._loaded_locales.add(locale)
-            logger.info(f"加载语言包: {locale}")
+            logger.info("加载语言包: %s", locale)
 
         except Exception as e:
-            logger.error(f"加载语言包失败 {locale}: {e}")
+            logger.error("加载语言包失败 %s: %s", locale, e)
 
     def set_locale(self, locale: str):
         """设置当前语言"""
@@ -53,9 +53,9 @@ class I18nManager:
 
         if locale in self._loaded_locales:
             self.current_locale = locale
-            logger.info(f"设置语言: {locale}")
+            logger.info("设置语言: %s", locale)
         else:
-            logger.warning(f"语言包加载失败，保持当前语言: {self.current_locale}")
+            logger.warning("语言包加载失败，保持当前语言: %s", self.current_locale)
 
     def get(self, key: str, default: str = None) -> str:
         """获取翻译"""
@@ -124,7 +124,7 @@ class I18nManager:
             return template.format(**kwargs)
         except (KeyError, ValueError, IndexError) as e:
             if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(f"翻译格式化失败 key={key!r}: {e}")
+                logger.debug("翻译格式化失败 key=%r: %s", key, e)
             return template
 
     def has_translation(self, key: str) -> bool:

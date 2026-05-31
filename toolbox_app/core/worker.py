@@ -72,7 +72,7 @@ class Worker:
             try:
                 callback(progress)
             except Exception as e:
-                logger.error(f"进度回调执行失败: {e}")
+                logger.error("进度回调执行失败: %s", e)
 
     def _emit_completed(self, result: Any):
         """触发完成回调"""
@@ -81,7 +81,7 @@ class Worker:
             try:
                 callback(result)
             except Exception as e:
-                logger.error(f"完成回调执行失败: {e}")
+                logger.error("完成回调执行失败: %s", e)
 
     def _emit_error(self, error: Exception):
         """触发错误回调"""
@@ -90,7 +90,7 @@ class Worker:
             try:
                 callback(error)
             except Exception as e:
-                logger.error(f"错误回调执行失败: {e}")
+                logger.error("错误回调执行失败: %s", e)
 
     def _emit_cancelled(self):
         """触发取消回调"""
@@ -98,7 +98,7 @@ class Worker:
             try:
                 callback()
             except Exception as e:
-                logger.error(f"取消回调执行失败: {e}")
+                logger.error("取消回调执行失败: %s", e)
 
     def cancel(self):
         """取消任务"""
@@ -136,7 +136,7 @@ class Worker:
             try:
                 self.execute(func, *args, **kwargs)
             except Exception as e:
-                logger.error(f"异步任务执行失败: {e}")
+                logger.error("异步任务执行失败: %s", e)
 
         thread = threading.Thread(target=wrapper, daemon=True)
         thread.start()

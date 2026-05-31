@@ -27,9 +27,9 @@ class PluginConfig:
             try:
                 with open(self.config_file, 'r', encoding='utf-8') as f:
                     self._config = json.load(f)
-                logger.debug(f"插件配置加载成功: {self.plugin_name}")
+                logger.debug("插件配置加载成功: %s", self.plugin_name)
             except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
-                logger.error(f"加载插件配置失败: {e}")
+                logger.error("加载插件配置失败: %s", e)
                 self._config = {}
         else:
             self._config = {}
@@ -40,9 +40,9 @@ class PluginConfig:
             self.plugin_dir.mkdir(parents=True, exist_ok=True)
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(self._config, f, indent=2, ensure_ascii=False)
-            logger.debug(f"插件配置保存成功: {self.plugin_name}")
+            logger.debug("插件配置保存成功: %s", self.plugin_name)
         except (OSError, TypeError) as e:
-            logger.error(f"保存插件配置失败: {e}")
+            logger.error("保存插件配置失败: %s", e)
 
     def get(self, key: str, default: Any = None) -> Any:
         """获取配置值"""

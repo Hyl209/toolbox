@@ -41,7 +41,7 @@ class TempManager:
         temp_path = Path(temp_file.name)
 
         self._temp_files[str(temp_path)] = temp_path
-        logger.debug(f"创建临时文件: {temp_path}")
+        logger.debug("创建临时文件: %s", temp_path)
 
         return temp_path
 
@@ -55,7 +55,7 @@ class TempManager:
 
         temp_path = Path(temp_dir)
         self._temp_dirs[str(temp_path)] = temp_path
-        logger.debug(f"创建临时目录: {temp_path}")
+        logger.debug("创建临时目录: %s", temp_path)
 
         return temp_path
 
@@ -174,7 +174,7 @@ class TempManager:
         shutil.copy2(source, temp_path)
 
         self._temp_files[str(temp_path)] = temp_path
-        logger.debug(f"创建临时副本: {source} -> {temp_path}")
+        logger.debug("创建临时副本: %s -> %s", source, temp_path)
 
         return temp_path
 

@@ -26,13 +26,13 @@ class FileUtils:
             path = Path(path)
             if path.is_file():
                 path.unlink()
-                logger.debug(f"删除文件: {path}")
+                logger.debug("删除文件: %s", path)
             elif path.is_dir():
                 shutil.rmtree(path)
-                logger.debug(f"删除目录: {path}")
+                logger.debug("删除目录: %s", path)
             return True
         except (PermissionError, FileNotFoundError, OSError) as e:
-            logger.warning(f"删除失败 {path}: {e}")
+            logger.warning("删除失败 %s: %s", path, e)
             return False
 
     @staticmethod
@@ -48,10 +48,10 @@ class FileUtils:
 
             FileUtils.ensure_dir(dst.parent)
             shutil.copy2(src, dst)
-            logger.debug(f"复制文件: {src} -> {dst}")
+            logger.debug("复制文件: %s -> %s", src, dst)
             return True
         except Exception as e:
-            logger.error(f"复制失败 {src} -> {dst}: {e}")
+            logger.error("复制失败 %s -> %s: %s", src, dst, e)
             return False
 
     @staticmethod
@@ -67,10 +67,10 @@ class FileUtils:
 
             FileUtils.ensure_dir(dst.parent)
             shutil.move(str(src), str(dst))
-            logger.debug(f"移动文件: {src} -> {dst}")
+            logger.debug("移动文件: %s -> %s", src, dst)
             return True
         except Exception as e:
-            logger.error(f"移动失败 {src} -> {dst}: {e}")
+            logger.error("移动失败 %s -> %s: %s", src, dst, e)
             return False
 
     @staticmethod
@@ -129,7 +129,7 @@ class FileUtils:
         try:
             return Path(path).read_text(encoding=encoding)
         except Exception as e:
-            logger.error(f"读取文件失败 {path}: {e}")
+            logger.error("读取文件失败 %s: %s", path, e)
             return None
 
     @staticmethod
@@ -140,7 +140,7 @@ class FileUtils:
             Path(path).write_text(content, encoding=encoding)
             return True
         except Exception as e:
-            logger.error(f"写入文件失败 {path}: {e}")
+            logger.error("写入文件失败 %s: %s", path, e)
             return False
 
     @staticmethod
@@ -149,7 +149,7 @@ class FileUtils:
         try:
             return list(Path(directory).glob(pattern))
         except Exception as e:
-            logger.error(f"列出文件失败 {directory}: {e}")
+            logger.error("列出文件失败 %s: %s", directory, e)
             return []
 
     @staticmethod
@@ -161,7 +161,7 @@ class FileUtils:
                 if item.is_file():
                     total_size += item.stat().st_size
         except Exception as e:
-            logger.error(f"计算目录大小失败 {path}: {e}")
+            logger.error("计算目录大小失败 %s: %s", path, e)
         return total_size
 
     @staticmethod

@@ -102,7 +102,7 @@ class PerformanceMonitor:
         """记录统计信息"""
         stats = self.get_all_stats()
         for name, stat in stats.items():
-            logger.info(f"性能统计 {name}: {stat}")
+            logger.info("性能统计 %s: %s", name, stat)
 
 
 def timer(name: str = None):
@@ -120,7 +120,7 @@ def timer(name: str = None):
             finally:
                 elapsed = monitor.stop_timer(timer_name)
                 if logger.isEnabledFor(logging.DEBUG):
-                    logger.debug(f"{timer_name} 耗时: {elapsed:.4f}秒")
+                    logger.debug("%s 耗时: %.4f秒", timer_name, elapsed)
 
         return wrapper
     return decorator
@@ -141,7 +141,7 @@ def async_timer(name: str = None):
             finally:
                 elapsed = monitor.stop_timer(timer_name)
                 if logger.isEnabledFor(logging.DEBUG):
-                    logger.debug(f"{timer_name} 耗时: {elapsed:.4f}秒")
+                    logger.debug("%s 耗时: %.4f秒", timer_name, elapsed)
 
         return wrapper
     return decorator
@@ -200,9 +200,9 @@ class MemoryMonitor:
         """记录内存使用"""
         usage = self.get_memory_usage()
         if usage:
-            logger.info(f"内存使用 {label}: RSS={usage['rss'] / 1024 / 1024:.2f}MB, "
-                       f"VMS={usage['vms'] / 1024 / 1024:.2f}MB, "
-                       f"使用率={usage['percent']:.1f}%")
+            logger.info("内存使用 %s: RSS=%.2fMB, VMS=%.2fMB, 使用率=%.1f%%",
+                       label, usage['rss'] / 1024 / 1024,
+                       usage['vms'] / 1024 / 1024, usage['percent'])
 
 
 # 全局性能监控器实例

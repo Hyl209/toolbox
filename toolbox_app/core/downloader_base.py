@@ -99,7 +99,7 @@ class DownloaderBase(ABC):
             try:
                 callback(progress)
             except Exception as e:
-                logger.error(f"进度回调执行失败: {e}")
+                logger.error("进度回调执行失败: %s", e)
 
     def _emit_completion(self, success: bool, message: str):
         """触发完成回调"""
@@ -107,12 +107,12 @@ class DownloaderBase(ABC):
             try:
                 callback(success, message)
             except Exception as e:
-                logger.error(f"完成回调执行失败: {e}")
+                logger.error("完成回调执行失败: %s", e)
 
     def cancel(self):
         """取消下载"""
         self._is_cancelled = True
-        logger.info(f"下载器 {self.name} 已取消")
+        logger.info("下载器 %s 已取消", self.name)
 
     @property
     def is_cancelled(self) -> bool:

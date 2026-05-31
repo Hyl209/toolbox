@@ -193,7 +193,7 @@ def build_toolbox_window_class(deps: dict):
                         try:
                             plugin.on_app_start()
                         except Exception:
-                            logger.error(f"插件 on_app_start 异常: {name}", exc_info=True)
+                            logger.error("插件 on_app_start 异常: %s", name, exc_info=True)
                 except Exception:
                     logger.error("插件加载/初始化异常", exc_info=True)
             # --- 应用导航栏排序 ---
@@ -435,7 +435,7 @@ def build_toolbox_window_class(deps: dict):
                         try:
                             plugin.on_app_close()
                         except Exception:
-                            logger.error(f"插件 on_app_close 异常: {name}", exc_info=True)
+                            logger.error("插件 on_app_close 异常: %s", name, exc_info=True)
                     self._plugin_manager.cleanup_all_plugins()
                 except Exception:
                     logger.error("插件清理异常", exc_info=True)
@@ -596,7 +596,7 @@ def build_toolbox_window_class(deps: dict):
                     try:
                         plugin.on_theme_change(self.current_theme)
                     except Exception:
-                        logger.error(f"插件 on_theme_change 异常: {name}", exc_info=True)
+                        logger.error("插件 on_theme_change 异常: %s", name, exc_info=True)
             if hasattr(self, 'user_menu') and self.user_menu.isVisible():
                 self.user_menu.hide()
             if hasattr(self, 'help_popup') and self.help_popup.isVisible():

@@ -62,7 +62,7 @@ class OpenAIProvider(AIProvider):
             logger.error("openai 包未安装")
             return False
         except Exception as e:
-            logger.error(f"OpenAI 初始化失败: {e}")
+            logger.error("OpenAI 初始化失败: %s", e)
             return False
 
     def chat(self, message: str, context: list[dict] = None) -> str:
@@ -80,7 +80,7 @@ class OpenAIProvider(AIProvider):
             )
             return response.choices[0].message.content
         except Exception as e:
-            logger.error(f"OpenAI 聊天失败: {e}")
+            logger.error("OpenAI 聊天失败: %s", e)
             raise
 
     def analyze_image(self, image_path: str, prompt: str = None) -> str:
@@ -114,7 +114,7 @@ class OpenAIProvider(AIProvider):
             )
             return response.choices[0].message.content
         except Exception as e:
-            logger.error(f"OpenAI 图片分析失败: {e}")
+            logger.error("OpenAI 图片分析失败: %s", e)
             raise
 
     def generate_text(self, prompt: str, max_tokens: int = 1000) -> str:
@@ -130,7 +130,7 @@ class OpenAIProvider(AIProvider):
             )
             return response.choices[0].message.content
         except Exception as e:
-            logger.error(f"OpenAI 文本生成失败: {e}")
+            logger.error("OpenAI 文本生成失败: %s", e)
             raise
 
 
@@ -154,7 +154,7 @@ class ClaudeProvider(AIProvider):
             logger.error("anthropic 包未安装")
             return False
         except Exception as e:
-            logger.error(f"Claude 初始化失败: {e}")
+            logger.error("Claude 初始化失败: %s", e)
             return False
 
     def chat(self, message: str, context: list[dict] = None) -> str:
@@ -173,7 +173,7 @@ class ClaudeProvider(AIProvider):
             )
             return response.content[0].text
         except Exception as e:
-            logger.error(f"Claude 聊天失败: {e}")
+            logger.error("Claude 聊天失败: %s", e)
             raise
 
     def analyze_image(self, image_path: str, prompt: str = None) -> str:
@@ -211,7 +211,7 @@ class ClaudeProvider(AIProvider):
             )
             return response.content[0].text
         except Exception as e:
-            logger.error(f"Claude 图片分析失败: {e}")
+            logger.error("Claude 图片分析失败: %s", e)
             raise
 
     def generate_text(self, prompt: str, max_tokens: int = 1000) -> str:
@@ -227,7 +227,7 @@ class ClaudeProvider(AIProvider):
             )
             return response.content[0].text
         except Exception as e:
-            logger.error(f"Claude 文本生成失败: {e}")
+            logger.error("Claude 文本生成失败: %s", e)
             raise
 
 
@@ -248,7 +248,7 @@ class AIManager:
                 return True
             return False
         except Exception as e:
-            logger.error(f"注册 AI 提供者失败: {e}")
+            logger.error("注册 AI 提供者失败: %s", e)
             return False
 
     def get_provider(self, name: str = None) -> Optional[AIProvider]:

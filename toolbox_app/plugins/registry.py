@@ -26,11 +26,11 @@ class PluginRegistry:
             self._plugins[plugin_info.name] = plugin
             self._plugin_infos[plugin_info.name] = plugin_info
 
-            logger.info(f"插件已注册: {plugin_info.name} v{plugin_info.version}")
+            logger.info("插件已注册: %s v%s", plugin_info.name, plugin_info.version)
             return True
 
         except Exception as e:
-            logger.error(f"注册插件失败: {e}")
+            logger.error("注册插件失败: %s", e)
             return False
 
     def unregister(self, plugin_name: str) -> bool:
@@ -42,12 +42,12 @@ class PluginRegistry:
         try:
             plugin.cleanup()
         except Exception as e:
-            logger.error(f"清理插件失败 {plugin_name}: {e}")
+            logger.error("清理插件失败 %s: %s", plugin_name, e)
 
         del self._plugins[plugin_name]
         del self._plugin_infos[plugin_name]
 
-        logger.info(f"插件已注销: {plugin_name}")
+        logger.info("插件已注销: %s", plugin_name)
         return True
 
     def get_plugin(self, plugin_name: str) -> Optional[PluginBase]:
@@ -86,12 +86,12 @@ class PluginRegistry:
             result = plugin.initialize(deps)
             if result:
                 plugin._mark_initialized()
-                logger.info(f"插件初始化成功: {plugin_name}")
+                logger.info("插件初始化成功: %s", plugin_name)
             else:
-                logger.warning(f"插件初始化失败: {plugin_name}")
+                logger.warning("插件初始化失败: %s", plugin_name)
             return result
         except Exception as e:
-            logger.error(f"插件初始化异常 {plugin_name}: {e}")
+            logger.error("插件初始化异常 %s: %s", plugin_name, e)
             return False
 
     def initialize_all(self, deps: dict = None) -> dict[str, bool]:
@@ -109,9 +109,9 @@ class PluginRegistry:
 
         try:
             plugin.cleanup()
-            logger.info(f"插件清理完成: {plugin_name}")
+            logger.info("插件清理完成: %s", plugin_name)
         except Exception as e:
-            logger.error(f"插件清理失败 {plugin_name}: {e}")
+            logger.error("插件清理失败 %s: %s", plugin_name, e)
 
     def cleanup_all(self):
         """清理并注销所有插件"""

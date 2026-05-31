@@ -57,7 +57,7 @@ class Signal:
                 try:
                     callback(*args, **kwargs)
                 except Exception as e:
-                    logger.error(f"信号 {self.name} 回调执行失败: {e}")
+                    logger.error("信号 %s 回调执行失败: %s", self.name, e)
             else:
                 _invoke_on_main_thread(callback, args, kwargs)
 

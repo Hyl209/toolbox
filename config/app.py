@@ -61,7 +61,7 @@ class AppConfig:
                     self._config = json.load(f)
                 logger.debug("应用配置加载成功")
             except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
-                logger.error(f"加载应用配置失败: {e}")
+                logger.error("加载应用配置失败: %s", e)
                 self._config = {}
         else:
             self._config = {}
@@ -86,7 +86,7 @@ class AppConfig:
                 json.dump(self._config, f, indent=2, ensure_ascii=False)
             logger.debug("应用配置保存成功")
         except (OSError, TypeError) as e:
-            logger.error(f"保存应用配置失败: {e}")
+            logger.error("保存应用配置失败: %s", e)
 
     def get(self, section: str, key: str, default: Any = None) -> Any:
         """获取配置值"""

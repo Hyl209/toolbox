@@ -189,11 +189,11 @@ class PluginManager:
         elif plugin_path.is_file():
             module_file = plugin_path
         else:
-            logger.error(f"插件路径不存在: {plugin_path}")
+            logger.error("插件路径不存在: %s", plugin_path)
             return None
 
         if not module_file.exists():
-            logger.error(f"插件入口文件不存在: {module_file}")
+            logger.error("插件入口文件不存在: %s", module_file)
             return None
 
         # 防止路径遍历：加载文件必须在插件目录内
@@ -203,14 +203,14 @@ class PluginManager:
         else:
             entry_is_allowed = resolved == plugin_path.resolve()
         if not entry_is_allowed:
-            logger.error(f"插件入口路径越界: {resolved}")
+            logger.error("插件入口路径越界: %s", resolved)
             return None
 
         # 用 importlib 加载模块
         qualified_name = f"plugin_{plugin_info.name}"
         spec = importlib.util.spec_from_file_location(qualified_name, str(resolved))
         if spec is None or spec.loader is None:
-            logger.error(f"无法加载插件模块: {module_file}")
+            logger.error("无法加载插件模块: %s", module_file)
             return None
 
         module = importlib.util.module_from_spec(spec)
@@ -219,7 +219,7 @@ class PluginManager:
             spec.loader.exec_module(module)
         except Exception as e:
             sys.modules.pop(qualified_name, None)
-            logger.error(f"插件模块执行失败 {module_file}: {e}")
+            logger.error("插件模块执行失败 %s: %s", module_file, e)
             return None
 
         # 找 PluginBase 子类
@@ -228,11 +228,11 @@ class PluginManager:
             target_class = getattr(module, class_name, None)
             if target_class is None:
                 sys.modules.pop(qualified_name, None)
-                logger.error(f"插件类 {class_name} 未找到于 {module_file}")
+                logger.error("插件类 %s 未找到于 %s", class_name, module_file)
                 return None
             if not (isinstance(target_class, type) and issubclass(target_class, PluginBase)):
                 sys.modules.pop(qualified_name, None)
-                logger.error(f"插件类 {class_name} 不是 PluginBase 子类: {module_file}")
+                logger.error("插件类 %s 不是 PluginBase 子类: %s", class_name, module_file)
                 return None
         else:
             # 自动找第一个 PluginBase 子类
@@ -245,7 +245,7 @@ class PluginManager:
 
         if target_class is None:
             sys.modules.pop(qualified_name, None)
-            logger.error(f"插件中未找到 PluginBase 子类: {module_file}")
+            logger.error("插件中未找到 PluginBase 子类: %s", module_file)
             return None
 
         # 实例化
@@ -253,10 +253,10 @@ class PluginManager:
             instance = target_class()
         except Exception as e:
             sys.modules.pop(qualified_name, None)
-            logger.error(f"插件实例化失败 {plugin_info.name}: {e}")
+            logger.error("插件实例化失败 %s: %s", plugin_info.name, e)
             return None
         self._loaded_module_names[plugin_info.name] = qualified_name
-        logger.info(f"插件实例化成功: {plugin_info.name}")
+        logger.info("插件实例化成功: %s", plugin_info.name)
         return instance
 
     def load_all_plugins(self, disabled_names: set[str] = None) -> dict[str, bool]:

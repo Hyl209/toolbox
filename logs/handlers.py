@@ -65,10 +65,10 @@ class CrashHandler(logging.Handler):
                     f.write("堆栈信息:\n")
                     f.write(record.stack_info)
 
-            logger.info(f"崩溃日志已保存: {crash_file}")
+            logger.info("崩溃日志已保存: %s", crash_file)
 
         except Exception as e:
-            logger.error(f"保存崩溃日志失败: {e}")
+            logger.error("保存崩溃日志失败: %s", e)
 
 
 class GUIHandler(logging.Handler):
@@ -124,7 +124,7 @@ class TaskHandler(logging.Handler):
                 self._rotate()
 
         except Exception as e:
-            logger.error(f"写入任务日志失败: {e}")
+            logger.error("写入任务日志失败: %s", e)
 
     def _rotate(self):
         """轮转日志"""
@@ -140,7 +140,7 @@ class TaskHandler(logging.Handler):
             self.file_path.rename(backup_file)
 
         except Exception as e:
-            logger.error(f"轮转任务日志失败: {e}")
+            logger.error("轮转任务日志失败: %s", e)
 
 
 class DebugHandler(logging.Handler):

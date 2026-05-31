@@ -103,7 +103,7 @@ class PluginDiscovery:
                 self._remember_plugin_info(info, plugin_path)
 
         except Exception as e:
-            logger.error(f"扫描插件文件失败 {plugin_path}: {e}")
+            logger.error("扫描插件文件失败 %s: %s", plugin_path, e)
 
     def _remember_plugin_info(self, plugin_info: PluginInfo, plugin_path: Path) -> bool:
         if plugin_info.name in self._discovered_plugins:
@@ -280,7 +280,7 @@ class PluginDiscovery:
                 logger.debug("发现插件: %s v%s", plugin_info.name, plugin_info.version)
 
         except Exception as e:
-            logger.error(f"加载 manifest.json 失败 {manifest_path}: {e}")
+            logger.error("加载 manifest.json 失败 %s: %s", manifest_path, e)
 
     def _drop_cyclic_dependency_plugins(self) -> None:
         cyclic_plugins: set[str] = set()

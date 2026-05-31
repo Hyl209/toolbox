@@ -32,7 +32,7 @@ class ConfigManager:
             try:
                 self._load_config(config_file.stem)
             except Exception as e:
-                logger.error(f"加载配置文件失败 {config_file}: {e}")
+                logger.error("加载配置文件失败 %s: %s", config_file, e)
 
     def _load_config(self, name: str) -> dict[str, Any]:
         """加载指定配置文件"""
@@ -47,7 +47,7 @@ class ConfigManager:
                 self._configs[name] = config
                 return config
             except Exception as e:
-                logger.error(f"加载配置文件失败 {config_file}: {e}")
+                logger.error("加载配置文件失败 %s: %s", config_file, e)
 
         # 返回默认配置
         default_config = self._get_default_config(name)
@@ -95,7 +95,7 @@ class ConfigManager:
             with open(config_file, 'w', encoding='utf-8') as f:
                 json.dump(self._configs[name], f, indent=2, ensure_ascii=False)
         except Exception as e:
-            logger.error(f"保存配置文件失败 {config_file}: {e}")
+            logger.error("保存配置文件失败 %s: %s", config_file, e)
 
     def reload(self, name: str) -> None:
         """重新加载配置"""

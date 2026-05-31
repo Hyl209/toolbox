@@ -106,9 +106,9 @@ class ResourceManager:
                     file_age = current_time - item.stat().st_mtime
                     if file_age > max_age_seconds:
                         item.unlink()
-                        logger.debug(f"清理临时文件: {item}")
+                        logger.debug("清理临时文件: %s", item)
         except Exception as e:
-            logger.error(f"清理临时文件失败: {e}")
+            logger.error("清理临时文件失败: %s", e)
 
     def cleanup_cache(self, max_age_days: int = 7):
         """清理缓存"""
@@ -123,9 +123,9 @@ class ResourceManager:
                     file_age = current_time - item.stat().st_mtime
                     if file_age > max_age_seconds:
                         item.unlink()
-                        logger.debug(f"清理缓存: {item}")
+                        logger.debug("清理缓存: %s", item)
         except Exception as e:
-            logger.error(f"清理缓存失败: {e}")
+            logger.error("清理缓存失败: %s", e)
 
     def get_resource_size(self, *path_parts: str) -> int:
         """获取资源大小"""
@@ -160,7 +160,7 @@ class ResourceManager:
                 if item.is_file():
                     total_size += item.stat().st_size
         except Exception as e:
-            logger.error(f"计算目录大小失败 {directory}: {e}")
+            logger.error("计算目录大小失败 %s: %s", directory, e)
         return total_size
 
     def validate_resources(self) -> dict[str, bool]:

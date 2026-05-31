@@ -26,30 +26,30 @@ class TaskWorker(threading.Thread):
     def run(self):
         """执行任务"""
         try:
-            logger.info(f"Worker 开始执行任务: {self.task}")
+            logger.info("Worker 开始执行任务: %s", self.task)
             self.signals.task_started.emit(self.task)
 
             result = self.task.run()
 
             if self.task.is_completed:
-                logger.info(f"Worker 任务完成: {self.task}")
+                logger.info("Worker 任务完成: %s", self.task)
                 self.signals.task_completed.emit(self.task, result)
             elif self.task.is_cancelled:
-                logger.info(f"Worker 任务取消: {self.task}")
+                logger.info("Worker 任务取消: %s", self.task)
                 self.signals.task_cancelled.emit(self.task)
 
         except TaskError as e:
             self._exception = e
-            logger.error(f"Worker 任务失败: {self.task} - {e}")
+            logger.error("Worker 任务失败: %s - %s", self.task, e)
             self.signals.task_failed.emit(self.task, e)
 
         except Exception as e:
             self._exception = TaskError(f"未预期的错误: {e}", self.task.task_id)
-            logger.error(f"Worker 未预期错误: {self.task} - {e}")
+            logger.error("Worker 未预期错误: %s - %s", self.task, e)
             self.signals.task_failed.emit(self.task, self._exception)
 
         finally:
-            logger.info(f"Worker 结束: {self.task}")
+            logger.info("Worker 结束: %s", self.task)
             self.signals.task_finished.emit(self.task)
             # 释放引用，防止长时间运行的应用中内存泄漏
             self.task = None
@@ -59,14 +59,14 @@ class TaskWorker(threading.Thread):
     def cancel(self):
         """取消任务"""
         self.task.cancel()
-        logger.info(f"Worker 收到取消指令: {self.task}")
+        logger.info("Worker 收到取消指令: %s", self.task)
 
     def pause(self):
         """暂停任务"""
         self.task.pause()
-        logger.info(f"Worker 收到暂停指令: {self.task}")
+        logger.info("Worker 收到暂停指令: %s", self.task)
 
     def resume(self):
         """恢复任务"""
         self.task.resume()
-        logger.info(f"Worker 收到恢复指令: {self.task}")
+        logger.info("Worker 收到恢复指令: %s", self.task)

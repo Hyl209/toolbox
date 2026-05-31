@@ -51,9 +51,9 @@ class UserConfig:
             try:
                 with open(self.config_file, 'r', encoding='utf-8') as f:
                     self._config = json.load(f)
-                logger.debug(f"用户配置加载成功: {self.username}")
+                logger.debug("用户配置加载成功: %s", self.username)
             except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
-                logger.error(f"加载用户配置失败: {e}")
+                logger.error("加载用户配置失败: %s", e)
                 self._config = {}
         else:
             self._config = {}
@@ -77,9 +77,9 @@ class UserConfig:
             self.user_dir.mkdir(parents=True, exist_ok=True)
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(self._config, f, indent=2, ensure_ascii=False)
-            logger.debug(f"用户配置保存成功: {self.username}")
+            logger.debug("用户配置保存成功: %s", self.username)
         except (OSError, TypeError) as e:
-            logger.error(f"保存用户配置失败: {e}")
+            logger.error("保存用户配置失败: %s", e)
 
     def get(self, section: str, key: str, default: Any = None) -> Any:
         """获取配置值"""

@@ -79,12 +79,12 @@ class ConfigManager:
             return
 
         logger.info(
-            f"配置版本不匹配: 存储={stored_version}, 当前={self.config_version}，开始迁移"
+            "配置版本不匹配: 存储=%s, 当前=%s，开始迁移", stored_version, self.config_version
         )
         try:
             self.migrate(stored_version, self.config_version)
         except Exception as e:
-            logger.error(f"配置迁移失败: {e}")
+            logger.error("配置迁移失败: %s", e)
             # 迁移失败不阻塞启动，仅记录日志
 
     def migrate(self, old_version: str, new_version: str):
@@ -100,16 +100,16 @@ class ConfigManager:
 
         path = self._find_migration_path(old_version, new_version)
         if not path:
-            logger.info(f"无已注册迁移步骤 {old_version}->{new_version}，直接更新版本号")
+            logger.info("无已注册迁移步骤 %s->%s，直接更新版本号", old_version, new_version)
         else:
             for (fv, tv) in path:
                 func = _MIGRATIONS[(fv, tv)]
-                logger.info(f"执行迁移: {fv} -> {tv}")
+                logger.info("执行迁移: %s -> %s", fv, tv)
                 func(self)
 
         # 更新存储的版本号
         self._app_config.set('app', 'config_version', new_version)
-        logger.info(f"配置版本已更新为 {new_version}")
+        logger.info("配置版本已更新为 %s", new_version)
 
     @staticmethod
     def _find_migration_path(
@@ -166,10 +166,10 @@ class ConfigManager:
 
         try:
             shutil.copytree(self.config_dir, backup_path, dirs_exist_ok=True)
-            logger.info(f"配置备份成功: {backup_path}")
+            logger.info("配置备份成功: %s", backup_path)
             return backup_path
         except Exception as e:
-            logger.error(f"配置备份失败: {e}")
+            logger.error("配置备份失败: %s", e)
             raise
 
     def restore_config(self, backup_path: str | Path):
@@ -190,9 +190,9 @@ class ConfigManager:
             # 重新加载配置
             self.reload_all()
 
-            logger.info(f"配置恢复成功: {backup_path}")
+            logger.info("配置恢复成功: %s", backup_path)
         except Exception as e:
-            logger.error(f"配置恢复失败: {e}")
+            logger.error("配置恢复失败: %s", e)
             raise
 
     def export_config(self, export_path: str | Path, include_user: bool = True,
@@ -222,9 +222,9 @@ class ConfigManager:
             export_path.parent.mkdir(parents=True, exist_ok=True)
             with open(export_path, 'w', encoding='utf-8') as f:
                 json.dump(export_data, f, indent=2, ensure_ascii=False)
-            logger.info(f"配置导出成功: {export_path}")
+            logger.info("配置导出成功: %s", export_path)
         except Exception as e:
-            logger.error(f"配置导出失败: {e}")
+            logger.error("配置导出失败: %s", e)
             raise
 
     def import_config(self, import_path: str | Path, overwrite: bool = False):
@@ -272,9 +272,9 @@ class ConfigManager:
                             if plugin_config.get(key) is None:
                                 plugin_config.set(key, value)
 
-            logger.info(f"配置导入成功: {import_path}")
+            logger.info("配置导入成功: %s", import_path)
         except Exception as e:
-            logger.error(f"配置导入失败: {e}")
+            logger.error("配置导入失败: %s", e)
             raise
 
     def get_config_summary(self) -> dict[str, Any]:
@@ -304,7 +304,7 @@ class ConfigManager:
                     if age > max_age_seconds:
                         import shutil
                         shutil.rmtree(backup_path)
-                        logger.info(f"清理旧备份: {backup_path}")
+                        logger.info("清理旧备份: %s", backup_path)
 
     def validate_all(self) -> dict[str, bool]:
         """验证所有配置"""

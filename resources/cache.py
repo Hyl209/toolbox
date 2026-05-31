@@ -34,7 +34,7 @@ class CacheManager:
                 with open(index_file, 'r', encoding='utf-8') as f:
                     self._cache_index = json.load(f)
             except Exception as e:
-                logger.error(f"加载缓存索引失败: {e}")
+                logger.error("加载缓存索引失败: %s", e)
                 self._cache_index = {}
 
     def _save_index(self):
@@ -47,7 +47,7 @@ class CacheManager:
                 json.dump(self._cache_index, f, indent=2, ensure_ascii=False)
             self._dirty = False
         except Exception as e:
-            logger.error(f"保存缓存索引失败: {e}")
+            logger.error("保存缓存索引失败: %s", e)
 
     def flush(self):
         """强制持久化索引到磁盘"""
@@ -95,7 +95,7 @@ class CacheManager:
             return data.get('value')
 
         except Exception as e:
-            logger.error(f"读取缓存失败 {key}: {e}")
+            logger.error("读取缓存失败 %s: %s", key, e)
             return None
 
     def set(self, key: str, value: Any, ttl_seconds: int = None):
@@ -131,10 +131,10 @@ class CacheManager:
             self._cleanup_if_needed()
 
             if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(f"设置缓存: {key}")
+                logger.debug("设置缓存: %s", key)
 
         except Exception as e:
-            logger.error(f"设置缓存失败 {key}: {e}")
+            logger.error("设置缓存失败 %s: %s", key, e)
 
     def delete(self, key: str) -> bool:
         """删除缓存"""
@@ -149,7 +149,7 @@ class CacheManager:
             try:
                 cache_path.unlink()
             except Exception as e:
-                logger.error(f"删除缓存文件失败 {cache_path}: {e}")
+                logger.error("删除缓存文件失败 %s: %s", cache_path, e)
 
         # 从索引中删除
         del self._cache_index[cache_key]
@@ -157,7 +157,7 @@ class CacheManager:
         self._save_index()
 
         if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(f"删除缓存: {key}")
+            logger.debug("删除缓存: %s", key)
         return True
 
     def exists(self, key: str) -> bool:
@@ -190,7 +190,7 @@ class CacheManager:
 
             logger.info("清空所有缓存")
         except Exception as e:
-            logger.error(f"清空缓存失败: {e}")
+            logger.error("清空缓存失败: %s", e)
 
     def cleanup_expired(self):
         """清理过期缓存"""

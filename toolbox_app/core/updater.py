@@ -72,14 +72,14 @@ class UpdateChecker:
             # 比较版本
             if self._is_newer_version(update_info.version, self.current_version):
                 self._last_update_info = update_info
-                logger.info(f"发现新版本: {update_info.version}")
+                logger.info("发现新版本: %s", update_info.version)
                 return update_info
             else:
                 logger.info("当前已是最新版本")
                 return None
 
         except Exception as e:
-            logger.error(f"检查更新失败: {e}")
+            logger.error("检查更新失败: %s", e)
             return None
 
     def _is_newer_version(self, new_version: str, current_version: str) -> bool:
@@ -128,7 +128,7 @@ class UpdateDownloader:
             try:
                 callback(downloaded, total)
             except Exception as e:
-                logger.error(f"进度回调执行失败: {e}")
+                logger.error("进度回调执行失败: %s", e)
 
     def download_update(self, update_info: UpdateInfo) -> Optional[Path]:
         """下载更新"""
@@ -151,11 +151,11 @@ class UpdateDownloader:
                         downloaded_size += len(chunk)
                         self._emit_progress(downloaded_size, total_size)
 
-            logger.info(f"更新下载完成: {output_path}")
+            logger.info("更新下载完成: %s", output_path)
             return output_path
 
         except Exception as e:
-            logger.error(f"下载更新失败: {e}")
+            logger.error("下载更新失败: %s", e)
             return None
 
 
@@ -182,7 +182,7 @@ class UpdateInstaller:
             return True
 
         except Exception as e:
-            logger.error(f"安装更新失败: {e}")
+            logger.error("安装更新失败: %s", e)
             # 恢复备份
             self._restore_backup(app_dir)
             return False
@@ -196,7 +196,7 @@ class UpdateInstaller:
         backup_path = self.backup_dir / f"backup_{timestamp}"
 
         shutil.copytree(app_dir, backup_path, dirs_exist_ok=True)
-        logger.info(f"创建备份: {backup_path}")
+        logger.info("创建备份: %s", backup_path)
 
     def _restore_backup(self, app_dir: Path):
         """恢复备份"""
@@ -210,7 +210,7 @@ class UpdateInstaller:
 
         latest_backup = backups[0]
         shutil.copytree(latest_backup, app_dir, dirs_exist_ok=True)
-        logger.info(f"恢复备份: {latest_backup}")
+        logger.info("恢复备份: %s", latest_backup)
 
     def _extract_update(self, update_path: Path, app_dir: Path):
         """解压更新"""
@@ -224,7 +224,7 @@ class UpdateInstaller:
                     raise RuntimeError(f"Zip Slip detected: {member.filename}")
             zip_ref.extractall(dest)
 
-        logger.info(f"解压更新到: {app_dir}")
+        logger.info("解压更新到: %s", app_dir)
 
 
 class UpdateManager:
@@ -247,7 +247,7 @@ class UpdateManager:
             try:
                 callback(update_info)
             except Exception as e:
-                logger.error(f"更新回调执行失败: {e}")
+                logger.error("更新回调执行失败: %s", e)
 
     def check_and_notify(self) -> Optional[UpdateInfo]:
         """检查并通知更新"""
