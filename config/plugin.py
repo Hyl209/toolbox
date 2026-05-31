@@ -106,7 +106,7 @@ class PluginConfig:
 
     def set_nested(self, *keys: str, value: Any):
         """设置嵌套配置值"""
-        if len(keys) == 0:
+        if not keys:
             return
 
         current = self._config
