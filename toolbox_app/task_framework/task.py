@@ -142,6 +142,10 @@ class Task(ABC):
         """检查是否应该暂停"""
         return self._is_paused
 
+    def wait(self, timeout: float = None) -> bool:
+        """等待任务完成，返回是否已完成"""
+        return self._finish_event.wait(timeout=timeout)
+
     @abstractmethod
     def execute(self) -> Any:
         """执行任务（子类实现）"""

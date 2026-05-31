@@ -483,10 +483,12 @@ class TestTaskManagerEdgeCases:
 
     def test_cancel_task(self):
         from toolbox_app.core.task_manager import TaskManager
+        import time
         manager = TaskManager()
         worker = manager.execute_task("cancel_test", lambda: 42)
-        import time
-        time.sleep(0.1)
+        deadline = time.monotonic() + 5
+        while worker.is_running and time.monotonic() < deadline:
+            time.sleep(0.01)
         worker.cancel()
         assert worker.is_cancelled is True
 
@@ -536,10 +538,12 @@ class TestTaskManagerEdgeCases:
 
     def test_cleanup_completed(self):
         from toolbox_app.core.task_manager import TaskManager
+        import time
         manager = TaskManager()
         worker = manager.execute_task("cleanup_test", lambda: 42)
-        import time
-        time.sleep(0.2)
+        deadline = time.monotonic() + 5
+        while worker.is_running and time.monotonic() < deadline:
+            time.sleep(0.01)
         manager.cleanup_completed()
         assert manager.get_worker("cleanup_test") is None
 
@@ -912,7 +916,9 @@ class TestRegression:
 
         manager = TaskManager()
         worker = manager.execute_task("regression_cleanup", lambda: 99)
-        time.sleep(0.2)
+        deadline = time.monotonic() + 5
+        while worker.is_running and time.monotonic() < deadline:
+            time.sleep(0.01)
         assert manager.get_worker("regression_cleanup") is not None
         manager.cleanup_completed()
         assert manager.get_worker("regression_cleanup") is None
@@ -926,20 +932,18 @@ class TestTaskFrameworkRegression:
         import time
 
         manager = TaskManager(max_workers=2)
-        results = []
 
         def work(x):
-            time.sleep(0.05)
+            time.sleep(0.01)
             return x * 2
 
         task = manager.submit(work, 5, name="double")
-        time.sleep(0.3)
+        task.wait(timeout=5)
         assert task.result == 10
         assert task.status.name == 'COMPLETED'
 
     def test_submit_failure(self):
         from toolbox_app.task_framework.manager import TaskManager
-        import time
 
         manager = TaskManager(max_workers=2)
 
@@ -947,7 +951,7 @@ class TestTaskFrameworkRegression:
             raise ValueError("boom")
 
         task = manager.submit(fail, name="fail_task")
-        time.sleep(0.3)
+        task.wait(timeout=5)
         assert task.error is not None
         assert "boom" in str(task.error)
 
@@ -960,26 +964,27 @@ class TestTaskFrameworkRegression:
 
         def slow(n):
             running.append(n)
-            time.sleep(0.1)
+            time.sleep(0.05)
             running.remove(n)
             return n
 
         tasks = [manager.submit(slow, i, name=f"task_{i}") for i in range(3)]
-        time.sleep(0.05)
         # With max_workers=1, only 1 should be running at a time
+        tasks[0].wait(timeout=5)
         assert len(running) <= 1
-        time.sleep(0.5)
         # All should eventually complete
+        for t in tasks:
+            t.wait(timeout=5)
         assert all(t.result is not None for t in tasks)
 
     def test_queue_history(self):
         from toolbox_app.task_framework.manager import TaskManager
-        import time
 
         manager = TaskManager(max_workers=2)
-        manager.submit(lambda: 1, name="h1")
-        manager.submit(lambda: 2, name="h2")
-        time.sleep(0.3)
+        t1 = manager.submit(lambda: 1, name="h1")
+        t2 = manager.submit(lambda: 2, name="h2")
+        t1.wait(timeout=5)
+        t2.wait(timeout=5)
         assert len(manager._task_history) == 2
 
 
