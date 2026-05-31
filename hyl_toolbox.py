@@ -893,6 +893,34 @@ if QWidget is not None:
         'get_same_module': get_same_module,
         'ROOT': ROOT,
     })
+    WordFormatterTab = LazyTabClass(_load_word_formatter_tab_module, 'build_word_formatter_tab_class', {
+        'QWidget': QWidget,
+        'QVBoxLayout': QVBoxLayout,
+        'QHBoxLayout': QHBoxLayout,
+        'QScrollArea': QScrollArea,
+        'QLineEdit': QLineEdit,
+        'QPushButton': QPushButton,
+        'QLabel': QLabel,
+        'QPlainTextEdit': QPlainTextEdit,
+        'QProgressBar': QProgressBar,
+        'QCheckBox': QCheckBox,
+        'QComboBox': QComboBox,
+        'QFileDialog': QFileDialog,
+        'QMessageBox': QMessageBox,
+        'Qt': Qt,
+        'DropZoneCard': DropZoneCard,
+        'load_setting': load_setting,
+        'save_setting': save_setting,
+        'make_card': make_card,
+        'make_transparent_row': make_transparent_row,
+        'build_global_scrollbar_style': build_global_scrollbar_style,
+        'style_combo_popup': style_combo_popup,
+        'show_themed_warning': show_themed_warning,
+        'show_themed_error': show_themed_error,
+        'show_themed_success': show_themed_success,
+        'get_word_formatter_module': get_word_formatter_module,
+        'ROOT': ROOT,
+    })
     builtin_tab_factories = {
         'music': MusicTab,
         'zipandpng': ZipAndPngTab,
@@ -905,6 +933,7 @@ if QWidget is not None:
         'filesorter': FileSorterTab,
         'same': SameTab,
         'base64': Base64Tab,
+        'wordformatter': WordFormatterTab,
     }
 
     def _get_or_create_plugin_manager():
