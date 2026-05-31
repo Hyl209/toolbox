@@ -961,6 +961,50 @@ def test_main_window_loads_promotable_plugins_without_demo_sidebar_item_when_pys
             app.quit()
 
 
+def test_main_window_defers_plugin_tab_widgets_until_selected_when_pyside_available():
+    toolbox = load_module()
+    if toolbox.QWidget is None:
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        window, app = toolbox.build_main_window_for_test(tmp)
+        try:
+            plugin_id = 'plugin:json_tools'
+            plugin_stack = next(idx for idx, tid in window._stack_to_tool_id.items() if tid == plugin_id)
+            placeholder = window._tabs[plugin_id]
+            assert placeholder is window.stack.widget(plugin_stack)
+            assert type(placeholder).__name__ == 'QWidget'
+            assert placeholder.layout() is None
+
+            window.sidebar.setCurrentRow(window._sidebar_to_stack.index(plugin_stack))
+            app.processEvents()
+
+            created = window._tabs[plugin_id]
+            assert created is window.stack.widget(plugin_stack)
+            assert created is not placeholder
+            assert created.layout() is not None
+        finally:
+            window.close()
+            app.quit()
+
+
+def test_main_window_saved_sidebar_order_keeps_plugin_items_when_pyside_available():
+    toolbox = load_module()
+    if toolbox.QWidget is None:
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        settings = toolbox.make_settings(tmp)
+        order = ['plugin:file_hasher'] + [td.id for td in toolbox.TOOL_DEFINITIONS]
+        toolbox.save_setting(settings, 'sidebar/order', ','.join(order))
+        window, app = toolbox.build_main_window_for_test(tmp)
+        try:
+            sidebar_titles = [window.sidebar.item(i).text() for i in range(window.sidebar.count())]
+            assert sidebar_titles[0] == '哈希校验'
+            assert 'JSON 工具' in sidebar_titles
+        finally:
+            window.close()
+            app.quit()
+
+
 def test_file_sorter_tab_exposes_choose_button_and_idle_state_when_pyside_available():
     toolbox = load_module()
     if toolbox.QWidget is None:

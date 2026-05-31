@@ -188,15 +188,18 @@ def build_toolbox_window_class(deps: dict):
                     plugin_manager.initialize_all_plugins(plugin_deps)
                     for name, plugin in plugin_manager.get_enabled_plugins().items():
                         if plugin.plugin_info.plugin_type == 'gui':
-                            tab_widget = plugin.get_tab_widget()
-                            if tab_widget is not None:
-                                label = plugin.get_sidebar_label()
-                                stack_idx = self.stack.count()
-                                self._sidebar_to_stack.append(stack_idx)
-                                self.sidebar.addItem(label)
-                                self.stack.addWidget(tab_widget)
-                                self._tabs[f'plugin:{name}'] = tab_widget
-                                self._plugin_tabs.append((name, tab_widget))
+                            label = plugin.get_sidebar_label()
+                            plugin_tool_id = f'plugin:{name}'
+                            placeholder = QWidget()
+                            stack_idx = self.stack.count()
+                            self._stack_to_tool_id[stack_idx] = plugin_tool_id
+                            self._sidebar_to_stack.append(stack_idx)
+                            self.sidebar.addItem(label)
+                            self.stack.addWidget(placeholder)
+                            self._tabs[plugin_tool_id] = placeholder
+                            self._tab_builders[plugin_tool_id] = (
+                                lambda _settings, plugin=plugin, name=name: self._build_plugin_tab(name, plugin)
+                            )
                     for name, plugin in plugin_manager.get_enabled_plugins().items():
                         try:
                             plugin.on_app_start()
@@ -520,6 +523,14 @@ def build_toolbox_window_class(deps: dict):
                 if self.stack.widget(i) is widget:
                     return i
             return 0
+
+        def _build_plugin_tab(self, name: str, plugin):
+            tab_widget = plugin.get_tab_widget()
+            if tab_widget is None:
+                logger.warning("插件未提供页签控件: %s", name)
+                return QWidget()
+            self._plugin_tabs.append((name, tab_widget))
+            return tab_widget
 
         def logout(self):
             self.relogin_requested = True
