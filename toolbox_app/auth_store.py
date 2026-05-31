@@ -12,9 +12,8 @@ from toolbox_app.password_policy import (
     validate_password_policy,
 )
 
-# Cache for loaded users to avoid repeated file reads
+# Cache for loaded users to avoid repeated file reads (keyed by mtime)
 _users_cache: dict[str, tuple[float, list[dict[str, str]]]] = {}
-_CACHE_TTL = 5.0  # seconds
 
 
 def load_users(store_path: str | Path) -> list[dict[str, str]]:

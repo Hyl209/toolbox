@@ -164,11 +164,14 @@ class TaskManager:
 
 # 全局任务管理器实例
 _task_manager: Optional[TaskManager] = None
+_task_manager_lock = __import__('threading').Lock()
 
 
 def get_task_manager(max_workers: int = 5) -> TaskManager:
-    """获取全局任务管理器实例"""
+    """获取全局任务管理器实例（线程安全）"""
     global _task_manager
     if _task_manager is None:
-        _task_manager = TaskManager(max_workers)
+        with _task_manager_lock:
+            if _task_manager is None:
+                _task_manager = TaskManager(max_workers)
     return _task_manager

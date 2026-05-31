@@ -25,7 +25,7 @@ class DownloadService(DownloaderBase):
     def __init__(self, name: str = "HTTPDownloader"):
         super().__init__(name)
         self._session = None
-        self._chunk_size = 8192
+        self._chunk_size = 65536
 
     def _get_session(self):
         """获取 HTTP 会话"""

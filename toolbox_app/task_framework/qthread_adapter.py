@@ -74,27 +74,44 @@ class TaskUIBridge:
         self._progress_cb: Optional[Callable] = None
         self._done_cb: Optional[Callable] = None
         self._error_cb: Optional[Callable] = None
+        self._connected_wrappers: list[Callable] = []
 
     def connect(self, on_progress: Callable = None, on_done: Callable = None,
                 on_error: Callable = None):
         """连接 UI 回调"""
         if on_progress:
             self._progress_cb = on_progress
-            self._manager.on_task_progress(lambda t, p: on_progress(t, p))
+            wrapper = lambda t, p: on_progress(t, p)
+            self._connected_wrappers.append(wrapper)
+            self._manager.on_task_progress(wrapper)
         if on_done:
             self._done_cb = on_done
-            self._manager.on_task_completed(lambda t, r: on_done(t, r))
+            wrapper = lambda t, r: on_done(t, r)
+            self._connected_wrappers.append(wrapper)
+            self._manager.on_task_completed(wrapper)
         if on_error:
             self._error_cb = on_error
-            self._manager.on_task_failed(lambda t, e: on_error(t, e))
+            wrapper = lambda t, e: on_error(t, e)
+            self._connected_wrappers.append(wrapper)
+            self._manager.on_task_failed(wrapper)
 
     def submit(self, name: str, func: Callable, *args, **kwargs) -> Task:
         """提交任务到后台"""
         return self._manager.submit(func, *args, name=name, **kwargs)
 
     def disconnect(self):
-        """断开所有信号连接，释放 UI 回调引用"""
-        self._manager.signals.disconnect_all()
+        """断开本 bridge 的信号连接，释放 UI 回调引用"""
+        for sig_name in ('task_started', 'task_completed', 'task_failed',
+                         'task_cancelled', 'task_progress'):
+            sig = getattr(self._manager.signals, sig_name, None)
+            if sig is None:
+                continue
+            for wrapper in self._connected_wrappers:
+                try:
+                    sig.disconnect(wrapper)
+                except (TypeError, RuntimeError):
+                    pass
+        self._connected_wrappers.clear()
         self._progress_cb = None
         self._done_cb = None
         self._error_cb = None

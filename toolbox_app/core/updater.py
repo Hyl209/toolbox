@@ -145,7 +145,7 @@ class UpdateDownloader:
             downloaded_size = 0
 
             with open(output_path, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=8192):
+                for chunk in response.iter_content(chunk_size=65536):
                     if chunk:
                         f.write(chunk)
                         downloaded_size += len(chunk)
