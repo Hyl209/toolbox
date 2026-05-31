@@ -280,8 +280,9 @@ def build_auth_dialog_class(deps: dict):
                     return
                 # 首次使用默认密码登录时，强制要求修改密码
                 if username.casefold() == DEFAULT_ADMIN_USERNAME and password == DEFAULT_ADMIN_PASSWORD:
-                    self.password_edit.setText(password)
                     self.refresh_mode('change_password')
+                    self.username_edit.setText(username)
+                    self.current_password_edit.setText(password)
                     self.status_label.setText('检测到默认密码，请先修改密码后再使用。')
                     self._set_status_error_style()
                     return
