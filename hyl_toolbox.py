@@ -882,7 +882,7 @@ if QWidget is not None:
         'style_combo_popup': style_combo_popup,
         'animate_stack_switch': animate_stack_switch,
         'LOGO_PATH': LOGO_PATH,
-        'WEIXIN_IMAGE_PATH': WEIXIN_IMAGE_PATH,
+        'WEIXIN_IMAGE_PATH': _get_weixin_image_path(),
         'MusicTab': MusicTab,
         'ZipAndPngTab': ZipAndPngTab,
         'Mp4ToMp3Tab': Mp4ToMp3Tab,
