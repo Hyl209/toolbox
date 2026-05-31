@@ -7,12 +7,18 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 MODULE_PATH = ROOT / 'hyl_toolbox.py'
 
 
+_cached_module = None
+
 def load_module():
+    global _cached_module
+    if _cached_module is not None:
+        return _cached_module
     sys.modules.pop('hyl_toolbox_test_module', None)
     spec = importlib.util.spec_from_file_location('hyl_toolbox_test_module', MODULE_PATH)
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
+    _cached_module = module
     return module
 
 

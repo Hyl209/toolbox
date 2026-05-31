@@ -120,11 +120,13 @@ def build_toolbox_window_class(deps: dict):
             self.sidebar.setStyleSheet(build_global_scrollbar_style())
             self._sidebar_to_stack: list[int] = []
             self._stack_to_tool_id: dict[int, str] = {}
+            sidebar_labels = []
             for stack_index, tool_def in enumerate(TOOL_DEFINITIONS):
                 if tool_def.id not in self._disabled_tools:
                     self._sidebar_to_stack.append(stack_index)
                     self._stack_to_tool_id[stack_index] = tool_def.id
-                    self.sidebar.addItem(tool_def.sidebar_label)
+                    sidebar_labels.append(tool_def.sidebar_label)
+            self.sidebar.addItems(sidebar_labels)
             self.sidebar.setCurrentRow(0)
             side_layout.addWidget(self.sidebar, 1)
             bottom_row = QHBoxLayout()
@@ -489,9 +491,11 @@ def build_toolbox_window_class(deps: dict):
             self.sidebar.blockSignals(True)
             self.sidebar.clear()
             self._sidebar_to_stack = []
+            reordered_labels = []
             for tid in new_ids:
                 self._sidebar_to_stack.append(self._get_stack_index(tid))
-                self.sidebar.addItem(sidebar_texts[tid])
+                reordered_labels.append(sidebar_texts[tid])
+            self.sidebar.addItems(reordered_labels)
             self.sidebar.blockSignals(False)
             if self._sidebar_to_stack:
                 self.sidebar.setCurrentRow(0)

@@ -12,6 +12,12 @@ def save_setting(settings, key: str, value: str) -> None:
     settings.sync()
 
 
+def save_settings(settings, items: dict[str, str]) -> None:
+    for key, value in items.items():
+        settings.setValue(key, value)
+    settings.sync()
+
+
 def load_setting(settings, key: str, default: str = '') -> str:
     value = settings.value(key, default)
     return '' if value is None else str(value)

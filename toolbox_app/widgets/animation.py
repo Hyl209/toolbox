@@ -17,6 +17,9 @@ def animate_fade(widget: QWidget, start: float = 0.0, end: float = 1.0, duration
     animation.setStartValue(start)
     animation.setEndValue(end)
     animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+    # Remove graphics effect after animation to avoid rendering overhead
+    if end >= 1.0:
+        animation.finished.connect(lambda: widget.setGraphicsEffect(None))
     animation.start(QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
     widget._fade_animation = animation
     return animation
@@ -66,11 +69,11 @@ def animate_stack_switch(stack: QStackedWidget, index: int):
     start_pos = QPoint(end_pos.x(), end_pos.y() + offset)
     page.move(start_pos)
     move = QPropertyAnimation(page, b'pos', page)
-    move.setDuration(600)
+    move.setDuration(300)
     move.setStartValue(start_pos)
     move.setEndValue(end_pos)
     move.setEasingCurve(QEasingCurve.Type.OutCubic)
-    fade = animate_fade(page, 0.35, 1.0, 350)
+    fade = animate_fade(page, 0.35, 1.0, 200)
     move.start(QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
     page._slide_animation = (move, fade)
 
