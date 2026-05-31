@@ -174,10 +174,6 @@ def build_toolbox_window_class(deps: dict):
                 placeholder = QWidget()
                 self._tabs[tool_def.id] = placeholder
                 self.stack.addWidget(placeholder)
-            # Eagerly create only the first visible tab
-            first_id = next((td.id for td in TOOL_DEFINITIONS if td.id in self._tab_builders), None)
-            if first_id:
-                self._ensure_tab_created(first_id)
             # --- 加载插件 ---
             self._plugin_tabs = []
             self._plugin_manager = plugin_manager
@@ -210,6 +206,13 @@ def build_toolbox_window_class(deps: dict):
                     logger.error("插件加载/初始化异常", exc_info=True)
             # --- 应用导航栏排序 ---
             self._apply_sidebar_order(settings)
+            # Eagerly create the first visible tab AFTER sidebar order is applied
+            if self._sidebar_to_stack:
+                first_stack_idx = self._sidebar_to_stack[0]
+                first_tool_id = self._stack_to_tool_id.get(first_stack_idx)
+                if first_tool_id:
+                    self._ensure_tab_created(first_tool_id)
+                self.stack.setCurrentIndex(first_stack_idx)
             shell.addWidget(self.stack, 1)
             self.sidebar.currentRowChanged.connect(self.switch_tool_page)
             content_layout.addWidget(central, 1)
@@ -478,13 +481,10 @@ def build_toolbox_window_class(deps: dict):
             if not order_ids:
                 return
             # 当前 sidebar 中的 id 列表（按 sidebar 顺序）
-            widget_to_tab_id = {id(tab): tid for tid, tab in self._tabs.items()}
             sidebar_ids = []
             for i in range(self.sidebar.count()):
-                # 通过 _sidebar_to_stack 找到 stack index，再通过 stack widget 找到 tab id
                 stack_idx = self._sidebar_to_stack[i]
-                widget = self.stack.widget(stack_idx)
-                tid = widget_to_tab_id.get(id(widget))
+                tid = self._stack_to_tool_id.get(stack_idx)
                 if tid:
                     sidebar_ids.append(tid)
             # 按保存的顺序重排（只排当前 sidebar 中的项）
