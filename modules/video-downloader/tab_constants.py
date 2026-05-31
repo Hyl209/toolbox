@@ -6,6 +6,9 @@ SETTINGS_PREFIX = 'video_downloader'
 TITLE = '视频下载'
 SUBTITLE = '批量下载 Telegram 和网页视频'
 TASK_PLACEHOLDER = '每行一个链接'
+WEB_SOURCE_PLACEHOLDER = '每行一个网页链接，先识别视频再加入任务区'
+WEB_QUEUE_PLACEHOLDER = '任务区：点击“添加到任务区”后生成下载队列'
+WEB_CANDIDATE_PLACEHOLDER = '识别后显示可添加的视频；可删除不想添加的行'
 OUTPUT_PLACEHOLDER = '选择视频输出目录'
 DEFAULT_RECENT_LIMIT = '500'
 DATE_FROM_PLACEHOLDER = '开始日期 YYYY-MM-DD'
@@ -34,7 +37,7 @@ MODE_META = {
     'web': {
         'title': '网页视频下载',
         'subtitle': '',
-        'task_placeholder': '每行一个网页视频链接',
+        'task_placeholder': WEB_QUEUE_PLACEHOLDER,
     },
 }
 

@@ -1724,8 +1724,42 @@ def test_format_web_task_summary_can_show_scan_results():
     summary = tab_module.format_web_task_summary(
         ['https://example.com/a'],
         {'https://example.com/a': {'success': True, 'candidate_count': 2}},
+        ['https://cdn.example.com/a.mp4'],
     )
     assert '2 个候选' in summary
+    assert '任务区: 1 个视频' in summary
+
+
+def test_format_web_candidate_lines_uses_requested_queue_text():
+    tab_module = load_tab_module()
+    lines = tab_module.format_web_candidate_lines([
+        {
+            'success': True,
+            'candidates': [
+                'https://cdn.example.com/a.mp4',
+                'https://cdn.example.com/b.mp4',
+            ],
+        }
+    ])
+    assert lines == [
+        '1.网页第1个视频：https://cdn.example.com/a.mp4',
+        '2.网页第2个视频：https://cdn.example.com/b.mp4',
+    ]
+
+
+def test_append_web_queue_text_deduplicates_and_renumbers():
+    tab_module = load_tab_module()
+    merged = tab_module.append_web_queue_text(
+        '9.网页第3个视频：https://cdn.example.com/existing.mp4',
+        '\n'.join([
+            '1.网页第1个视频：https://cdn.example.com/existing.mp4',
+            '2.网页第2个视频：https://cdn.example.com/new.mp4',
+        ]),
+    )
+    assert merged == '\n'.join([
+        '1.网页第3个视频：https://cdn.example.com/existing.mp4',
+        '2.网页第2个视频：https://cdn.example.com/new.mp4',
+    ])
 
 
 def test_summarize_download_results_includes_counts():

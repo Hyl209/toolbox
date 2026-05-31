@@ -1,7 +1,12 @@
 from __future__ import annotations
 
-from ._shared import classify_source, TELEGRAM_HOSTS
+import re
+
+from ._shared import classify_source, TELEGRAM_HOSTS, _normalize_url_text
 from .tab_constants import SUMMARY_EMPTY_TEXT, TELEGRAM_ONLY_ERROR, WEB_ONLY_ERROR
+
+
+WEB_QUEUE_LABEL_RE = re.compile(r'网页第(?P<index>\d+)个视频')
 
 
 def normalize_source_mode(source_mode: str) -> str:
@@ -48,10 +53,15 @@ def format_video_task_summary(urls: list[str]) -> str:
     return '\n'.join(lines)
 
 
-def format_web_task_summary(urls: list[str], web_scan_results: dict[str, dict[str, object]] | None = None) -> str:
-    if not urls:
+def format_web_task_summary(
+    urls: list[str],
+    web_scan_results: dict[str, dict[str, object]] | None = None,
+    queue_urls: list[str] | None = None,
+) -> str:
+    queue_count = len(queue_urls or [])
+    if not urls and not queue_count:
         return SUMMARY_EMPTY_TEXT
-    lines = [f'网页链接: {len(urls)}']
+    lines = [f'网页链接: {len(urls)}', f'任务区: {queue_count} 个视频']
     if web_scan_results:
         lines.append('扫描结果:')
         for url in urls[:3]:
@@ -70,6 +80,62 @@ def format_web_task_summary(urls: list[str], web_scan_results: dict[str, dict[st
         lines.append('预览:')
         lines.extend(preview)
     return '\n'.join(lines)
+
+
+def _web_line_url(line: str) -> str:
+    return _normalize_url_text(line)
+
+
+def _web_line_candidate_index(line: str, fallback: int) -> int:
+    match = WEB_QUEUE_LABEL_RE.search(str(line or ''))
+    if not match:
+        return fallback
+    try:
+        return max(1, int(match.group('index')))
+    except ValueError:
+        return fallback
+
+
+def format_web_queue_line(queue_index: int, candidate_index: int, url: str) -> str:
+    return f'{queue_index}.网页第{candidate_index}个视频：{url}'
+
+
+def normalize_web_queue_lines(lines: list[str], start_index: int = 1) -> list[str]:
+    normalized: list[str] = []
+    for raw in lines:
+        url = _web_line_url(raw)
+        if not url:
+            continue
+        candidate_index = _web_line_candidate_index(raw, len(normalized) + 1)
+        normalized.append(format_web_queue_line(start_index + len(normalized), candidate_index, url))
+    return normalized
+
+
+def format_web_candidate_lines(results: list[dict[str, object]]) -> list[str]:
+    lines: list[str] = []
+    for result in results:
+        if not result.get('success'):
+            continue
+        for candidate_index, url in enumerate(result.get('candidates') or [], start=1):
+            cleaned = _web_line_url(str(url or ''))
+            if cleaned:
+                lines.append(format_web_queue_line(len(lines) + 1, candidate_index, cleaned))
+    return lines
+
+
+def append_web_queue_text(existing_text: str, candidate_text: str) -> str:
+    existing_lines = normalize_web_queue_lines(str(existing_text or '').splitlines(), 1)
+    existing_urls = {_web_line_url(line) for line in existing_lines}
+    next_index = len(existing_lines) + 1
+    appended: list[str] = []
+    for raw in str(candidate_text or '').splitlines():
+        url = _web_line_url(raw)
+        if not url or url in existing_urls:
+            continue
+        candidate_index = _web_line_candidate_index(raw, len(appended) + 1)
+        appended.append(format_web_queue_line(next_index + len(appended), candidate_index, url))
+        existing_urls.add(url)
+    return '\n'.join(existing_lines + appended)
 
 def format_backend_status(status: dict[str, dict[str, object]]) -> str:
     lines: list[str] = []

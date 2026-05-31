@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from .tab_constants import (
     DEFAULT_RECENT_LIMIT, DATE_FROM_PLACEHOLDER, DATE_TO_PLACEHOLDER,
-    WEB_INDEX_PLACEHOLDER, OUTPUT_PLACEHOLDER, SUMMARY_EMPTY_TEXT,
+    WEB_INDEX_PLACEHOLDER, WEB_SOURCE_PLACEHOLDER, WEB_CANDIDATE_PLACEHOLDER,
+    OUTPUT_PLACEHOLDER, SUMMARY_EMPTY_TEXT,
     RUN_BUTTON_TEXT, SEND_CODE_BUTTON_TEXT, LOGIN_BUTTON_TEXT, STATUS_BUTTON_TEXT,
     apply_video_textedit_surface, compact_card_layout,
 )
@@ -138,19 +139,35 @@ def build_task_section(self, layout, center_row, textedit_style, task_min_height
     task_card_title = '链接' if self.source_mode == 'web' else '下载任务'
     task_card, task_layout = make_card(task_card_title)
     compact_card_layout(task_layout)
-    if self.source_mode != 'web':
+    if self.source_mode == 'web':
+        task_layout.addWidget(QLabel('网页链接'))
+        self.source_edit = QPlainTextEdit()
+        self.source_edit.setPlaceholderText(WEB_SOURCE_PLACEHOLDER)
+        self.source_edit.setMinimumHeight(76)
+        apply_video_textedit_surface(self.source_edit, textedit_style, self.current_theme)
+        self.source_edit.textChanged.connect(self.handle_web_source_text_changed)
+        task_layout.addWidget(self.source_edit)
+    else:
         task_layout.addWidget(QLabel('任务链接'))
     self.task_edit = QPlainTextEdit()
     self.task_edit.setPlaceholderText(self.mode_meta['task_placeholder'])
     self.task_edit.setMinimumHeight(task_min_height)
     apply_video_textedit_surface(self.task_edit, textedit_style, self.current_theme)
     self.task_edit.textChanged.connect(self.handle_task_text_changed)
-    task_layout.addWidget(self.task_edit)
 
     self.summary_label = QLabel(SUMMARY_EMPTY_TEXT)
     self.summary_label.setProperty('cardSub', True)
     self.summary_label.setWordWrap(True)
     task_layout.addWidget(self.summary_label)
+    if self.source_mode == 'web':
+        task_layout.addWidget(QLabel('识别结果'))
+        self.candidate_results_edit = QPlainTextEdit()
+        self.candidate_results_edit.setPlaceholderText(WEB_CANDIDATE_PLACEHOLDER)
+        self.candidate_results_edit.setMinimumHeight(92)
+        apply_video_textedit_surface(self.candidate_results_edit, textedit_style, self.current_theme)
+        task_layout.addWidget(self.candidate_results_edit)
+        task_layout.addWidget(QLabel('任务区'))
+    task_layout.addWidget(self.task_edit)
 
     output_row = QHBoxLayout()
     output_row.setSpacing(10)
@@ -189,9 +206,12 @@ def build_task_section(self, layout, center_row, textedit_style, task_min_height
     action_row = QHBoxLayout()
     action_row.setSpacing(10)
     if self.source_mode == 'web':
-        self.scan_button = QPushButton('扫描候选')
+        self.scan_button = QPushButton('识别网页视频')
         self.scan_button.clicked.connect(self.scan_web_candidates)
         action_row.addWidget(self.scan_button)
+        self.add_candidates_button = QPushButton('添加到任务区')
+        self.add_candidates_button.clicked.connect(self.add_web_candidates_to_queue)
+        action_row.addWidget(self.add_candidates_button)
     self.cover_button = QPushButton('补封面')
     self.cover_button.setToolTip('给已下载的视频嵌入封面（需提供源链接）')
     self.cover_button.clicked.connect(self.embed_thumbnail_clicked)

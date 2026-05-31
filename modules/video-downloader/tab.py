@@ -166,6 +166,9 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             self.login_status_label = None
             self.backend_status_label = None
             self.refresh_status_button = None
+            self.source_edit = None
+            self.candidate_results_edit = None
+            self.add_candidates_button = None
             self.recent_count_edit = None
             self.all_messages_checkbox = None
             self.date_from_edit = None
@@ -192,6 +195,8 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             self.completed_tasks = 0
             self._last_log_is_progress = False
             self._token = None
+            self._active_web_queue_lines: list[str] = []
+            self._scan_started_while_running = False
             self.module = get_video_downloader_module()
             self.session_file = VIDEO_DOWNLOADER_DIR / self.module.SESSION_FILE_NAME
 
@@ -283,7 +288,6 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                 self.api_hash_edit,
                 self.phone_edit,
                 self.code_edit,
-                self.task_edit,
                 self.recent_count_edit,
                 self.all_messages_checkbox,
                 self.date_from_edit,
@@ -299,7 +303,6 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                 self.overwrite_checkbox,
                 self.concurrent_combo,
                 self.choose_button,
-                self.scan_button,
                 self.cover_button,
                 self.send_code_button,
                 self.login_button,
@@ -309,6 +312,16 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             for widget in widgets:
                 if widget is not None:
                     widget.setEnabled(not busy)
+            if self.source_mode == 'web':
+                for widget in (
+                    self.source_edit,
+                    self.task_edit,
+                    self.candidate_results_edit,
+                    self.add_candidates_button,
+                    self.scan_button,
+                ):
+                    if widget is not None:
+                        widget.setEnabled(True)
             self.run_button.setVisible(not busy)
             if self.pause_button is not None:
                 self.pause_button.setVisible(busy)
@@ -511,6 +524,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             for line in summary_lines:
                 self.append_log(line)
             self.progress_label.setText(f'下载完成，成功 {summary_lines[1].split(": ", 1)[-1]}，失败 {summary_lines[2].split(": ", 1)[-1]}')
+            self._remove_completed_web_queue_items(results)
             self.cleanup_worker()
             self.set_busy(False)
 
@@ -565,13 +579,21 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
         def apply_theme(self, theme_name: str):
             self.current_theme = theme_name if theme_name in {'dark', 'light'} else 'dark'
             style = build_video_textedit_style(build_global_scrollbar_style, self.current_theme)
+            if self.source_edit is not None:
+                apply_video_textedit_surface(self.source_edit, style, self.current_theme)
             apply_video_textedit_surface(self.task_edit, style, self.current_theme)
+            if self.candidate_results_edit is not None:
+                apply_video_textedit_surface(self.candidate_results_edit, style, self.current_theme)
             apply_video_textedit_surface(self.log, style, self.current_theme)
             if self.concurrent_combo is not None:
                 style_combo_popup(self.concurrent_combo, self.current_theme)
 
+        def handle_web_source_text_changed(self):
+            self.web_scan_results = {}
+            self.handle_task_text_changed()
+
         def handle_task_text_changed(self):
-            if self.source_mode == 'web':
+            if self.source_mode == 'web' and self.source_edit is None:
                 self.web_scan_results = {}
             if self._summary_debounce_timer is None:
                 from PySide6.QtCore import QTimer
@@ -581,27 +603,41 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                 self._summary_debounce_timer.timeout.connect(self.refresh_summary)
             self._summary_debounce_timer.start()
 
+        def _web_source_text(self) -> str:
+            if self.source_edit is not None:
+                return self.source_edit.toPlainText()
+            return self.task_edit.toPlainText()
+
+        def _web_queue_text(self) -> str:
+            return self.task_edit.toPlainText()
+
         def refresh_summary(self):
-            urls = self.module.parse_task_lines(self.task_edit.toPlainText())
             if self.source_mode == 'web':
-                self.summary_label.setText(format_web_task_summary(urls, self.web_scan_results))
+                urls = self.module.parse_task_lines(self._web_source_text())
+                queue_urls = self.module.parse_task_lines(self._web_queue_text())
+                self.summary_label.setText(format_web_task_summary(urls, self.web_scan_results, queue_urls))
                 return
+            urls = self.module.parse_task_lines(self.task_edit.toPlainText())
             self.summary_label.setText(build_source_mode_summary(urls, self.source_mode))
 
         def scan_web_candidates(self):
             if self.source_mode != 'web':
                 return
             self.cleanup_scan_worker()
-            urls = self.module.parse_task_lines(self.task_edit.toPlainText())
+            urls = self.module.parse_task_lines(self._web_source_text())
             web_urls = [url for url in urls if _guess_source_kind(url) == 'web']
             if not web_urls:
                 show_themed_warning(self, '提示', '请先输入网页链接')
                 return
             self.web_scan_results = {}
+            if self.candidate_results_edit is not None:
+                self.candidate_results_edit.clear()
             self.refresh_summary()
             self.progress_label.setText(f'正在扫描候选 0/{len(web_urls)}')
             self.append_log(f'开始扫描候选，共 {len(web_urls)} 个网页链接')
-            self.set_busy(True)
+            self._scan_started_while_running = self.is_running
+            if not self._scan_started_while_running:
+                self.set_busy(True)
             self.scan_worker = ScanWorker(self.module, web_urls)
             self.scan_worker.progress.connect(self.handle_scan_progress)
             self.scan_worker.finished.connect(self.finalize_scan)
@@ -635,27 +671,76 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
 
         def finalize_scan(self, results: list[dict[str, object]]):
             self.web_scan_results = {str(item.get('source_url') or ''): item for item in results if str(item.get('source_url') or '')}
+            if self.candidate_results_edit is not None:
+                self.candidate_results_edit.setPlainText('\n'.join(format_web_candidate_lines(results)))
             self.refresh_summary()
             success_count = sum(1 for item in results if item.get('success'))
             candidate_count = sum(int(item.get('candidate_count', 0) or 0) for item in results if item.get('success'))
             self.append_log(f'候选扫描完成：成功 {success_count} 个链接，找到 {candidate_count} 个候选')
             self.progress_label.setText(f'候选扫描完成，共找到 {candidate_count} 个候选')
             self.cleanup_scan_worker()
-            self.set_busy(False)
+            if not self._scan_started_while_running:
+                self.set_busy(False)
+            self._scan_started_while_running = False
 
         def handle_scan_error(self, message: str):
             self.append_log(f'错误：{message}')
             self.progress_label.setText('候选扫描失败')
             self.cleanup_scan_worker()
-            self.set_busy(False)
+            if not self._scan_started_while_running:
+                self.set_busy(False)
+            self._scan_started_while_running = False
             show_themed_error(self, '候选扫描失败', message)
 
+        def add_web_candidates_to_queue(self):
+            if self.source_mode != 'web' or self.candidate_results_edit is None:
+                return
+            candidate_text = self.candidate_results_edit.toPlainText()
+            if not self.module.parse_task_lines(candidate_text):
+                show_themed_warning(self, '提示', '请先识别网页视频')
+                return
+            merged = append_web_queue_text(self.task_edit.toPlainText(), candidate_text)
+            if merged == self.task_edit.toPlainText().strip():
+                show_themed_warning(self, '提示', '任务区已包含这些视频')
+                return
+            self.task_edit.setPlainText(merged)
+            self.refresh_summary()
+            self.append_log('已添加到任务区')
         def cleanup_scan_worker(self):
             if self.scan_worker_thread is not None:
                 self.scan_worker_thread.quit()
                 self.scan_worker_thread.wait()
             self.scan_worker_thread = None
             self.scan_worker = None
+
+        def _remove_completed_web_queue_items(self, results: list[dict[str, object]]):
+            if self.source_mode != 'web' or not self._active_web_queue_lines:
+                return
+            success_urls = {
+                str(item.get('source_url') or '')
+                for item in results
+                if item.get('success') and str(item.get('source_url') or '')
+            }
+            if not success_urls:
+                self._active_web_queue_lines = []
+                return
+            removable: dict[str, int] = {}
+            for line in self._active_web_queue_lines:
+                urls = self.module.parse_task_lines(line)
+                if urls and urls[0] in success_urls:
+                    removable[line] = removable.get(line, 0) + 1
+            if not removable:
+                self._active_web_queue_lines = []
+                return
+            kept: list[str] = []
+            for line in self.task_edit.toPlainText().splitlines():
+                if removable.get(line, 0) > 0:
+                    removable[line] -= 1
+                    continue
+                kept.append(line)
+            self.task_edit.setPlainText('\n'.join(normalize_web_queue_lines(kept, 1)))
+            self._active_web_queue_lines = []
+            self.refresh_summary()
 
         def choose_output_dir(self):
             path = QFileDialog.getExistingDirectory(self, '选择视频输出目录', self.output_edit.text() or str(ROOT))
@@ -809,7 +894,8 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             self.thumbnail_worker = None
 
         def run_download(self):
-            self.cleanup_worker()
+            if hasattr(self, 'cleanup_worker'):
+                self.cleanup_worker()
             self.save_form_settings()
             module = self.module
             web_all_candidates = self._is_checked(self.web_all_candidates_checkbox)
@@ -839,6 +925,10 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                 module.build_download_tasks(module.parse_task_lines(self.task_edit.toPlainText())),
                 self.source_mode,
             )
+            if self.source_mode == 'web':
+                self._active_web_queue_lines = normalize_web_queue_lines(self.task_edit.toPlainText().splitlines(), 1)
+                if self._active_web_queue_lines and hasattr(self.task_edit, 'setPlainText'):
+                    self.task_edit.setPlainText('\n'.join(self._active_web_queue_lines))
             options = module.DownloadOptions(
                 overwrite=self.overwrite_checkbox.isChecked(),
                 max_concurrent_downloads=int(self._concurrent_value()) if self.concurrent_combo is not None else 1,
