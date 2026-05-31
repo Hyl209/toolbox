@@ -50,6 +50,8 @@ a = Analysis(
         ('modules/duplicate-finder/__init__.py', 'modules/duplicate-finder'),
         ('modules/base64/converter.py', 'modules/base64'),
         ('modules/base64/tab.py', 'modules/base64'),
+        ('modules/theme-customizer/__init__.py', 'modules/theme-customizer'),
+        ('modules/theme-customizer/color_scheme.py', 'modules/theme-customizer'),
         ('themes/dark.qss', 'themes'),
         ('themes/light.qss', 'themes'),
         ('arrow-dark.svg', '.'),

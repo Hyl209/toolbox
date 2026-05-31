@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 
 def build_settings_dialog_class(deps: dict):
     """Return a SettingsDialog class with all Qt/helper deps injected."""
@@ -24,11 +26,24 @@ def build_settings_dialog_class(deps: dict):
     get_theme_stylesheet = deps['get_theme_stylesheet']
     build_global_scrollbar_style = deps['build_global_scrollbar_style']
     TOOL_DEFINITIONS = deps['TOOL_DEFINITIONS']
+    QColorDialog = deps.get('QColorDialog')
+
+    import importlib.util as _ilu
+    _cs_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'modules', 'theme-customizer', 'color_scheme.py')
+    _cs_spec = _ilu.spec_from_file_location('color_scheme', _cs_path)
+    _cs_mod = _ilu.module_from_spec(_cs_spec)
+    _cs_spec.loader.exec_module(_cs_mod)
+    COLOR_ZONES = _cs_mod.COLOR_ZONES
+    get_default_colors = _cs_mod.get_default_colors
+    load_custom_colors = _cs_mod.load_custom_colors
+    save_custom_colors = _cs_mod.save_custom_colors
+    generate_qss = _cs_mod.generate_qss
 
     _NAV_ITEMS = [
         ('account', '👤  账号设置'),
         ('plugins', '🧩  功能管理'),
         ('order', '📋  导航排序'),
+        ('theme', '🎨  主题配色'),
     ]
 
     QTimer = deps.get('QTimer')
@@ -169,6 +184,7 @@ def build_settings_dialog_class(deps: dict):
             self._stack.addWidget(self._build_account_page())
             self._stack.addWidget(self._build_plugins_page())
             self._stack.addWidget(self._build_order_page())
+            self._stack.addWidget(self._build_theme_page())
             shell.addWidget(self._stack, 1)
             content_layout.addWidget(body, 1)
             # --- bottom button row ---
@@ -436,6 +452,100 @@ def build_settings_dialog_class(deps: dict):
                     disabled.append(tid)
             return visible + disabled
 
+        # ---- theme page ----
+
+        def _build_theme_page(self):
+            page = QWidget()
+            layout = QVBoxLayout(page)
+            layout.setContentsMargins(24, 22, 24, 16)
+            layout.setSpacing(16)
+            title = QLabel('主题配色')
+            title.setProperty('brandTitle', True)
+            layout.addWidget(title)
+            theme_label = '当前：深色主题' if self.current_theme == 'dark' else '当前：浅色主题'
+            hint = QLabel(f'{theme_label}  —  点击色块可自定义颜色，保存后生效。')
+            hint.setProperty('cardSub', True)
+            layout.addWidget(hint)
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QFrame.NoFrame)
+            scroll_widget = QWidget()
+            theme_layout = QVBoxLayout(scroll_widget)
+            theme_layout.setContentsMargins(0, 0, 0, 0)
+            theme_layout.setSpacing(10)
+            self._theme_colors = load_custom_colors(self.settings, self.current_theme)
+            self._theme_swatches: dict[str, QWidget] = {}
+            for zone_id, name, desc in COLOR_ZONES:
+                card = QFrame()
+                card.setProperty('card', True)
+                h = QHBoxLayout(card)
+                h.setContentsMargins(18, 14, 18, 14)
+                h.setSpacing(12)
+                text_col = QVBoxLayout()
+                text_col.setSpacing(3)
+                name_lbl = QLabel(name)
+                name_lbl.setProperty('cardTitle', True)
+                text_col.addWidget(name_lbl)
+                desc_lbl = QLabel(desc)
+                desc_lbl.setProperty('cardSub', True)
+                text_col.addWidget(desc_lbl)
+                h.addLayout(text_col, 1)
+                swatch = QPushButton()
+                swatch.setFixedSize(36, 36)
+                swatch.setCursor(Qt.PointingHandCursor)
+                swatch.setToolTip(f'点击选择{name}')
+                swatch.clicked.connect(lambda checked=False, z=zone_id: self._pick_theme_color(z))
+                h.addWidget(swatch, 0, Qt.AlignVCenter)
+                self._theme_swatches[zone_id] = swatch
+                theme_layout.addWidget(card)
+            theme_layout.addStretch(1)
+            scroll.setWidget(scroll_widget)
+            layout.addWidget(scroll, 1)
+            btn_row = QHBoxLayout()
+            btn_row.addStretch(1)
+            restore_btn = QPushButton('恢复默认')
+            restore_btn.setMinimumHeight(34)
+            restore_btn.clicked.connect(self._restore_theme_defaults)
+            btn_row.addWidget(restore_btn)
+            layout.addLayout(btn_row)
+            self._update_theme_swatches()
+            return page
+
+        def _update_theme_swatches(self):
+            for zone_id, swatch in self._theme_swatches.items():
+                color = self._theme_colors.get(zone_id, '#888888')
+                hex_color = color if color.startswith('#') else '#888888'
+                swatch.setStyleSheet(
+                    f'QPushButton {{ background-color: {hex_color}; border: 2px solid rgba(128,128,128,0.3); '
+                    f'border-radius: 8px; }} QPushButton:hover {{ border-color: rgba(255,255,255,0.6); }}'
+                )
+
+        def _pick_theme_color(self, zone_id: str):
+            if QColorDialog is None:
+                return
+            from PySide6.QtGui import QColor
+            current = self._theme_colors.get(zone_id, '#888888')
+            if not current.startswith('#'):
+                current = '#888888'
+            color = QColorDialog.getColor(QColor(current), self, f'选择颜色')
+            if color.isValid():
+                self._theme_colors[zone_id] = color.name()
+                self._update_theme_swatches()
+                self._apply_theme_preview()
+
+        def _apply_theme_preview(self):
+            base = get_theme_stylesheet(self.current_theme)
+            qss = generate_qss(base, self._theme_colors, self.current_theme)
+            self.setStyleSheet(qss + build_global_scrollbar_style())
+
+        def _restore_theme_defaults(self):
+            self._theme_colors = get_default_colors(self.current_theme)
+            self._update_theme_swatches()
+            self._apply_theme_preview()
+
+        def _save_theme_colors(self):
+            save_custom_colors(self.settings, self.current_theme, self._theme_colors)
+
         # ---- logic ----
 
         def _load_current_settings(self):
@@ -526,6 +636,7 @@ def build_settings_dialog_class(deps: dict):
                 save_setting(self.settings, 'plugins/disabled', ','.join(sorted(disabled_plugins)))
             order_ids = self._get_current_order_ids()
             save_setting(self.settings, 'sidebar/order', ','.join(order_ids))
+            self._save_theme_colors()
             self.accept()
 
         # ---- window drag ----

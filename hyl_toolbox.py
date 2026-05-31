@@ -76,6 +76,7 @@ try:
         QSizePolicy,
         QStyledItemDelegate,
         QDialog,
+        QColorDialog,
     )
 except ModuleNotFoundError:
     QSettings = None
@@ -91,7 +92,7 @@ except ModuleNotFoundError:
     QIcon = QPixmap = QPainter = QPen = QColor = None
     QFileInfo = None
     QObject = QThread = Signal = None
-    QCheckBox = QFileDialog = QFileIconProvider = QFrame = QGraphicsOpacityEffect = QHBoxLayout = QLabel = QLineEdit = QListWidget = QListView = None
+    QCheckBox = QFileDialog = QFileIconProvider = QFrame = QGraphicsOpacityEffect = QHBoxLayout = QLabel = QLineEdit = QListWidget = QListView = QColorDialog = None
     QMainWindow = QMessageBox = QPushButton = QPlainTextEdit = QProgressBar = QStackedWidget = QDialog = None
     QVBoxLayout = QWidget = QComboBox = QSizePolicy = QStyledItemDelegate = QScrollArea = QSpacerItem = QSpinBox = None
     QMediaPlayer = QAudioOutput = QUrl = None
@@ -624,6 +625,7 @@ if QWidget is not None:
         'build_global_scrollbar_style': build_global_scrollbar_style,
         'TOOL_DEFINITIONS': TOOL_DEFINITIONS,
         'QTimer': QTimer,
+        'QColorDialog': QColorDialog,
     })
 
     _external_tab_classes = build_external_tab_classes(

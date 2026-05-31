@@ -37,6 +37,15 @@ def build_toolbox_window_class(deps: dict):
     WEIXIN_IMAGE_PATH = deps['WEIXIN_IMAGE_PATH']
     plugin_manager = deps.get('plugin_manager')
     MusicTab = deps['MusicTab']
+
+    import os as _os, importlib.util as _ilu
+    _cs_path = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), 'modules', 'theme-customizer', 'color_scheme.py')
+    _cs_spec = _ilu.spec_from_file_location('color_scheme', _cs_path)
+    _cs_mod = _ilu.module_from_spec(_cs_spec)
+    _cs_spec.loader.exec_module(_cs_mod)
+    generate_qss = _cs_mod.generate_qss
+    load_custom_colors = _cs_mod.load_custom_colors
+    get_default_colors = _cs_mod.get_default_colors
     ZipAndPngTab = deps['ZipAndPngTab']
     Mp4ToMp3Tab = deps['Mp4ToMp3Tab']
     ImageConvertTab = deps['ImageConvertTab']
@@ -75,6 +84,7 @@ def build_toolbox_window_class(deps: dict):
             self.setWindowTitle('格式转换工具')
             self.resize(1180, 820)
             self.setStyleSheet(get_theme_stylesheet(self.current_theme))
+            self._apply_custom_theme_colors()
             if LOGO_PATH.exists() and QIcon is not None:
                 self.setWindowIcon(QIcon(str(LOGO_PATH)))
             root = QWidget()
@@ -458,6 +468,7 @@ def build_toolbox_window_class(deps: dict):
             dialog = SettingsDialog(self.settings, self._plugin_manager, self)
             if dialog.exec() == SettingsDialog.Accepted:
                 self._apply_sidebar_order(self.settings)
+                self.refresh_theme_style()
 
         def _apply_sidebar_order(self, settings):
             saved_order = load_setting(settings, 'sidebar/order', '')
@@ -591,6 +602,7 @@ def build_toolbox_window_class(deps: dict):
                 if hasattr(page, 'apply_theme'):
                     page.apply_theme(self.current_theme)
             self.setStyleSheet(get_theme_stylesheet(self.current_theme))
+            self._apply_custom_theme_colors()
             self.content_surface.setGraphicsEffect(None)
             self.update_window_controls()
             self.update_user_menu_ui()
@@ -605,6 +617,23 @@ def build_toolbox_window_class(deps: dict):
                 self.user_menu.hide()
             if hasattr(self, 'help_popup') and self.help_popup.isVisible():
                 self.hide_help_popup()
+
+        def _apply_custom_theme_colors(self):
+            """Apply custom theme color overrides if any."""
+            custom = load_custom_colors(self.settings, self.current_theme)
+            def_colors = get_default_colors(self.current_theme)
+            overrides = {
+                z: v for z, v in custom.items()
+                if v and v != def_colors.get(z, '')
+            }
+            if overrides:
+                base = get_theme_stylesheet(self.current_theme)
+                qss = generate_qss(base, overrides, self.current_theme)
+                self.setStyleSheet(qss + build_global_scrollbar_style())
+
+        def refresh_theme_style(self):
+            """Re-apply theme with custom colors (called after settings dialog closes)."""
+            self._apply_custom_theme_colors()
 
         def _update_theme_button_tooltip(self):
             self.theme_button.setToolTip('切换为亮色主题' if self.current_theme == 'dark' else '切换为暗色主题')
