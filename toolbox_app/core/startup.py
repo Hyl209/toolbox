@@ -53,7 +53,7 @@ class StartupManager:
                 missing.append(f'{package} ({desc})')
                 logger.warning(f'缺失依赖: {package}')
         if missing:
-            logger.warning(f'缺失 {len(missing)} 个依赖')
+            logger.warning('缺失 %s 个依赖', len(missing))
         else:
             logger.info('所有依赖检查通过')
         return missing

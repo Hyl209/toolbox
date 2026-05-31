@@ -183,6 +183,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             self.cancel_button = None
             self.reconnect_button = None
             self.web_scan_results: dict[str, dict[str, object]] = {}
+            self._summary_debounce_timer = None
             self.phone_code_hash = load_setting(self.settings, self._shared_setting_key('phone_code_hash'))
             self.current_theme = load_setting(self.settings, 'ui/theme', 'dark')
             self._last_cover_dir = load_setting(self.settings, self._mode_setting_key('cover_dir'), '')
@@ -572,7 +573,13 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
         def handle_task_text_changed(self):
             if self.source_mode == 'web':
                 self.web_scan_results = {}
-            self.refresh_summary()
+            if self._summary_debounce_timer is None:
+                from PySide6.QtCore import QTimer
+                self._summary_debounce_timer = QTimer(self)
+                self._summary_debounce_timer.setSingleShot(True)
+                self._summary_debounce_timer.setInterval(250)
+                self._summary_debounce_timer.timeout.connect(self.refresh_summary)
+            self._summary_debounce_timer.start()
 
         def refresh_summary(self):
             urls = self.module.parse_task_lines(self.task_edit.toPlainText())

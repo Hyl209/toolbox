@@ -296,7 +296,7 @@ def build_toolbox_window_class(deps: dict):
             self.user_menu.resize(240, 248)
 
         def _build_help_popup(self):
-            state = build_help_popup_state(WEIXIN_IMAGE_PATH)
+            self._help_popup_state = None  # Lazy-load state on first show
             self.help_overlay = QFrame(self)
             self.help_overlay.setGeometry(self.rect())
             self.help_overlay.setStyleSheet('background-color: rgba(0, 0, 0, 110); border-radius: 24px;')
@@ -310,8 +310,24 @@ def build_toolbox_window_class(deps: dict):
             layout = QVBoxLayout(self.help_popup)
             layout.setContentsMargins(16, 16, 16, 16)
             layout.setSpacing(10)
-            self.help_image_label = QLabel()
+            self.help_image_label = QLabel('加载中...')
             self.help_image_label.setAlignment(Qt.AlignCenter)
+            self.help_image_label.setProperty('cardSub', True)
+            self.help_image_label.setMinimumSize(420, 96)
+            layout.addWidget(self.help_image_label)
+            self.help_caption_label = QLabel('感谢打赏')
+            self.help_caption_label.setAlignment(Qt.AlignCenter)
+            self.help_caption_label.setProperty('cardSub', True)
+            self.help_caption_label.setStyleSheet('font-size: 18px; font-weight: 700;')
+            layout.addWidget(self.help_caption_label)
+            self.help_popup.adjustSize()
+
+        def _ensure_help_popup_loaded(self):
+            """Lazy-load help popup image on first show."""
+            if self._help_popup_state is not None:
+                return
+            state = build_help_popup_state(WEIXIN_IMAGE_PATH)
+            self._help_popup_state = state
             if state['has_image']:
                 pixmap = QPixmap()
                 pixmap.loadFromData(state['image_bytes'])
@@ -325,17 +341,8 @@ def build_toolbox_window_class(deps: dict):
                 self.help_image_label.setMinimumSize(scaled_pixmap.size())
             else:
                 self.help_image_label.setText('未找到赞赏二维码图片')
-                self.help_image_label.setProperty('cardSub', True)
                 self.help_image_label.setMinimumSize(state['max_width'], 96)
-            layout.addWidget(self.help_image_label)
-            self.help_caption_label = QLabel(state['caption'])
-            self.help_caption_label.setAlignment(Qt.AlignCenter)
-            self.help_caption_label.setProperty('cardSub', True)
-            self.help_caption_label.setStyleSheet(
-                f'font-size: {state["caption_font_size"]}px; font-weight: {state["caption_font_weight"]};'
-            )
-            layout.addWidget(self.help_caption_label)
-            self.help_popup.adjustSize()
+            self.help_caption_label.setText(state['caption'])
 
         def update_user_menu_ui(self):
             state = build_user_menu_state(self.authenticated_username)
@@ -374,6 +381,7 @@ def build_toolbox_window_class(deps: dict):
             self.user_menu.raise_()
 
         def show_help_popup(self):
+            self._ensure_help_popup_loaded()
             self.help_overlay.setGeometry(self.rect())
             self.help_overlay.setVisible(True)
             self.help_overlay.raise_()

@@ -76,7 +76,7 @@ class FileService:
 
                 logger.debug(f"文件整理: {file_path} -> {target_file}")
 
-            logger.info(f"文件整理完成: {len(organized_files)} 个分类")
+            logger.info("文件整理完成: %s 个分类", len(organized_files))
             return organized_files
 
         except Exception as e:
@@ -141,7 +141,7 @@ class FileService:
                     if len(duplicate_files) > 1:
                         duplicates[file_hash] = duplicate_files
 
-            logger.info(f"查找重复文件完成: {len(duplicates)} 组")
+            logger.info("查找重复文件完成: %s 组", len(duplicates))
             return duplicates
 
         except Exception as e:
@@ -186,7 +186,7 @@ class FileService:
 
                     logger.debug(f"重命名: {file_path} -> {new_path}")
 
-            logger.info(f"批量重命名完成: {len(renamed_files)} 个文件")
+            logger.info("批量重命名完成: %s 个文件", len(renamed_files))
             return renamed_files
 
         except Exception as e:

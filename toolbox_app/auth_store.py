@@ -12,9 +12,25 @@ from toolbox_app.password_policy import (
     validate_password_policy,
 )
 
+# Cache for loaded users to avoid repeated file reads
+_users_cache: dict[str, tuple[float, list[dict[str, str]]]] = {}
+_CACHE_TTL = 5.0  # seconds
+
 
 def load_users(store_path: str | Path) -> list[dict[str, str]]:
     path = Path(store_path)
+    cache_key = str(path)
+
+    # Check cache first
+    if cache_key in _users_cache:
+        mtime, cached_users = _users_cache[cache_key]
+        try:
+            current_mtime = path.stat().st_mtime
+            if current_mtime == mtime:
+                return cached_users
+        except OSError:
+            pass
+
     if not path.exists():
         return []
     try:
@@ -31,6 +47,13 @@ def load_users(store_path: str | Path) -> list[dict[str, str]]:
         password_hash = str(item.get('password_hash', '')).strip()
         if username and password_hash:
             users.append({'username': username, 'password_hash': password_hash})
+
+    # Update cache
+    try:
+        _users_cache[cache_key] = (path.stat().st_mtime, users)
+    except OSError:
+        pass
+
     return users
 
 
@@ -54,6 +77,9 @@ def save_users(store_path: str | Path, users: list[dict[str, str]]) -> None:
         except OSError:
             pass
         raise
+
+    # Invalidate cache
+    _users_cache.pop(str(path), None)
 
 
 def hash_password(password: str) -> str:

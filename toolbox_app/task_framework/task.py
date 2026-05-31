@@ -86,7 +86,7 @@ class Task(ABC):
         self._start_time = time.time()
         self._is_cancelled = False
         self._is_paused = False
-        logger.info(f"任务开始: {self.name} ({self.task_id})")
+        logger.info("任务开始: %s (%s)", self.name, self.task_id)
 
     def complete(self, result: Any = None):
         """完成任务"""
@@ -96,7 +96,7 @@ class Task(ABC):
         self.progress = 100
         self._end_time = time.time()
         self._finish_event.set()
-        logger.info(f"任务完成: {self.name} ({self.task_id})")
+        logger.info("任务完成: %s (%s)", self.name, self.task_id)
 
     def fail(self, error: Exception):
         """任务失败"""
@@ -105,7 +105,7 @@ class Task(ABC):
         self.error = error
         self._end_time = time.time()
         self._finish_event.set()
-        logger.error(f"任务失败: {self.name} ({self.task_id}) - {error}")
+        logger.error("任务失败: %s (%s) - %s", self.name, self.task_id, error)
 
     def cancel(self):
         """取消任务"""
@@ -114,21 +114,21 @@ class Task(ABC):
         self._is_cancelled = True
         self._end_time = time.time()
         self._finish_event.set()
-        logger.info(f"任务取消: {self.name} ({self.task_id})")
+        logger.info("任务取消: %s (%s)", self.name, self.task_id)
 
     def pause(self):
         """暂停任务"""
         if self.status == TaskStatus.RUNNING:
             self.status = TaskStatus.PAUSED
             self._is_paused = True
-            logger.info(f"任务暂停: {self.name} ({self.task_id})")
+            logger.info("任务暂停: %s (%s)", self.name, self.task_id)
 
     def resume(self):
         """恢复任务"""
         if self.status == TaskStatus.PAUSED:
             self.status = TaskStatus.RUNNING
             self._is_paused = False
-            logger.info(f"任务恢复: {self.name} ({self.task_id})")
+            logger.info("任务恢复: %s (%s)", self.name, self.task_id)
 
     def update_progress(self, progress: int):
         """更新进度"""

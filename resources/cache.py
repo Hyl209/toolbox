@@ -210,7 +210,7 @@ class CacheManager:
         if expired_keys:
             self._dirty = True
             self._save_index()
-            logger.info(f"清理 {len(expired_keys)} 个过期缓存")
+            logger.info("清理 %s 个过期缓存", len(expired_keys))
 
     def _cleanup_if_needed(self):
         """如果需要，清理缓存"""

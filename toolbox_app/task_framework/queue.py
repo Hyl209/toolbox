@@ -47,7 +47,7 @@ class TaskQueue:
 
             # 否则加入队列
             self._queue.append(task)
-            logger.info(f"任务加入队列: {task} (队列长度: {self.queue_size})")
+            logger.info("任务加入队列: %s (队列长度: %s)", task, self.queue_size)
             return None
 
     def _start_task(self, task: Task) -> TaskWorker:
@@ -64,7 +64,7 @@ class TaskQueue:
         self._signals.task_finished.connect(on_finished)
 
         worker.start()
-        logger.info(f"任务开始执行: {task} (活跃 workers: {self.active_workers})")
+        logger.info("任务开始执行: %s (活跃 workers: %s)", task, self.active_workers)
         return worker
 
     def _remove_worker(self, task_id: str):

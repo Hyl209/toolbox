@@ -58,7 +58,7 @@ class TaskManager:
         with self._lock:
             if self._running_count >= self.max_concurrent:
                 self._task_queue.append((task_id, func, args, kwargs))
-                logger.info(f"任务 {task_id} 已加入队列，当前队列长度: {len(self._task_queue)}")
+                logger.info("任务 %s 已加入队列，当前队列长度: %s", task_id, len(self._task_queue))
                 return worker
             self._running_count += 1
 
