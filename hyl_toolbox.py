@@ -876,6 +876,19 @@ if QWidget is not None:
         'get_same_module': get_same_module,
         'ROOT': ROOT,
     })
+    builtin_tab_factories = {
+        'music': MusicTab,
+        'zipandpng': ZipAndPngTab,
+        'mp4mp3': Mp4ToMp3Tab,
+        'imageconvert': ImageConvertTab,
+        'pdftools': PdfToolsTab,
+        'tgdownloader': VideoDownloaderTab,
+        'webvideodownloader': VideoDownloaderTab,
+        'batchrename': BatchRenameTab,
+        'filesorter': FileSorterTab,
+        'same': SameTab,
+        'base64': Base64Tab,
+    }
 
     def _get_or_create_plugin_manager():
         PLUGINS_DIR.mkdir(parents=True, exist_ok=True)
@@ -916,16 +929,7 @@ if QWidget is not None:
         'animate_stack_switch': animate_stack_switch,
         'LOGO_PATH': LOGO_PATH,
         'WEIXIN_IMAGE_PATH': _get_weixin_image_path(),
-        'MusicTab': MusicTab,
-        'ZipAndPngTab': ZipAndPngTab,
-        'Mp4ToMp3Tab': Mp4ToMp3Tab,
-        'ImageConvertTab': ImageConvertTab,
-        'PdfToolsTab': PdfToolsTab,
-        'VideoDownloaderTab': VideoDownloaderTab,
-        'BatchRenameTab': BatchRenameTab,
-        'FileSorterTab': FileSorterTab,
-        'SameTab': SameTab,
-        'Base64Tab': Base64Tab,
+        'builtin_tab_factories': builtin_tab_factories,
         'plugin_manager': _get_or_create_plugin_manager(),
     })
 

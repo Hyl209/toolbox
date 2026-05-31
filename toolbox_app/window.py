@@ -39,7 +39,7 @@ def build_toolbox_window_class(deps: dict):
     LOGO_PATH = deps['LOGO_PATH']
     WEIXIN_IMAGE_PATH = deps['WEIXIN_IMAGE_PATH']
     plugin_manager = deps.get('plugin_manager')
-    MusicTab = deps['MusicTab']
+    builtin_tab_factories = deps['builtin_tab_factories']
 
     import os as _os, importlib.util as _ilu
     _cs_path = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), 'modules', 'theme-customizer', 'color_scheme.py')
@@ -49,40 +49,16 @@ def build_toolbox_window_class(deps: dict):
     generate_qss = _cs_mod.generate_qss
     load_custom_colors = _cs_mod.load_custom_colors
     get_default_colors = _cs_mod.get_default_colors
-    ZipAndPngTab = deps['ZipAndPngTab']
-    Mp4ToMp3Tab = deps['Mp4ToMp3Tab']
-    ImageConvertTab = deps['ImageConvertTab']
-    PdfToolsTab = deps['PdfToolsTab']
-    VideoDownloaderTab = deps['VideoDownloaderTab']
-    BatchRenameTab = deps['BatchRenameTab']
-    FileSorterTab = deps['FileSorterTab']
-    SameTab = deps['SameTab']
-    Base64Tab = deps['Base64Tab']
-
-    # Tool id → tab class/instance mapping (order matches TOOL_DEFINITIONS)
-    _TAB_CLASSES_BY_TOOL_ID = {
-        'music': MusicTab,
-        'zipandpng': ZipAndPngTab,
-        'mp4mp3': Mp4ToMp3Tab,
-        'imageconvert': ImageConvertTab,
-        'pdftools': PdfToolsTab,
-        'tgdownloader': VideoDownloaderTab,
-        'webvideodownloader': VideoDownloaderTab,
-        'batchrename': BatchRenameTab,
-        'filesorter': FileSorterTab,
-        'same': SameTab,
-        'base64': Base64Tab,
-    }
-
+    # Tool id -> lazy tab factory mapping (order matches TOOL_DEFINITIONS)
     def _build_registered_tab(tool_id: str, settings):
-        tab_class = _TAB_CLASSES_BY_TOOL_ID[tool_id]
+        tab_factory = builtin_tab_factories[tool_id]
         tab_kwargs = TOOL_BY_ID[tool_id].tab_kwargs
-        return tab_class(settings, **tab_kwargs)
+        return tab_factory(settings, **tab_kwargs)
 
     _TAB_BUILDERS = {
         tool_def.id: lambda settings, tool_id=tool_def.id: _build_registered_tab(tool_id, settings)
         for tool_def in TOOL_DEFINITIONS
-        if tool_def.id in _TAB_CLASSES_BY_TOOL_ID
+        if tool_def.id in builtin_tab_factories
     }
 
     class ToolboxWindow(QMainWindow):
