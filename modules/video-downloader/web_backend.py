@@ -6,6 +6,7 @@ import json
 import importlib.util
 import os
 import re
+import functools
 import shutil
 import subprocess
 import threading as _threading
@@ -59,6 +60,11 @@ COOKIE_FILE_NAMES = (
     'video-downloader-cookies.txt',
 )
 DOUYIN_HOSTS = {'douyin.com', 'www.douyin.com', 'iesdouyin.com', 'www.iesdouyin.com', 'v.douyin.com'}
+
+
+@functools.lru_cache(maxsize=1)
+def _ffmpeg_path() -> str:
+    return shutil.which('ffmpeg') or ''
 _console_capture_lock = Lock()
 _INTER_TASK_DELAY_RANGE = (0.5, 1.5)
 
@@ -905,7 +911,7 @@ def _download_web_task(task: DownloadTask, output_root: Path, options: DownloadO
             output_root,
             options,
             progress_cb,
-            ffmpeg_path=shutil.which('ffmpeg') or '',
+            ffmpeg_path=_ffmpeg_path(),
             download_all=options.web_download_all_candidates,
         )
         if downloaded_files:
@@ -918,7 +924,7 @@ def _download_web_task(task: DownloadTask, output_root: Path, options: DownloadO
         ytdlp_candidates = []
     if len(ytdlp_candidates) > 1:
             try:
-                ffmpeg_path = shutil.which('ffmpeg') or ''
+                ffmpeg_path = _ffmpeg_path()
                 if options.web_download_all_candidates:
                     downloaded_files, last_error = _download_web_candidates(
                         ytdlp_candidates,
@@ -980,7 +986,7 @@ def _download_web_task(task: DownloadTask, output_root: Path, options: DownloadO
         raise DownloadError(f'{first_error}; 网页兜底解析失败: {exc}') from exc
     if not candidates:
         raise DownloadError(f'{first_error}; 网页中未找到可下载媒体地址')
-    ffmpeg_path = shutil.which('ffmpeg') or ''
+    ffmpeg_path = _ffmpeg_path()
     if options.web_download_all_candidates:
         downloaded_files, last_error = _download_web_candidates(
             candidates,
@@ -1131,7 +1137,7 @@ def _download_url_with_ytdlp(
         'buffersize': 1024 * 1024,
         'http_no_compression': False,
     }
-    ffmpeg = shutil.which('ffmpeg')
+    ffmpeg = _ffmpeg_path() or None
     if ffmpeg:
         ydl_opts['ffmpeg_location'] = ffmpeg
         ydl_opts['writethumbnail'] = True
@@ -1521,7 +1527,7 @@ def _download_m3u8_with_ffmpeg(
     ffmpeg_path: str = '',
     referer_url: str = '',
 ) -> dict[str, object]:
-    ffmpeg = ffmpeg_path or shutil.which('ffmpeg')
+    ffmpeg = ffmpeg_path or _ffmpeg_path()
     if not ffmpeg:
         raise DownloadError('未检测到 ffmpeg，无法直接下载 m3u8')
     base_stem = _s.ensure_unique_stem(output_root, _s.sanitize_filename_component(task.target_title or 'video'))
@@ -1668,7 +1674,7 @@ def embed_thumbnail(
     if not direct_frame and not source_url.strip():
         return {'success': False, 'error': '请提供视频源链接'}
 
-    ffmpeg = shutil.which('ffmpeg')
+    ffmpeg = _ffmpeg_path()
     if not ffmpeg:
         return {'success': False, 'error': '未检测到 ffmpeg'}
 

@@ -4,6 +4,8 @@ from typing import Optional
 
 CONFIG_FILE = Path(__file__).with_name('mp4mp3_config.json')
 
+_config_cache: tuple[float, dict] | None = None
+
 
 def _normalize_dir(path: str | Path) -> Path:
     p = Path(path).expanduser()
@@ -11,12 +13,19 @@ def _normalize_dir(path: str | Path) -> Path:
 
 
 def load_config() -> dict:
-    if not CONFIG_FILE.exists():
-        return {"default_output_dir": ""}
+    global _config_cache
     try:
-        return json.loads(CONFIG_FILE.read_text(encoding='utf-8'))
+        mtime = CONFIG_FILE.stat().st_mtime
+    except OSError:
+        return {"default_output_dir": ""}
+    if _config_cache is not None and _config_cache[0] == mtime:
+        return _config_cache[1]
+    try:
+        config = json.loads(CONFIG_FILE.read_text(encoding='utf-8'))
     except Exception:
         return {"default_output_dir": ""}
+    _config_cache = (mtime, config)
+    return config
 
 
 def save_config(config: dict) -> None:

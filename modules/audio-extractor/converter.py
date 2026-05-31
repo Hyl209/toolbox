@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import shutil
 import subprocess
 from pathlib import Path
@@ -16,8 +17,13 @@ def _get_default_output_dir():
     return get_default_output_dir()
 
 
+@functools.lru_cache(maxsize=1)
+def _cached_ffmpeg_path() -> str:
+    return shutil.which('ffmpeg') or ''
+
+
 def ensure_ffmpeg() -> str:
-    ffmpeg = shutil.which('ffmpeg')
+    ffmpeg = _cached_ffmpeg_path()
     if not ffmpeg:
         raise ConvertError('未检测到 ffmpeg，请先安装并加入 PATH。')
     return ffmpeg
