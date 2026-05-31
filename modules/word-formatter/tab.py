@@ -250,7 +250,7 @@ def build_word_formatter_tab_class(deps: dict[str, object]):
             config = get_word_formatter_module().get_default_config()
             for key, edit in self.page_edits.items():
                 config['page'][key] = edit.text().strip()
-            config['styles'] = self.config['styles']
+            config['styles'] = dict(self.config['styles'])
             key = STYLE_LABELS.get(self.style_combo.currentText(), 'heading1')
             self.config['styles'][key] = self._read_current_style()
             return config

@@ -687,6 +687,9 @@ def test_run_download_ignores_stale_web_candidate_text_when_all_candidates_check
             def handle_download_cancelled(self, *args):
                 pass
 
+            def cleanup_worker(self):
+                pass
+
             def _resolve_candidate_mode(self):
                 return 'pick'
 
@@ -835,7 +838,7 @@ def test_download_url_with_ytdlp_uses_aria2_and_stability_options():
                 None,
                 referer_url='https://example.com/post/1',
             )
-        download_opts = captured_opts[-1]
+        download_opts = next(o for o in captured_opts if 'external_downloader' in o)
         assert result['success'] is True
         assert download_opts['external_downloader'] == 'C:/tools/aria2c.exe'
         assert download_opts['continuedl'] is True

@@ -904,8 +904,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             self.thumbnail_worker = None
 
         def run_download(self):
-            if hasattr(self, 'cleanup_worker'):
-                self.cleanup_worker()
+            self.cleanup_worker()
             self.save_form_settings()
             module = self.module
             web_all_candidates = self._is_checked(self.web_all_candidates_checkbox)
