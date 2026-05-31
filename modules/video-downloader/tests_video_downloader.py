@@ -1119,6 +1119,37 @@ def test_embed_thumbnail_frame_mode_skips_web_lookup():
         wb.shutil.which = original_which
 
 
+def test_embed_thumbnail_frame_mode_returns_error_on_ffmpeg_failure():
+    wb = load_web_backend()
+    import subprocess as _sp
+
+    def fake_run(args, capture_output=True, check=True, **kwargs):
+        raise _sp.CalledProcessError(1, args, stderr=b'invalid codec')
+
+    original_require = wb._require_web_backend
+    original_run = wb.subprocess.run
+    original_which = wb.shutil.which
+    try:
+        wb._require_web_backend = lambda: (_ for _ in ()).throw(AssertionError('should not be called'))
+        wb.subprocess.run = fake_run
+        wb.shutil.which = lambda name: 'C:/tools/ffmpeg.exe' if name == 'ffmpeg' else ''
+        with tempfile.TemporaryDirectory() as tmp:
+            video_path = pathlib.Path(tmp) / 'demo.mp4'
+            video_path.write_text('video', encoding='utf-8')
+            result = wb.embed_thumbnail(
+                video_path,
+                '',
+                thumbnail_mode='frame',
+            )
+            assert result['success'] is False
+            assert '视频帧提取失败' in result['error']
+            assert 'invalid codec' in result['error']
+    finally:
+        wb._require_web_backend = original_require
+        wb.subprocess.run = original_run
+        wb.shutil.which = original_which
+
+
 def test_cover_button_defaults_to_frame_mode_without_source_url():
     tab_module = load_tab_module()
     calls: list[dict[str, object]] = []

@@ -103,8 +103,7 @@ class MyPlugin(PluginBase):
         layout.addWidget(label)
         return widget
 
-    def cleanup(self):
-        super().cleanup()
+    # cleanup() 现在是可选的，不覆盖则使用默认实现
 ```
 
 ### 3. 放入 `plugins/` 目录，重启应用即可
@@ -150,7 +149,7 @@ class MyHookPlugin(PluginBase):
         return None
 
     def cleanup(self):
-        super().cleanup()
+        super().cleanup()  # 可选覆盖，建议调用 super()
 ```
 
 ---
@@ -163,7 +162,7 @@ class MyHookPlugin(PluginBase):
 |------|------|------|
 | `get_plugin_info()` | `-> PluginInfo` | 返回插件元数据 |
 | `initialize()` | `(deps: dict = None) -> bool` | 初始化插件，返回 `True` 表示成功 |
-| `cleanup()` | `-> None` | 清理资源，**必须调用 `super().cleanup()`** |
+| `cleanup()` | `-> None` | 清理资源（可选覆盖，建议调用 `super().cleanup()`） |
 
 ### GUI 插件方法
 
@@ -317,7 +316,7 @@ def initialize(self, deps: dict = None) -> bool:
 
 ## 注意事项与限制
 
-1. **`cleanup()` 必须调用 `super().cleanup()`**，否则插件状态标记不会更新
+1. **`cleanup()` 可选覆盖**，若覆盖需调用 `super().cleanup()` 以确保状态标记更新
 2. **路径安全**：插件文件必须位于 `plugins/` 目录内，框架会校验路径防止目录穿越
 3. **模块隔离**：插件模块以 `plugin_{name}` 注册到 `sys.modules`，卸载时自动清理
 4. **插件名唯一**：同名插件会注册失败，日志会报错

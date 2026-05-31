@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from toolbox_app.password_policy import DEFAULT_ADMIN_USERNAME, DEFAULT_ADMIN_PASSWORD
 
 
 def build_auth_dialog_class(deps: dict):
@@ -276,6 +277,13 @@ def build_auth_dialog_class(deps: dict):
                     return
                 if not verify_user_credentials(self.store_path, username, password):
                     self.status_label.setText('账号或密码错误')
+                    return
+                # 首次使用默认密码登录时，强制要求修改密码
+                if username.casefold() == DEFAULT_ADMIN_USERNAME and password == DEFAULT_ADMIN_PASSWORD:
+                    self.password_edit.setText(password)
+                    self.refresh_mode('change_password')
+                    self.status_label.setText('检测到默认密码，请先修改密码后再使用。')
+                    self._set_status_error_style()
                     return
                 normalized = normalize_auth_preferences(self.remember_checkbox.isChecked(), self.auto_login_checkbox.isChecked())
                 saved_secret = encode_saved_password(username, password) if normalized['remember_password'] else ''

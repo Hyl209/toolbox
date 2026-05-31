@@ -102,8 +102,8 @@ class PathManager:
                     if file_age > max_age_seconds:
                         item.unlink()
                         logger.debug(f"清理临时文件: {item}")
-                except (PermissionError, FileNotFoundError, OSError):
-                    pass
+                except OSError as e:
+                    logger.debug(f"跳过临时文件清理: {item} ({e})")
 
     def ensure_dir(self, path: Path) -> Path:
         """确保目录存在"""

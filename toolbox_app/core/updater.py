@@ -220,7 +220,7 @@ class UpdateInstaller:
         with zipfile.ZipFile(update_path, 'r') as zip_ref:
             for member in zip_ref.infolist():
                 member_path = (dest / member.filename).resolve()
-                if not str(member_path).startswith(str(dest) + '\\') and not str(member_path).startswith(str(dest) + '/'):
+                if not member_path.is_relative_to(dest):
                     raise RuntimeError(f"Zip Slip detected: {member.filename}")
             zip_ref.extractall(dest)
 

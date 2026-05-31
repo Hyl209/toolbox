@@ -152,7 +152,7 @@ def test_ensure_default_admin_user_creates_admin_account_once():
         store = pathlib.Path(tmp) / 'users.json'
         created = toolbox.ensure_default_admin_user(store)
         assert created is True
-        assert toolbox.verify_user_credentials(store, 'admin', '123')
+        assert toolbox.verify_user_credentials(store, 'admin', 'Hyl@Init1')
         created_again = toolbox.ensure_default_admin_user(store)
         assert created_again is False
         users = toolbox.load_users(store)
@@ -202,7 +202,7 @@ def test_validate_auth_form_requires_username_and_password_lengths():
     login_errors = toolbox.validate_auth_form('', '')
     assert '请输入用户名' in login_errors
     assert '请输入密码' in login_errors
-    assert toolbox.validate_auth_form('admin', '123') == []
+    assert toolbox.validate_auth_form('admin', 'Hyl@Init1') == []
     register_errors = toolbox.validate_auth_form('ab', '123', confirm_password='12', is_register=True)
     assert any('用户名' in item for item in register_errors)
     assert any('严格等于 12 位' in item or '密码长度' in item for item in register_errors)
@@ -293,9 +293,9 @@ def test_should_auto_login_works_with_legacy_last_username_preference_key():
         toolbox.save_setting(settings, 'auth/last_username', 'admin')
         toolbox.save_setting(settings, 'auth/remember_password', '1')
         toolbox.save_setting(settings, 'auth/auto_login', '1')
-        toolbox.save_setting(settings, 'auth/saved_secret', toolbox.encode_saved_password('admin', '123'))
+        toolbox.save_setting(settings, 'auth/saved_secret', toolbox.encode_saved_password('admin', 'Hyl@Init1'))
         prefs = toolbox.load_auth_preferences(settings)
-        assert toolbox.should_auto_login(toolbox.load_users(store), prefs) == {'username': 'admin', 'password': '123'}
+        assert toolbox.should_auto_login(toolbox.load_users(store), prefs) == {'username': 'admin', 'password': 'Hyl@Init1'}
 
 
 def test_frozen_app_prefers_source_dir_when_user_store_exists_next_to_script():
@@ -353,13 +353,13 @@ def test_should_auto_login_only_when_saved_credentials_are_valid():
         'last_username': 'admin',
         'remember_password': True,
         'auto_login': True,
-        'saved_secret': toolbox.encode_saved_password('admin', '123'),
+        'saved_secret': toolbox.encode_saved_password('admin', 'Hyl@Init1'),
     }
     with tempfile.TemporaryDirectory() as tmp:
         store = pathlib.Path(tmp) / 'users.json'
         toolbox.ensure_default_admin_user(store)
         decision = toolbox.should_auto_login(toolbox.load_users(store), prefs)
-        assert decision == {'username': 'admin', 'password': '123'}
+        assert decision == {'username': 'admin', 'password': 'Hyl@Init1'}
         bad = dict(prefs)
         bad['saved_secret'] = toolbox.encode_saved_password('admin', 'wrong')
         assert toolbox.should_auto_login(toolbox.load_users(store), bad) is None
@@ -465,8 +465,8 @@ def test_auth_dialog_auto_login_accepts_without_manual_submit_when_shown():
     with tempfile.TemporaryDirectory() as tmp:
         settings = toolbox.make_settings(tmp)
         store = pathlib.Path(tmp) / 'users.json'
-        toolbox.ensure_default_admin_user(store)
-        toolbox.save_auth_preferences(settings, 'admin', True, True, toolbox.encode_saved_password('admin', '123'))
+        toolbox.register_user(store, 'admin', 'MyS3cure!Pw')
+        toolbox.save_auth_preferences(settings, 'admin', True, True, toolbox.encode_saved_password('admin', 'MyS3cure!Pw'))
         app = toolbox.QApplication.instance() or toolbox.QApplication([])
         dialog = toolbox.AuthDialog(settings, store)
         assert dialog.result() == toolbox.QDialog.Accepted
@@ -637,7 +637,10 @@ def test_toolbox_window_help_popup_toggles_and_hides_on_main_area_click_when_pys
         app.processEvents()
         assert window.help_popup.isVisible() is True
         assert window.help_overlay.isVisible() is True
-        click_pos = window.mapToGlobal(window.rect().center())
+        # 点击窗口内但弹窗外的区域（左侧侧边栏区域）
+        outside_popup = window.rect().center()
+        outside_popup.setX(10)
+        click_pos = window.mapToGlobal(outside_popup)
         window.handle_global_mouse_press(click_pos)
         app.processEvents()
         assert window.help_popup.isVisible() is False
@@ -655,7 +658,7 @@ def test_logout_window_result_requests_return_to_login_screen_when_pyside_availa
         window, app = toolbox.build_main_window_for_test(tmp)
         assert window.relogin_requested is False
         settings = toolbox.make_settings(tmp)
-        toolbox.save_auth_preferences(settings, 'admin', True, True, toolbox.encode_saved_password('admin', '123'))
+        toolbox.save_auth_preferences(settings, 'admin', True, True, toolbox.encode_saved_password('admin', 'Hyl@Init1'))
         window.settings = settings
         window.logout()
         restored = toolbox.load_auth_preferences(settings)
