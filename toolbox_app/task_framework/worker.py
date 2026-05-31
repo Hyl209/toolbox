@@ -51,6 +51,10 @@ class TaskWorker(threading.Thread):
         finally:
             logger.info(f"Worker 结束: {self.task}")
             self.signals.task_finished.emit(self.task)
+            # 释放引用，防止长时间运行的应用中内存泄漏
+            self.task = None
+            self._exception = None
+            self.signals = None
 
     def cancel(self):
         """取消任务"""

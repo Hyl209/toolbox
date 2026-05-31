@@ -92,6 +92,13 @@ class TaskUIBridge:
         """提交任务到后台"""
         return self._manager.submit(func, *args, name=name, **kwargs)
 
+    def disconnect(self):
+        """断开所有信号连接，释放 UI 回调引用"""
+        self._manager.signals.disconnect_all()
+        self._progress_cb = None
+        self._done_cb = None
+        self._error_cb = None
+
     @property
     def manager(self) -> TaskManager:
         return self._manager

@@ -513,19 +513,25 @@ def get_base64_mode_value(label: str) -> str:
     return _load_base64_tab_module().get_base64_mode_value(label)
 
 
+_GLOBAL_SCROLLBAR_STYLE: str | None = None
+
+
 def build_global_scrollbar_style() -> str:
-    return (
-        'QScrollBar:vertical {background: transparent; width: 10px; margin: 6px 0 6px 0;} '
-        'QScrollBar::handle:vertical {background: rgba(125, 147, 181, 0.62); min-height: 36px; border-radius: 5px;} '
-        'QScrollBar::handle:vertical:hover {background: rgba(125, 147, 181, 0.82);} '
-        'QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {height: 0px; background: transparent; border: none;} '
-        'QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {background: transparent;} '
-        'QScrollBar:horizontal {background: transparent; height: 10px; margin: 0 6px 0 6px;} '
-        'QScrollBar::handle:horizontal {background: rgba(125, 147, 181, 0.62); min-width: 36px; border-radius: 5px;} '
-        'QScrollBar::handle:horizontal:hover {background: rgba(125, 147, 181, 0.82);} '
-        'QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {width: 0px; background: transparent; border: none;} '
-        'QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {background: transparent;}'
-    )
+    global _GLOBAL_SCROLLBAR_STYLE
+    if _GLOBAL_SCROLLBAR_STYLE is None:
+        _GLOBAL_SCROLLBAR_STYLE = (
+            'QScrollBar:vertical {background: transparent; width: 10px; margin: 6px 0 6px 0;} '
+            'QScrollBar::handle:vertical {background: rgba(125, 147, 181, 0.62); min-height: 36px; border-radius: 5px;} '
+            'QScrollBar::handle:vertical:hover {background: rgba(125, 147, 181, 0.82);} '
+            'QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {height: 0px; background: transparent; border: none;} '
+            'QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {background: transparent;} '
+            'QScrollBar:horizontal {background: transparent; height: 10px; margin: 0 6px 0 6px;} '
+            'QScrollBar::handle:horizontal {background: rgba(125, 147, 181, 0.62); min-width: 36px; border-radius: 5px;} '
+            'QScrollBar::handle:horizontal:hover {background: rgba(125, 147, 181, 0.82);} '
+            'QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {width: 0px; background: transparent; border: none;} '
+            'QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {background: transparent;}'
+        )
+    return _GLOBAL_SCROLLBAR_STYLE
 
 
 def build_music_scroll_area_style() -> str:

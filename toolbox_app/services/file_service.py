@@ -11,6 +11,19 @@ from ..core.file_utils import file_utils
 logger = get_logger(__name__)
 
 
+_EXTENSION_CATEGORIES: dict[str, str] = {}
+for _cat, _exts in {
+    '图片': {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.heic', '.tif', '.tiff', '.svg', '.ico'},
+    '视频': {'.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v'},
+    '音频': {'.mp3', '.wav', '.flac', '.aac', '.m4a', '.ogg', '.wma', '.ncm'},
+    '文档': {'.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.md', '.csv'},
+    '压缩包': {'.zip', '.rar', '.7z', '.tar', '.gz', '.bz2'},
+    '程序': {'.exe', '.msi', '.bat', '.cmd', '.ps1', '.py'},
+}.items():
+    for _ext in _exts:
+        _EXTENSION_CATEGORIES[_ext] = _cat
+
+
 class FileService:
     """文件服务"""
 
@@ -29,6 +42,7 @@ class FileService:
 
             file_utils.ensure_dir(target_dir)
             organized_files: dict[str, list[Path]] = {}
+            created_dirs: set[str] = set()
 
             for file_path in source_dir.rglob("*"):
                 if not file_path.is_file():
@@ -44,9 +58,11 @@ class FileService:
                 else:
                     category = "其他"
 
-                # 创建分类目录
+                # 创建分类目录（已创建则跳过）
                 category_dir = target_dir / category
-                file_utils.ensure_dir(category_dir)
+                if category not in created_dirs:
+                    file_utils.ensure_dir(category_dir)
+                    created_dirs.add(category)
 
                 # 移动文件
                 target_file = category_dir / file_path.name
@@ -69,20 +85,7 @@ class FileService:
 
     def _get_extension_category(self, extension: str) -> str:
         """根据扩展名获取分类"""
-        extension = extension.lower()
-        categories = {
-            '图片': {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.heic', '.tif', '.tiff', '.svg', '.ico'},
-            '视频': {'.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v'},
-            '音频': {'.mp3', '.wav', '.flac', '.aac', '.m4a', '.ogg', '.wma', '.ncm'},
-            '文档': {'.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.md', '.csv'},
-            '压缩包': {'.zip', '.rar', '.7z', '.tar', '.gz', '.bz2'},
-            '程序': {'.exe', '.msi', '.bat', '.cmd', '.ps1', '.py'}
-        }
-
-        for category, extensions in categories.items():
-            if extension in extensions:
-                return category
-        return "其他"
+        return _EXTENSION_CATEGORIES.get(extension.lower(), "其他")
 
     def _get_date_category(self, file_path: Path) -> str:
         """根据日期获取分类"""
@@ -150,7 +153,7 @@ class FileService:
         import hashlib
         hash_md5 = hashlib.md5()
         with open(file_path, "rb") as f:
-            for chunk in iter(lambda: f.read(4096), b""):
+            for chunk in iter(lambda: f.read(1024 * 1024), b""):
                 hash_md5.update(chunk)
         return hash_md5.hexdigest()
 

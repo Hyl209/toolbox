@@ -133,13 +133,9 @@ class TaskManager:
                 raise task.error
             return task.result
 
-        # 简单的等待实现
-        import time
-        start_time = time.time()
-        while not task.is_finished:
-            if timeout and (time.time() - start_time) > timeout:
-                raise TaskError(f"等待任务超时: {task_id}", task_id)
-            time.sleep(0.1)
+        # 使用 Event 高效等待，避免 busy-wait 轮询
+        if not task._finish_event.wait(timeout=timeout):
+            raise TaskError(f"等待任务超时: {task_id}", task_id)
 
         if task.is_failed:
             raise task.error

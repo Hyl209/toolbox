@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 import time
 import uuid
 from abc import ABC, abstractmethod
@@ -36,6 +37,7 @@ class Task(ABC):
         self._start_time: Optional[float] = None
         self._end_time: Optional[float] = None
         self._metadata: dict[str, Any] = {}
+        self._finish_event = threading.Event()
 
     @property
     def is_running(self) -> bool:
@@ -93,6 +95,7 @@ class Task(ABC):
         self.result = result
         self.progress = 100
         self._end_time = time.time()
+        self._finish_event.set()
         logger.info(f"任务完成: {self.name} ({self.task_id})")
 
     def fail(self, error: Exception):
@@ -101,6 +104,7 @@ class Task(ABC):
         self.status = TaskStatus.FAILED
         self.error = error
         self._end_time = time.time()
+        self._finish_event.set()
         logger.error(f"任务失败: {self.name} ({self.task_id}) - {error}")
 
     def cancel(self):
@@ -109,6 +113,7 @@ class Task(ABC):
         self.status = TaskStatus.CANCELLED
         self._is_cancelled = True
         self._end_time = time.time()
+        self._finish_event.set()
         logger.info(f"任务取消: {self.name} ({self.task_id})")
 
     def pause(self):
