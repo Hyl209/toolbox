@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import logging
 import time
 from pathlib import Path
 from typing import Any, Optional
@@ -129,7 +130,8 @@ class CacheManager:
             # 检查缓存大小
             self._cleanup_if_needed()
 
-            logger.debug(f"设置缓存: {key}")
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"设置缓存: {key}")
 
         except Exception as e:
             logger.error(f"设置缓存失败 {key}: {e}")
@@ -154,7 +156,8 @@ class CacheManager:
         self._dirty = True
         self._save_index()
 
-        logger.debug(f"删除缓存: {key}")
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"删除缓存: {key}")
         return True
 
     def exists(self, key: str) -> bool:

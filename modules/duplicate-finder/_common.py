@@ -13,8 +13,6 @@ from toolbox_app.utils import _build_cache_key, resolve_name_conflict
 
 DEFAULT_TARGET_DIR_NAME = '重复文件'
 HASH_CHUNK_SIZE = 1024 * 1024
-FFPROBE_PATH = shutil.which('ffprobe')
-FFMPEG_PATH = shutil.which('ffmpeg')
 VIDEO_SUFFIXES = {
     '.3gp',
     '.avi',
@@ -41,6 +39,18 @@ VIDEO_SIMILARITY_THRESHOLD = 0.95
 MEDIA_COMMAND_TIMEOUT_SECONDS = 20
 VIDEO_PARALLEL_WORKERS = max(2, min(6, os.cpu_count() or 4))
 _CACHE_MAX_SIZE = 2048
+
+
+def __getattr__(name: str):
+    if name == 'FFPROBE_PATH':
+        value = shutil.which('ffprobe')
+        globals()['FFPROBE_PATH'] = value
+        return value
+    if name == 'FFMPEG_PATH':
+        value = shutil.which('ffmpeg')
+        globals()['FFMPEG_PATH'] = value
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 class _BoundedCache:

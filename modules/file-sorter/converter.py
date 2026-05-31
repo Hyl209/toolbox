@@ -6,8 +6,6 @@ import subprocess
 from pathlib import Path
 from typing import Iterable
 
-from PIL import Image
-
 from toolbox_app.utils import (
     CATEGORY_EXTENSIONS,
     CATEGORY_ORDER,
@@ -23,7 +21,6 @@ VIDEO_CATEGORY = CATEGORY_ORDER[1]
 MODE_CATEGORY = 'category'
 MODE_RESOLUTION = 'resolution'
 MODE_ORDER = (MODE_CATEGORY, MODE_RESOLUTION)
-FFPROBE_PATH = shutil.which('ffprobe')
 MEDIA_COMMAND_TIMEOUT_SECONDS = 20
 MAX_RENAME_ATTEMPTS = 1000
 RESOLUTION_BUCKET_RULES: tuple[tuple[int, str], ...] = (
@@ -41,6 +38,14 @@ EXTENSION_TO_CATEGORY = {
 }
 _VIDEO_RESOLUTION_CACHE: dict[tuple[str, int, int], tuple[int, int] | None] = {}
 _IMAGE_RESOLUTION_CACHE: dict[tuple[str, int, int], tuple[int, int] | None] = {}
+
+
+def __getattr__(name: str):
+    if name == 'FFPROBE_PATH':
+        value = shutil.which('ffprobe')
+        globals()['FFPROBE_PATH'] = value
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def _resolve_folder(path: str | Path) -> Path:
@@ -112,6 +117,8 @@ def _safe_positive_int(value: object) -> int:
 
 
 def _read_image_resolution(path: Path) -> tuple[int, int] | None:
+    from PIL import Image
+
     cache_key = _build_cache_key(path)
     if cache_key in _IMAGE_RESOLUTION_CACHE:
         return _IMAGE_RESOLUTION_CACHE[cache_key]

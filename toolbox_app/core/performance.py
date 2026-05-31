@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import threading
 import time
 import functools
@@ -118,7 +119,8 @@ def timer(name: str = None):
                 return result
             finally:
                 elapsed = monitor.stop_timer(timer_name)
-                logger.debug(f"{timer_name} 耗时: {elapsed:.4f}秒")
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(f"{timer_name} 耗时: {elapsed:.4f}秒")
 
         return wrapper
     return decorator
@@ -138,7 +140,8 @@ def async_timer(name: str = None):
                 return result
             finally:
                 elapsed = monitor.stop_timer(timer_name)
-                logger.debug(f"{timer_name} 耗时: {elapsed:.4f}秒")
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(f"{timer_name} 耗时: {elapsed:.4f}秒")
 
         return wrapper
     return decorator

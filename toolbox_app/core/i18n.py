@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import threading
 from pathlib import Path
 from typing import Any, Optional
@@ -122,7 +123,8 @@ class I18nManager:
         try:
             return template.format(**kwargs)
         except (KeyError, ValueError, IndexError) as e:
-            logger.debug(f"翻译格式化失败 key={key!r}: {e}")
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"翻译格式化失败 key={key!r}: {e}")
             return template
 
     def has_translation(self, key: str) -> bool:
