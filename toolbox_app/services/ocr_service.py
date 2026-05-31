@@ -30,10 +30,10 @@ class OCRService:
                 raise ServiceError(f"不支持的 OCR 引擎: {engine}", "OCRService")
 
             self._initialized = True
-            logger.info(f"OCR 服务初始化成功 (引擎: {engine})")
+            logger.info("OCR 服务初始化成功 (引擎: %s)", engine)
 
         except Exception as e:
-            logger.error(f"OCR 服务初始化失败: {e}")
+            logger.error("OCR 服务初始化失败 (%s): %s", engine, e)
             raise ServiceError(f"OCR 服务初始化失败: {e}", "OCRService")
 
     def _init_tesseract(self):
@@ -76,7 +76,7 @@ class OCRService:
                 raise ServiceError("OCR 引擎未初始化", "OCRService")
 
         except Exception as e:
-            logger.error(f"OCR 识别失败: {e}")
+            logger.error("OCR 识别失败 (%s): %s", image_path, e)
             raise ServiceError(f"OCR 识别失败: {e}", "OCRService")
 
     def _recognize_tesseract(self, image_path: Path, language: str) -> str:
@@ -127,7 +127,7 @@ class OCRService:
             return '\n\n'.join(text_parts)
 
         except Exception as e:
-            logger.error(f"PDF OCR 识别失败: {e}")
+            logger.error("PDF OCR 识别失败 (%s): %s", pdf_path, e)
             raise ServiceError(f"PDF OCR 识别失败: {e}", "OCRService")
 
     def get_supported_languages(self) -> list[str]:

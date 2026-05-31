@@ -61,7 +61,7 @@ class DownloadService(DownloaderBase):
             with open(output_path, 'wb') as f:
                 for chunk in response.iter_content(chunk_size=self._chunk_size):
                     if self.is_cancelled:
-                        logger.info(f"下载已取消: {url}")
+                        logger.info("下载已取消: %s", url)
                         return False
 
                     if chunk:
@@ -70,12 +70,12 @@ class DownloadService(DownloaderBase):
                         progress.update(downloaded_size)
                         self._emit_progress(progress)
 
-            logger.info(f"下载完成: {output_path}")
+            logger.info("下载完成: %s", output_path)
             self._emit_completion(True, f"下载完成: {output_path}")
             return True
 
         except Exception as e:
-            logger.error(f"下载失败: {e}")
+            logger.error("下载失败 (%s): %s", url, e)
             self._emit_completion(False, f"下载失败: {e}")
             raise ServiceError(f"下载失败: {e}", self.name)
 
@@ -103,6 +103,7 @@ class DownloadService(DownloaderBase):
         file_utils.ensure_dir(output_dir)
 
         downloaded_files = []
+        failed_count = 0
         for url in urls:
             try:
                 filename = self.get_filename_from_url(url)
@@ -110,8 +111,10 @@ class DownloadService(DownloaderBase):
                 if self.download(url, output_path):
                     downloaded_files.append(output_path)
             except Exception as e:
-                logger.error(f"批量下载失败 {url}: {e}")
+                failed_count += 1
+                logger.error("批量下载单个失败 (%s): %s", url, e)
 
+        logger.info("批量下载完成: %d/%d 成功", len(downloaded_files), len(urls))
         return downloaded_files
 
     def get_file_size(self, url: str) -> Optional[int]:
@@ -123,7 +126,7 @@ class DownloadService(DownloaderBase):
             content_length = response.headers.get('content-length')
             return int(content_length) if content_length else None
         except Exception as e:
-            logger.error(f"获取文件大小失败: {e}")
+            logger.error("获取文件大小失败 (%s): %s", url, e)
             return None
 
     def check_url_valid(self, url: str) -> bool:

@@ -34,9 +34,9 @@ class StartupManager:
         for mod_name in _PRELOAD_MODULES:
             try:
                 importlib.import_module(mod_name)
-                logger.debug(f'预加载模块: {mod_name}')
+                logger.debug('预加载模块: %s', mod_name)
             except ImportError as e:
-                logger.warning(f'预加载失败 {mod_name}: {e}')
+                logger.warning('预加载失败 %s: %s', mod_name, e)
 
     def check_dependencies(self) -> list[str]:
         """检查依赖是否满足，返回缺失依赖列表"""

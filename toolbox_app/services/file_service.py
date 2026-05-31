@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import time
 from pathlib import Path
 from typing import Optional, Callable
 from ..core.logger import get_logger
@@ -43,6 +44,8 @@ class FileService:
             file_utils.ensure_dir(target_dir)
             organized_files: dict[str, list[Path]] = {}
             created_dirs: set[str] = set()
+            file_count = 0
+            start_time = time.monotonic()
 
             for file_path in source_dir.rglob("*"):
                 if not file_path.is_file():
@@ -73,14 +76,19 @@ class FileService:
                 if category not in organized_files:
                     organized_files[category] = []
                 organized_files[category].append(target_file)
+                file_count += 1
 
-                logger.debug(f"文件整理: {file_path} -> {target_file}")
-
-            logger.info("文件整理完成: %s 个分类", len(organized_files))
+            elapsed = time.monotonic() - start_time
+            logger.info(
+                "文件整理完成: %d 个文件 → %d 个分类 (%.1f秒)",
+                file_count, len(organized_files), elapsed,
+            )
+            if elapsed > 2:
+                logger.warning("文件整理耗时 %.1f秒，目录较大可能影响性能", elapsed)
             return organized_files
 
         except Exception as e:
-            logger.error(f"文件整理失败: {e}")
+            logger.error("文件整理失败: %s", e)
             raise ServiceError(f"文件整理失败: {e}", "FileService")
 
     def _get_extension_category(self, extension: str) -> str:
@@ -114,6 +122,7 @@ class FileService:
             # 使用文件大小和哈希值查找重复
             size_map: dict[int, list[Path]] = {}
             duplicates: dict[str, list[Path]] = {}
+            start_time = time.monotonic()
 
             # 第一步：按大小分组
             for file_path in directory.rglob("*"):
@@ -141,11 +150,18 @@ class FileService:
                     if len(duplicate_files) > 1:
                         duplicates[file_hash] = duplicate_files
 
-            logger.info("查找重复文件完成: %s 组", len(duplicates))
+            elapsed = time.monotonic() - start_time
+            total_dupes = sum(len(v) for v in duplicates.values())
+            logger.info(
+                "查找重复文件完成: %d 组, 共 %d 个重复文件 (%.1f秒)",
+                len(duplicates), total_dupes, elapsed,
+            )
+            if elapsed > 2:
+                logger.warning("查找重复文件耗时 %.1f秒，文件较多时会较慢", elapsed)
             return duplicates
 
         except Exception as e:
-            logger.error(f"查找重复文件失败: {e}")
+            logger.error("查找重复文件失败: %s", e)
             raise ServiceError(f"查找重复文件失败: {e}", "FileService")
 
     def _calculate_file_hash(self, file_path: Path) -> str:
@@ -184,13 +200,11 @@ class FileService:
                     if callback:
                         callback(file_path, new_path)
 
-                    logger.debug(f"重命名: {file_path} -> {new_path}")
-
-            logger.info("批量重命名完成: %s 个文件", len(renamed_files))
+            logger.info("批量重命名完成: %d 个文件 (模式: '%s' → '%s')", len(renamed_files), pattern, replacement)
             return renamed_files
 
         except Exception as e:
-            logger.error(f"批量重命名失败: {e}")
+            logger.error("批量重命名失败: %s", e)
             raise ServiceError(f"批量重命名失败: {e}", "FileService")
 
     def get_directory_stats(self, directory: str | Path) -> dict:
@@ -234,7 +248,7 @@ class FileService:
             return stats
 
         except Exception as e:
-            logger.error(f"获取目录统计失败: {e}")
+            logger.error("获取目录统计失败: %s", e)
             raise ServiceError(f"获取目录统计失败: {e}", "FileService")
 
 

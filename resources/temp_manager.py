@@ -79,10 +79,9 @@ class TempManager:
 
                 self._temp_files.pop(str(path), None)
                 self._temp_dirs.pop(str(path), None)
-                logger.debug(f"删除临时文件: {path}")
                 return True
         except Exception as e:
-            logger.error(f"删除临时文件失败 {path}: {e}")
+            logger.error("删除临时文件失败 %s: %s", path, e)
         return False
 
     def cleanup_all(self):
@@ -105,21 +104,29 @@ class TempManager:
         max_age_seconds = max_age_hours * 3600
 
         try:
+            removed_files = 0
             for item in self.temp_dir.rglob("*"):
                 if item.is_file():
                     file_age = current_time - item.stat().st_mtime
                     if file_age > max_age_seconds:
                         item.unlink()
-                        logger.debug(f"清理过期临时文件: {item}")
+                        removed_files += 1
 
             # 清理空目录
+            removed_dirs = 0
             for item in self.temp_dir.rglob("*"):
                 if item.is_dir() and not any(item.iterdir()):
                     item.rmdir()
-                    logger.debug(f"清理空临时目录: {item}")
+                    removed_dirs += 1
+
+            if removed_files or removed_dirs:
+                logger.info(
+                    "临时文件清理: 删除 %d 个过期文件, %d 个空目录",
+                    removed_files, removed_dirs,
+                )
 
         except Exception as e:
-            logger.error(f"清理过期临时文件失败: {e}")
+            logger.error("清理过期临时文件失败: %s", e)
 
     def get_temp_size(self) -> int:
         """获取临时文件总大小"""
@@ -129,7 +136,7 @@ class TempManager:
                 if item.is_file():
                     total_size += item.stat().st_size
         except Exception as e:
-            logger.error(f"计算临时文件大小失败: {e}")
+            logger.error("计算临时文件大小失败: %s", e)
         return total_size
 
     def get_temp_count(self) -> int:
@@ -140,7 +147,7 @@ class TempManager:
                 if item.is_file():
                     count += 1
         except Exception as e:
-            logger.error(f"计算临时文件数量失败: {e}")
+            logger.error("计算临时文件数量失败: %s", e)
         return count
 
     def list_temp_files(self) -> list[Path]:
@@ -151,7 +158,7 @@ class TempManager:
                 if item.is_file():
                     files.append(item)
         except Exception as e:
-            logger.error(f"列出临时文件失败: {e}")
+            logger.error("列出临时文件失败: %s", e)
         return files
 
     def create_temp_copy(self, source: str | Path, name: str = None) -> Path:

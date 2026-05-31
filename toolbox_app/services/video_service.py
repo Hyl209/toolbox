@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+import time
 from pathlib import Path
 from typing import Optional
 from ..core.logger import get_logger
@@ -63,16 +64,20 @@ class VideoService:
 
             cmd.append(str(output_path))
 
+            start_time = time.monotonic()
             result = subprocess.run(cmd, capture_output=True, text=True)
+            elapsed = time.monotonic() - start_time
 
             if result.returncode != 0:
                 raise ServiceError(f"视频转换失败: {result.stderr}", "VideoService")
 
-            logger.info(f"视频转换完成: {output_path}")
+            logger.info("视频转换完成: %s (%.1f秒)", output_path, elapsed)
+            if elapsed > 2:
+                logger.warning("视频转换耗时 %.1f秒", elapsed)
             return True
 
         except Exception as e:
-            logger.error(f"视频转换失败: {e}")
+            logger.error("视频转换失败 (%s): %s", input_path, e)
             raise ServiceError(f"视频转换失败: {e}", "VideoService")
 
     def extract_audio(self, input_path: str | Path, output_path: str | Path,
@@ -103,11 +108,11 @@ class VideoService:
             if result.returncode != 0:
                 raise ServiceError(f"音频提取失败: {result.stderr}", "VideoService")
 
-            logger.info(f"音频提取完成: {output_path}")
+            logger.info("音频提取完成: %s", output_path)
             return True
 
         except Exception as e:
-            logger.error(f"音频提取失败: {e}")
+            logger.error("音频提取失败 (%s): %s", input_path, e)
             raise ServiceError(f"音频提取失败: {e}", "VideoService")
 
     def get_video_info(self, input_path: str | Path) -> Optional[dict]:
@@ -151,7 +156,7 @@ class VideoService:
             return info
 
         except Exception as e:
-            logger.error(f"获取视频信息失败: {e}")
+            logger.error("获取视频信息失败 (%s): %s", input_path, e)
             return None
 
     def compress_video(self, input_path: str | Path, output_path: str | Path,
@@ -183,9 +188,9 @@ class VideoService:
             if result.returncode != 0:
                 raise ServiceError(f"视频压缩失败: {result.stderr}", "VideoService")
 
-            logger.info(f"视频压缩完成: {output_path}")
+            logger.info("视频压缩完成: %s", output_path)
             return True
 
         except Exception as e:
-            logger.error(f"视频压缩失败: {e}")
+            logger.error("视频压缩失败 (%s): %s", input_path, e)
             raise ServiceError(f"视频压缩失败: {e}", "VideoService")

@@ -103,7 +103,7 @@ class PluginManager:
     def load_plugin(self, plugin_name: str, disabled_names: set[str] = None) -> bool:
         """加载单个插件：发现 → 验证 → 导入 → 实例化 → 注册"""
         if plugin_name in self._loading_plugins:
-            logger.error(f"插件依赖存在循环: {plugin_name}")
+            logger.error("插件依赖存在循环: %s", plugin_name)
             return False
 
         plugin_info = self._discovery.get_plugin_info(plugin_name)
@@ -111,19 +111,19 @@ class PluginManager:
             self._discovery.discover_plugins()
             plugin_info = self._discovery.get_plugin_info(plugin_name)
         if plugin_info is None:
-            logger.error(f"插件未发现: {plugin_name}")
+            logger.error("插件未发现: %s", plugin_name)
             return False
 
         registered_plugin = self._registry.get_plugin(plugin_name)
 
         # 跳过 manifest 中标记为 disabled 或被用户禁用的插件
         if not plugin_info.enabled:
-            logger.info(f"插件已禁用 (manifest): {plugin_name}")
+            logger.info("插件已禁用 (manifest): %s", plugin_name)
             if registered_plugin is not None:
                 self.unregister_plugin(plugin_name)
             return False
         if disabled_names and plugin_name in disabled_names:
-            logger.info(f"插件已禁用 (用户设置): {plugin_name}")
+            logger.info("插件已禁用 (用户设置): %s", plugin_name)
             if registered_plugin is not None:
                 self.unregister_plugin(plugin_name)
             return False
@@ -132,14 +132,14 @@ class PluginManager:
             return True
 
         if not self._discovery.validate_plugin(plugin_name):
-            logger.error(f"插件验证失败: {plugin_name}")
+            logger.error("插件验证失败: %s", plugin_name)
             return False
 
         self._loading_plugins.add(plugin_name)
         try:
             for dep_name in plugin_info.dependencies:
                 if not self.load_plugin(dep_name, disabled_names):
-                    logger.error(f"插件依赖加载失败: {plugin_name} -> {dep_name}")
+                    logger.error("插件依赖加载失败: %s -> %s", plugin_name, dep_name)
                     return False
 
             instance = self._instantiate_plugin(plugin_info)
@@ -148,13 +148,13 @@ class PluginManager:
             try:
                 instance_name = instance.plugin_info.name
             except Exception as e:
-                logger.error(f"插件信息读取失败 {plugin_info.name}: {e}")
+                logger.error("插件信息读取失败 %s: %s", plugin_info.name, e)
                 self._unload_plugin_module(plugin_info.name)
                 return False
             if instance_name != plugin_info.name:
                 logger.error(
-                    f"插件名称不一致: manifest={plugin_info.name}, "
-                    f"code={instance_name}"
+                    "插件名称不一致: manifest=%s, code=%s",
+                    plugin_info.name, instance_name,
                 )
                 self._unload_plugin_module(plugin_info.name)
                 return False
@@ -163,7 +163,7 @@ class PluginManager:
                 self._unload_plugin_module(plugin_info.name)
             return registered
         except Exception as e:
-            logger.error(f"加载插件异常 {plugin_name}: {e}")
+            logger.error("加载插件异常 %s: %s", plugin_name, e)
             return False
         finally:
             self._loading_plugins.discard(plugin_name)
@@ -174,7 +174,7 @@ class PluginManager:
         plugin_path = Path(plugin_info.plugin_path)
 
         if not entry:
-            logger.error(f"插件缺少 entry: {plugin_info.name}")
+            logger.error("插件缺少 entry: %s", plugin_info.name)
             return None
 
         # 解析 entry: "file.py:ClassName"

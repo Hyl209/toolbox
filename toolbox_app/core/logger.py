@@ -11,6 +11,41 @@ import threading
 from pathlib import Path
 from typing import Optional
 
+# Short module name mapping for readable prefixes
+_SHORT_NAMES: dict[str, str] = {
+    'toolbox_app.services.file_service': 'FileSort',
+    'toolbox_app.services.download_service': 'Download',
+    'toolbox_app.services.video_service': 'VideoConvert',
+    'toolbox_app.services.duplicate_service': 'DuplicateFind',
+    'toolbox_app.services.ocr_service': 'OCR',
+    'toolbox_app.services.image_service': 'ImageConvert',
+    'toolbox_app.services.pdf_service': 'PDF',
+    'toolbox_app.services.mp4_service': 'MP4Convert',
+    'toolbox_app.services.base64_service': 'Base64',
+    'toolbox_app.services.hash_service': 'Hash',
+    'toolbox_app.core.startup': 'Startup',
+    'toolbox_app.core.config': 'Config',
+    'toolbox_app.core.performance': 'Perf',
+    'toolbox_app.core.worker': 'Worker',
+    'toolbox_app.core.task_manager': 'TaskMgr',
+    'toolbox_app.plugins.discovery': 'PluginDiscovery',
+    'toolbox_app.plugins.manager': 'PluginMgr',
+    'toolbox_app.plugins.registry': 'PluginRegistry',
+    'resources.cache': 'Cache',
+    'resources.temp_manager': 'TempFile',
+    'resources.manager': 'Resource',
+    'resources.validators': 'Validator',
+}
+
+
+class _ShortNameFormatter(logging.Formatter):
+    """Formatter that uses short module prefixes for readability."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        short = _SHORT_NAMES.get(record.name, record.name.rsplit('.', 1)[-1])
+        record.shortname = short
+        return super().format(record)
+
 
 class LoggerManager:
     """集中式日志管理器"""
@@ -30,16 +65,16 @@ class LoggerManager:
             return
         root.setLevel(logging.DEBUG)
 
-        # 控制台处理器
+        # 控制台处理器 — concise format
         console_handler = logging.StreamHandler()
         console_handler.setLevel(logging.INFO)
-        console_format = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-        )
-        console_handler.setFormatter(console_format)
+        console_handler.setFormatter(_ShortNameFormatter(
+            '%(asctime)s [%(shortname)s] %(levelname)s - %(message)s',
+            datefmt='%H:%M:%S'
+        ))
         root.addHandler(console_handler)
 
-        # 文件处理器 - 应用日志
+        # 文件处理器 - 应用日志 — full detail for debugging
         app_handler = _handlers.RotatingFileHandler(
             self.log_dir / 'app.log',
             maxBytes=10*1024*1024,  # 10MB
@@ -47,10 +82,9 @@ class LoggerManager:
             encoding='utf-8'
         )
         app_handler.setLevel(logging.DEBUG)
-        app_format = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-        )
-        app_handler.setFormatter(app_format)
+        app_handler.setFormatter(logging.Formatter(
+            '%(asctime)s [%(name)s] %(levelname)s - %(message)s'
+        ))
         root.addHandler(app_handler)
 
         # 文件处理器 - 错误日志
@@ -61,7 +95,9 @@ class LoggerManager:
             encoding='utf-8'
         )
         error_handler.setLevel(logging.ERROR)
-        error_handler.setFormatter(app_format)
+        error_handler.setFormatter(logging.Formatter(
+            '%(asctime)s [%(name)s] %(levelname)s - %(message)s'
+        ))
         root.addHandler(error_handler)
         root._hyl_configured = True
 

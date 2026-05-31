@@ -48,10 +48,10 @@ class PluginDiscovery:
         """发现所有插件（只读 metadata，不执行插件代码）"""
         self._discovered_plugins.clear()
         if not self.plugins_dir.exists():
-            logger.info(f"插件目录不存在: {self.plugins_dir}")
+            logger.info("插件目录不存在: %s", self.plugins_dir)
             return {}
         if not self.plugins_dir.is_dir():
-            logger.warning(f"插件路径不是目录: {self.plugins_dir}")
+            logger.warning("插件路径不是目录: %s", self.plugins_dir)
             return {}
 
         # 扫描插件目录
@@ -64,7 +64,7 @@ class PluginDiscovery:
                 self._scan_plugin_file(plugin_path)
 
         self._drop_cyclic_dependency_plugins()
-        logger.info(f"发现 {len(self._discovered_plugins)} 个插件")
+        logger.info("发现 %d 个插件", len(self._discovered_plugins))
         return self._discovered_plugins.copy()
 
     @staticmethod
@@ -98,7 +98,7 @@ class PluginDiscovery:
                 info.plugin_path = str(plugin_path)
                 # entry 格式: 文件名:类名 (用第一个匹配的 PluginBase 子类)
                 if len(matches) > 1:
-                    logger.warning("插件文件包含多个 PluginBase 子类，使用第一个: %s (%s)", plugin_path, matches)
+                    logger.warning("插件文件包含多个 PluginBase 子类，使用第一个: %s (%s)", plugin_path, matches[0])
                 info.entry = f"{plugin_path.name}:{matches[0]}"
                 self._remember_plugin_info(info, plugin_path)
 
@@ -109,8 +109,8 @@ class PluginDiscovery:
         if plugin_info.name in self._discovered_plugins:
             existing = self._discovered_plugins[plugin_info.name].plugin_path
             logger.error(
-                f"插件名称重复，已跳过: {plugin_info.name} "
-                f"({plugin_path}, existing={existing})"
+                "插件名称重复，已跳过: %s (%s, existing=%s)",
+                plugin_info.name, plugin_path, existing,
             )
             return False
         self._discovered_plugins[plugin_info.name] = plugin_info
@@ -306,7 +306,7 @@ class PluginDiscovery:
         for plugin_name in list(self._discovered_plugins):
             visit(plugin_name)
         for plugin_name in sorted(cyclic_plugins):
-            logger.error(f"插件依赖存在循环，已跳过: {plugin_name}")
+            logger.error("插件依赖存在循环，已跳过: %s", plugin_name)
             self._discovered_plugins.pop(plugin_name, None)
 
     def get_plugin_info(self, plugin_name: str) -> Optional[PluginInfo]:
@@ -333,7 +333,7 @@ class PluginDiscovery:
         # 检查依赖
         for dep in plugin_info.dependencies:
             if dep not in self._discovered_plugins:
-                logger.warning(f"插件 {plugin_name} 缺少依赖: {dep}")
+                logger.warning("插件 %s 缺少依赖: %s", plugin_name, dep)
                 return False
 
         return True
