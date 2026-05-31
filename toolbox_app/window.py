@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from toolbox_app.tool_registry import TOOL_DEFINITIONS
+from toolbox_app.tool_registry import TOOL_BY_ID, TOOL_DEFINITIONS
 
 logger = logging.getLogger(__name__)
 
@@ -60,18 +60,29 @@ def build_toolbox_window_class(deps: dict):
     Base64Tab = deps['Base64Tab']
 
     # Tool id → tab class/instance mapping (order matches TOOL_DEFINITIONS)
+    _TAB_CLASSES_BY_TOOL_ID = {
+        'music': MusicTab,
+        'zipandpng': ZipAndPngTab,
+        'mp4mp3': Mp4ToMp3Tab,
+        'imageconvert': ImageConvertTab,
+        'pdftools': PdfToolsTab,
+        'tgdownloader': VideoDownloaderTab,
+        'webvideodownloader': VideoDownloaderTab,
+        'batchrename': BatchRenameTab,
+        'filesorter': FileSorterTab,
+        'same': SameTab,
+        'base64': Base64Tab,
+    }
+
+    def _build_registered_tab(tool_id: str, settings):
+        tab_class = _TAB_CLASSES_BY_TOOL_ID[tool_id]
+        tab_kwargs = TOOL_BY_ID[tool_id].tab_kwargs
+        return tab_class(settings, **tab_kwargs)
+
     _TAB_BUILDERS = {
-        'music': lambda s: MusicTab(s),
-        'zipandpng': lambda s: ZipAndPngTab(s),
-        'mp4mp3': lambda s: Mp4ToMp3Tab(s),
-        'imageconvert': lambda s: ImageConvertTab(s),
-        'pdftools': lambda s: PdfToolsTab(s),
-        'tgdownloader': lambda s: VideoDownloaderTab(s, 'telegram'),
-        'webvideodownloader': lambda s: VideoDownloaderTab(s, 'web'),
-        'batchrename': lambda s: BatchRenameTab(s),
-        'filesorter': lambda s: FileSorterTab(s),
-        'same': lambda s: SameTab(s),
-        'base64': lambda s: Base64Tab(s),
+        tool_def.id: lambda settings, tool_id=tool_def.id: _build_registered_tab(tool_id, settings)
+        for tool_def in TOOL_DEFINITIONS
+        if tool_def.id in _TAB_CLASSES_BY_TOOL_ID
     }
 
     class ToolboxWindow(QMainWindow):
