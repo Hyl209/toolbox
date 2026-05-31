@@ -15,6 +15,7 @@ PySide6 桌面工具箱，集成 19 种常用文件处理工具，支持暗色/�
 | MP4 转 MP3 | 视频提取音频 |
 | 图片格式互转 | PNG / JPG / WEBP / BMP / ICO 等 |
 | PDF 工具 | 合并、拆分、转图片等 |
+| Word排版统一 | 统一页面设置、标题、正文与表格样式 |
 | TG 下载 | Telegram 频道/群组视频下载 |
 | 网页视频下载 | 支持 yt-dlp / aria2c 加速，可直接粘贴抖音分享文案/短链，抖音优先走分享页直链兜底，失败再尝试 Cookies / cookies.txt |
 | 批量命名 | 正则、序号、模板批量重命名 |
@@ -88,6 +89,7 @@ hyl-toolbox/
 │   ├── audio-extractor/
 │   ├── image-converter/
 │   ├── pdf-tools/
+│   ├── word-formatter/
 │   ├── video-downloader/       # 含 TG + 网页下载
 │   ├── batch-rename/
 │   ├── file-sorter/

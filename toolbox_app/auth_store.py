@@ -70,7 +70,7 @@ def save_users(store_path: str | Path, users: list[dict[str, str]]) -> None:
         with os.fdopen(fd, 'w', encoding='utf-8') as f:
             json.dump(payload, f, ensure_ascii=False, indent=2)
         os.replace(tmp_path, str(path))
-    except BaseException:
+    except Exception:
         try:
             os.unlink(tmp_path)
         except OSError:

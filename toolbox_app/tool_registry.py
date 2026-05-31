@@ -37,6 +37,7 @@ TOOL_DEFINITIONS: list[ToolDef] = [
     ToolDef('filesorter', '文件分类', '文件分类', 'modules/file-sorter', 'converter.py', 'tab.py'),
     ToolDef('same', '重复文件', '重复文件', 'modules/duplicate-finder', 'converter.py', 'tab.py'),
     ToolDef('base64', '图片Base64', '图片Base64', 'modules/base64', 'converter.py', 'tab.py'),
+    ToolDef('wordformatter', 'Word排版统一', 'Word排版', 'modules/word-formatter', 'converter.py', 'tab.py'),
 ]
 
 TOOL_BY_ID = {t.id: t for t in TOOL_DEFINITIONS}
@@ -55,6 +56,7 @@ _CONVERTER_KEYS_BY_TOOL_ID = {
     'filesorter': ('file_sorter', 'filesorter'),
     'same': ('same',),
     'base64': ('base64',),
+    'wordformatter': ('wordformatter',),
 }
 
 _TAB_KEYS_BY_TOOL_ID = {
@@ -69,6 +71,7 @@ _TAB_KEYS_BY_TOOL_ID = {
     'filesorter': ('file_sorter_tab', 'filesorter_tab'),
     'same': ('same_tab',),
     'base64': ('base64_tab',),
+    'wordformatter': ('wordformatter_tab',),
 }
 
 

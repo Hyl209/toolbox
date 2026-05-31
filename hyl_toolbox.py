@@ -1,4 +1,3 @@
-import json
 import os
 import sys
 import base64
@@ -237,6 +236,8 @@ _load_file_sorter_tab_module = lambda: _load_dynamic('file_sorter_tab')
 _load_name_module = lambda: _load_dynamic('name')
 _load_name_tab_module = lambda: _load_dynamic('name_tab')
 _load_same_module = lambda: _load_dynamic('same')
+_load_word_formatter_module = lambda: _load_dynamic('wordformatter')
+_load_word_formatter_tab_module = lambda: _load_dynamic('wordformatter_tab')
 
 
 def make_settings(base_dir: str):
@@ -332,6 +333,10 @@ def get_same_module():
 
 def get_base64_module():
     return _load_registered_module('base64')
+
+
+def get_word_formatter_module():
+    return _load_word_formatter_module()
 
 
 def choose_output_suffix(cover_path): return _load_zip_tab_module().choose_output_suffix(cover_path)
@@ -431,6 +436,18 @@ def format_base64_drop_summary(files: list[Path]) -> str:
 
 def validate_base64_form(mode: str, image_files: list[Path], base64_text: str, output_dir: str, output_name: str) -> list[str]:
     return _load_base64_tab_module().validate_base64_form(mode, image_files, base64_text, output_dir, output_name)
+
+
+def collect_word_format_inputs(paths: list[str]) -> list[Path]:
+    return _load_word_formatter_tab_module().collect_word_format_inputs(paths)
+
+
+def format_word_format_drop_summary(files: list[Path]) -> str:
+    return _load_word_formatter_tab_module().format_word_format_drop_summary(files)
+
+
+def validate_word_format_form(files: list[Path], text: str, output_dir: str, output_mode: str, config: dict | None = None) -> list[str]:
+    return _load_word_formatter_tab_module().validate_word_format_form(files, text, output_dir, output_mode, config)
 
 
 def format_video_download_task_summary(task_text: str) -> str:

@@ -19,7 +19,7 @@ class Base64Service:
     def _get_converter(self):
         if self._converter is None:
             from ..loaders import load_module_once
-            converter_path = Path(__file__).resolve().parent.parent.parent / 'base64' / 'converter.py'
+            converter_path = Path(__file__).resolve().parent.parent.parent / 'modules' / 'base64' / 'converter.py'
             self._converter = load_module_once('base64_converter_module', converter_path)
         return self._converter
 

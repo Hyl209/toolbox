@@ -114,7 +114,7 @@ class DownloadService(DownloaderBase):
                 failed_count += 1
                 logger.error("批量下载单个失败 (%s): %s", url, e)
 
-        logger.info("批量下载完成: %d/%d 成功", len(downloaded_files), len(urls))
+        logger.info("批量下载完成: %d/%d 成功, %d 失败", len(downloaded_files), len(urls), failed_count)
         return downloaded_files
 
     def get_file_size(self, url: str) -> Optional[int]:

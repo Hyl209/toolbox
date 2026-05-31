@@ -585,7 +585,7 @@ def build_toolbox_window_class(deps: dict):
                         try:
                             cleanup()
                         except Exception:
-                            pass
+                            logger.exception("tab cleanup 异常: %s", attr)
             super().closeEvent(event)
 
         def open_settings(self):
@@ -697,6 +697,7 @@ def build_toolbox_window_class(deps: dict):
                 'file_sorter_tab': 'filesorter',
                 'same_tab': 'same',
                 'base64_tab': 'base64',
+                'word_formatter_tab': 'wordformatter',
             }
             if name == 'video_downloader_tab':
                 return self._resolve_tab('tgdownloader')

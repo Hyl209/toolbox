@@ -2,10 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from ..core.logger import get_logger
 from ..core.exceptions import ServiceError
-
-logger = get_logger(__name__)
 
 
 class DuplicateService:

@@ -207,6 +207,36 @@ def test_validate_pdf_form_accepts_valid_text_export():
     assert errors == []
 
 
+def test_collect_word_format_inputs_filters_docx_only():
+    toolbox = load_module()
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        (root / 'a.docx').write_bytes(b'fake')
+        (root / '~$a.docx').write_bytes(b'fake')
+        (root / 'b.doc').write_bytes(b'fake')
+        nested = root / 'nested'
+        nested.mkdir()
+        (nested / 'c.docx').write_bytes(b'fake')
+        paths = toolbox.collect_word_format_inputs([str(root)])
+    assert [p.name for p in paths] == ['a.docx', 'c.docx']
+
+
+def test_validate_word_format_form_requires_input_and_output_for_copy():
+    toolbox = load_module()
+    errors = toolbox.validate_word_format_form([], '', '', 'copy')
+    assert '请拖入 Word 文件或输入文本' in errors
+    assert '请选择输出目录' in errors
+
+
+def test_validate_word_format_form_accepts_overwrite_docx_without_output_dir():
+    toolbox = load_module()
+    with tempfile.TemporaryDirectory() as tmp:
+        docx = pathlib.Path(tmp) / 'demo.docx'
+        docx.write_bytes(b'fake')
+        errors = toolbox.validate_word_format_form([docx], '', '', 'overwrite')
+    assert errors == []
+
+
 def test_collect_base64_image_inputs_filters_supported_images_only():
     toolbox = load_module()
     with tempfile.TemporaryDirectory() as tmp:

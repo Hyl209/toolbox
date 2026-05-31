@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 from ..core.logger import get_logger
 from ..core.exceptions import ServiceError
 from ..core.file_utils import file_utils

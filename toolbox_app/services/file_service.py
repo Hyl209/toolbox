@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import shutil
 import time
 from pathlib import Path
@@ -97,7 +96,6 @@ class FileService:
 
     def _get_date_category(self, file_path: Path) -> str:
         """根据日期获取分类"""
-        import time
         mtime = file_path.stat().st_mtime
         date = time.localtime(mtime)
         return f"{date.tm_year}-{date.tm_mon:02d}"

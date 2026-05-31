@@ -55,6 +55,8 @@ def generate_spec() -> str:
         ('logo.png', '.'),
         ('sound.mp3', '.'),
         ('modules/ncm-converter/weixin_base64.txt', 'modules/ncm-converter'),
+        ('modules/theme-customizer/__init__.py', 'modules/theme-customizer'),
+        ('modules/theme-customizer/color_scheme.py', 'modules/theme-customizer'),
     ]
     # Deduplicate
     seen = {src for src, _ in datas}
@@ -89,7 +91,7 @@ a = Analysis(
     datas=[
 {datas_block}
     ] + music_datas,
-    hiddenimports=['ncmdump', 'yt_dlp', 'telethon'],
+    hiddenimports=['ncmdump', 'yt_dlp', 'telethon', 'docx', 'docx.oxml', 'docx.oxml.ns', 'docx.shared'],
     hookspath=[],
     hooksconfig={{}},
     runtime_hooks=[],

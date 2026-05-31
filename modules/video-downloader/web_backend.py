@@ -1561,7 +1561,8 @@ def _download_m3u8_with_ffmpeg(
         str(output_path),
     ]
     proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    assert proc.stdout is not None
+    if proc.stdout is None:
+        raise RuntimeError('ffmpeg Popen 没有 stdout')
     started = monotonic()
     last_emit = 0.0
     for line in proc.stdout:
@@ -1790,9 +1791,8 @@ def embed_thumbnail(
             capture_output=True, check=True,
             timeout=300,
         )
-        # Replace original
-        video_path.unlink()
-        tmp_out.rename(video_path)
+        # Replace original (atomic on same filesystem)
+        os.replace(str(tmp_out), str(video_path))
 
         _emit(progress_cb, f'封面嵌入成功: {video_path.name}')
         return {'success': True, 'files': [str(video_path)]}
