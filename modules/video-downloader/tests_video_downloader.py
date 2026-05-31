@@ -1129,6 +1129,41 @@ def test_embed_thumbnail_falls_back_to_video_frame_when_external_cover_missing()
         wb.shutil.which = original_which
 
 
+def test_embed_thumbnail_falls_back_to_frame_when_source_url_empty():
+    """web_then_frame mode with empty source_url should extract video frame."""
+    wb = load_web_backend()
+    progress: list[str] = []
+    ffmpeg_calls: list[list[str]] = []
+
+    def fake_run(args, capture_output=True, check=True, **kwargs):
+        ffmpeg_calls.append(list(args))
+        out_path = pathlib.Path(args[-1])
+        out_path.write_text('ok', encoding='utf-8')
+        return types.SimpleNamespace(stderr=b'')
+
+    original_run = wb.subprocess.run
+    original_which = wb.shutil.which
+    try:
+        wb.subprocess.run = fake_run
+        wb.shutil.which = lambda name: 'C:/tools/ffmpeg.exe' if name == 'ffmpeg' else ''
+        with tempfile.TemporaryDirectory() as tmp:
+            video_path = pathlib.Path(tmp) / 'demo.mp4'
+            video_path.write_text('video', encoding='utf-8')
+            result = wb.embed_thumbnail(
+                video_path,
+                '',
+                progress_cb=progress.append,
+            )
+            assert result['success'] is True
+            assert video_path.read_text(encoding='utf-8') == 'ok'
+        assert any('直接抽取视频帧作为封面: demo.mp4' == line for line in progress)
+        assert len(ffmpeg_calls) == 2
+        assert 'thumbnail' in ffmpeg_calls[0]
+    finally:
+        wb.subprocess.run = original_run
+        wb.shutil.which = original_which
+
+
 def test_embed_thumbnail_frame_mode_skips_web_lookup():
     wb = load_web_backend()
     progress: list[str] = []

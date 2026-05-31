@@ -1681,7 +1681,7 @@ def embed_thumbnail(
     if not video_path.is_file():
         return {'success': False, 'error': f'文件不存在: {video_path}'}
     if not direct_frame and not source_url.strip():
-        return {'success': False, 'error': '请提供视频源链接'}
+        direct_frame = True  # 无源链接，直接从视频抽帧
 
     ffmpeg = _ffmpeg_path()
     if not ffmpeg:
