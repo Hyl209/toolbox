@@ -2,11 +2,17 @@ from __future__ import annotations
 
 import re
 
-from ._shared import classify_source, TELEGRAM_HOSTS, _normalize_url_text
+from ._shared import (
+    classify_source, guess_task_title, sanitize_filename_component, TELEGRAM_HOSTS,
+    _normalize_url_text,
+)
 from .tab_constants import SUMMARY_EMPTY_TEXT, TELEGRAM_ONLY_ERROR, WEB_ONLY_ERROR
 
 
 WEB_QUEUE_LABEL_RE = re.compile(r'网页第(?P<index>\d+)个视频')
+WEB_QUEUE_URL_RE = re.compile(r'https?://[^\s<>"\'`]+', re.IGNORECASE)
+WEB_QUEUE_NUMBER_RE = re.compile(r'^\s*\d+[.、．]\s*')
+WEB_QUEUE_SUFFIX_RE = re.compile(r'_(?P<index>\d{3})$')
 
 
 def normalize_source_mode(source_mode: str) -> str:
@@ -86,6 +92,17 @@ def _web_line_url(line: str) -> str:
     return _normalize_url_text(line)
 
 
+def web_queue_source_base(source_url: str) -> str:
+    return sanitize_filename_component(guess_task_title(source_url), 'video')
+
+
+def web_queue_numbered_title(base_title: str, index: int, total: int) -> str:
+    cleaned = sanitize_filename_component(base_title, 'video')
+    if total <= 1:
+        return cleaned
+    return f'{cleaned}_{index:03d}'
+
+
 def _web_line_candidate_index(line: str, fallback: int) -> int:
     match = WEB_QUEUE_LABEL_RE.search(str(line or ''))
     if not match:
@@ -96,18 +113,45 @@ def _web_line_candidate_index(line: str, fallback: int) -> int:
         return fallback
 
 
-def format_web_queue_line(queue_index: int, candidate_index: int, url: str) -> str:
-    return f'{queue_index}.网页第{candidate_index}个视频：{url}'
+def _strip_queue_number(text: str) -> str:
+    return WEB_QUEUE_NUMBER_RE.sub('', str(text or '').strip())
+
+
+def _web_line_title(line: str, fallback: str = 'video') -> str:
+    text = str(line or '')
+    match = WEB_QUEUE_URL_RE.search(text)
+    prefix = text[:match.start()] if match else text
+    prefix = _strip_queue_number(prefix).rstrip(' ：:')
+    return sanitize_filename_component(prefix, fallback)
+
+
+def _web_title_base(title: str) -> str:
+    cleaned = sanitize_filename_component(title, 'video')
+    match = WEB_QUEUE_SUFFIX_RE.search(cleaned)
+    if match:
+        return cleaned[:match.start()] or cleaned
+    return cleaned
+
+
+def parse_web_queue_entry(line: str) -> dict[str, str]:
+    url = _web_line_url(line)
+    if not url:
+        return {}
+    title = _web_line_title(line, guess_task_title(url))
+    return {'title': title, 'url': url}
+
+
+def format_web_queue_line(queue_index: int, title: str, url: str) -> str:
+    return f'{queue_index}.{sanitize_filename_component(title, "video")}：{url}'
 
 
 def normalize_web_queue_lines(lines: list[str], start_index: int = 1) -> list[str]:
     normalized: list[str] = []
     for raw in lines:
-        url = _web_line_url(raw)
-        if not url:
+        entry = parse_web_queue_entry(raw)
+        if not entry:
             continue
-        candidate_index = _web_line_candidate_index(raw, len(normalized) + 1)
-        normalized.append(format_web_queue_line(start_index + len(normalized), candidate_index, url))
+        normalized.append(format_web_queue_line(start_index + len(normalized), entry['title'], entry['url']))
     return normalized
 
 
@@ -116,10 +160,14 @@ def format_web_candidate_lines(results: list[dict[str, object]]) -> list[str]:
     for result in results:
         if not result.get('success'):
             continue
-        for candidate_index, url in enumerate(result.get('candidates') or [], start=1):
+        candidates = [str(item or '') for item in (result.get('candidates') or [])]
+        total = len([item for item in candidates if _web_line_url(item)])
+        base_title = web_queue_source_base(str(result.get('source_url') or ''))
+        for candidate_index, url in enumerate(candidates, start=1):
             cleaned = _web_line_url(str(url or ''))
             if cleaned:
-                lines.append(format_web_queue_line(len(lines) + 1, candidate_index, cleaned))
+                title = web_queue_numbered_title(base_title, candidate_index, total)
+                lines.append(format_web_queue_line(len(lines) + 1, title, cleaned))
     return lines
 
 
@@ -132,10 +180,51 @@ def append_web_queue_text(existing_text: str, candidate_text: str) -> str:
         url = _web_line_url(raw)
         if not url or url in existing_urls:
             continue
-        candidate_index = _web_line_candidate_index(raw, len(appended) + 1)
-        appended.append(format_web_queue_line(next_index + len(appended), candidate_index, url))
+        title = _web_line_title(raw, guess_task_title(url))
+        appended.append(format_web_queue_line(next_index + len(appended), title, url))
         existing_urls.add(url)
     return '\n'.join(existing_lines + appended)
+
+
+def build_web_queue_tasks(
+    lines: list[str],
+    candidate_sources: dict[str, str] | None = None,
+) -> list[dict[str, str]]:
+    entries = [entry for entry in (parse_web_queue_entry(line) for line in lines) if entry]
+    source_map = candidate_sources or {}
+    groups: dict[str, list[dict[str, str]]] = {}
+    for entry in entries:
+        source = source_map.get(entry['url'], entry['url'])
+        groups.setdefault(source, []).append(entry)
+
+    base_by_entry: dict[int, str] = {}
+    for source, items in groups.items():
+        default_base = web_queue_source_base(source)
+        custom_bases: list[str] = []
+        for item in items:
+            title_base = _web_title_base(item['title'])
+            if title_base != default_base and title_base not in custom_bases:
+                custom_bases.append(title_base)
+        fallback_base = custom_bases[0] if custom_bases else default_base
+        total = len(items)
+        for index, item in enumerate(items, start=1):
+            item_base = _web_title_base(item['title'])
+            default_title = web_queue_numbered_title(default_base, index, total)
+            base_by_entry[id(item)] = item_base if item['title'] != default_title else fallback_base
+
+    base_counts: dict[str, int] = {}
+    for entry in entries:
+        base = base_by_entry.get(id(entry), _web_title_base(entry['title']))
+        base_counts[base] = base_counts.get(base, 0) + 1
+
+    base_seen: dict[str, int] = {}
+    tasks: list[dict[str, str]] = []
+    for entry in entries:
+        base = base_by_entry.get(id(entry), _web_title_base(entry['title']))
+        base_seen[base] = base_seen.get(base, 0) + 1
+        title = web_queue_numbered_title(base, base_seen[base], base_counts[base])
+        tasks.append({'title': title, 'url': entry['url']})
+    return tasks
 
 def format_backend_status(status: dict[str, dict[str, object]]) -> str:
     lines: list[str] = []

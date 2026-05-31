@@ -1110,9 +1110,17 @@ def _download_url_with_ytdlp(
         progress_cb,
         lambda opts: YoutubeDL(opts).extract_info(source_url, download=False),
     )
-    title = _s.sanitize_filename_component(str(info.get('title') or title_hint or 'video'))
+    title = _s.sanitize_filename_component(str(title_hint or info.get('title') or 'video'))
     media_id = _s.sanitize_filename_component(str(info.get('id') or 'video'))
-    base_stem = options.filename_template.replace('%(title)s', title).replace('%(id)s', media_id).replace('.%(ext)s', '')
+    if title_hint:
+        base_stem = title
+    else:
+        base_stem = (
+            options.filename_template
+            .replace('%(title)s', title)
+            .replace('%(id)s', media_id)
+            .replace('.%(ext)s', '')
+        )
     unique_stem = _s.ensure_unique_stem(output_root, base_stem)
     ydl_opts = {
         'format': 'bv*+ba/b',

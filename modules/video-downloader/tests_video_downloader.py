@@ -915,6 +915,57 @@ def test_download_url_with_ytdlp_auto_fills_missing_cover_after_aria2_download()
         wb.embed_thumbnail = original_embed
 
 
+def test_download_url_with_ytdlp_uses_custom_title_as_exact_stem():
+    module = load_module()
+    wb = load_web_backend()
+    sh = load_shared()
+    fake_ytdlp = types.ModuleType('yt_dlp')
+
+    class FakeYoutubeDL:
+        def __init__(self, opts):
+            self.opts = opts
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def extract_info(self, url, download=False):
+            if not download:
+                return {'title': 'Site Title', 'id': 'abc'}
+            pathlib.Path(str(self.opts['outtmpl']).replace('%(ext)s', 'mp4')).write_text('ok', encoding='utf-8')
+            return {'ok': True}
+
+    original_module = sys.modules.get('yt_dlp')
+    original_require = wb._require_web_backend
+    original_resolve_aria2 = sh._resolve_aria2c_path
+    original_ffmpeg = wb.shutil.which
+    try:
+        sys.modules['yt_dlp'] = fake_ytdlp
+        fake_ytdlp.YoutubeDL = FakeYoutubeDL
+        wb._require_web_backend = lambda: None
+        sh._resolve_aria2c_path = lambda: ''
+        wb.shutil.which = lambda name: ''
+        with tempfile.TemporaryDirectory() as tmp:
+            result = wb._download_url_with_ytdlp(
+                'https://example.com/video',
+                pathlib.Path(tmp),
+                module.DownloadOptions(),
+                None,
+                title_hint='自定义名字',
+            )
+        assert pathlib.Path(result['files'][0]).name == '自定义名字.mp4'
+    finally:
+        if original_module is None:
+            sys.modules.pop('yt_dlp', None)
+        else:
+            sys.modules['yt_dlp'] = original_module
+        wb._require_web_backend = original_require
+        sh._resolve_aria2c_path = original_resolve_aria2
+        wb.shutil.which = original_ffmpeg
+
+
 def test_embed_thumbnail_prefers_page_thumbnail_for_selected_candidate():
     wb = load_web_backend()
     fake_ytdlp = types.ModuleType('yt_dlp')
@@ -1734,6 +1785,7 @@ def test_format_web_candidate_lines_uses_requested_queue_text():
     tab_module = load_tab_module()
     lines = tab_module.format_web_candidate_lines([
         {
+            'source_url': 'https://example.com/course',
             'success': True,
             'candidates': [
                 'https://cdn.example.com/a.mp4',
@@ -1742,24 +1794,60 @@ def test_format_web_candidate_lines_uses_requested_queue_text():
         }
     ])
     assert lines == [
-        '1.网页第1个视频：https://cdn.example.com/a.mp4',
-        '2.网页第2个视频：https://cdn.example.com/b.mp4',
+        '1.course_001：https://cdn.example.com/a.mp4',
+        '2.course_002：https://cdn.example.com/b.mp4',
     ]
 
 
 def test_append_web_queue_text_deduplicates_and_renumbers():
     tab_module = load_tab_module()
     merged = tab_module.append_web_queue_text(
-        '9.网页第3个视频：https://cdn.example.com/existing.mp4',
+        '9.旧名字：https://cdn.example.com/existing.mp4',
         '\n'.join([
-            '1.网页第1个视频：https://cdn.example.com/existing.mp4',
-            '2.网页第2个视频：https://cdn.example.com/new.mp4',
+            '1.course_001：https://cdn.example.com/existing.mp4',
+            '2.course_002：https://cdn.example.com/new.mp4',
         ]),
     )
     assert merged == '\n'.join([
-        '1.网页第3个视频：https://cdn.example.com/existing.mp4',
-        '2.网页第2个视频：https://cdn.example.com/new.mp4',
+        '1.旧名字：https://cdn.example.com/existing.mp4',
+        '2.course_002：https://cdn.example.com/new.mp4',
     ])
+
+
+def test_build_web_queue_tasks_applies_one_custom_name_to_same_source():
+    tab_module = load_tab_module()
+    tasks = tab_module.build_web_queue_tasks(
+        [
+            '1.课程：https://cdn.example.com/a.mp4',
+            '2.course_002：https://cdn.example.com/b.mp4',
+        ],
+        {
+            'https://cdn.example.com/a.mp4': 'https://example.com/course',
+            'https://cdn.example.com/b.mp4': 'https://example.com/course',
+        },
+    )
+    assert tasks == [
+        {'title': '课程_001', 'url': 'https://cdn.example.com/a.mp4'},
+        {'title': '课程_002', 'url': 'https://cdn.example.com/b.mp4'},
+    ]
+
+
+def test_build_web_queue_tasks_keeps_two_custom_names_for_same_source():
+    tab_module = load_tab_module()
+    tasks = tab_module.build_web_queue_tasks(
+        [
+            '1.片头：https://cdn.example.com/a.mp4',
+            '2.正片：https://cdn.example.com/b.mp4',
+        ],
+        {
+            'https://cdn.example.com/a.mp4': 'https://example.com/course',
+            'https://cdn.example.com/b.mp4': 'https://example.com/course',
+        },
+    )
+    assert tasks == [
+        {'title': '片头', 'url': 'https://cdn.example.com/a.mp4'},
+        {'title': '正片', 'url': 'https://cdn.example.com/b.mp4'},
+    ]
 
 
 def test_summarize_download_results_includes_counts():
