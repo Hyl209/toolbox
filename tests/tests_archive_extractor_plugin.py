@@ -12,10 +12,17 @@ ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_DIR = ROOT / "plugins" / "archive_extractor"
 
 
+_cached_converter = None
+
+
 def _load_converter():
+    global _cached_converter
+    if _cached_converter is not None:
+        return _cached_converter
     spec = importlib.util.spec_from_file_location("archive_extractor_converter_test", PLUGIN_DIR / "converter.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    _cached_converter = module
     return module
 
 

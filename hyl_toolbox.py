@@ -125,7 +125,16 @@ FILE_SORTER_DIR = ROOT / 'modules' / 'file-sorter'
 SAME_DIR = ROOT / 'modules' / 'duplicate-finder'
 LOGO_PATH = ROOT / 'logo.png'
 SOUND_PATH = ROOT / 'sound.mp3'
-WEIXIN_IMAGE_PATH = next((p for p in (MUSIC_DIR / 'weixin.png', ROOT / 'weixin.png') if p.exists()), None)
+_WEIXIN_IMAGE_PATH = None
+_WEIXIN_IMAGE_PATH_RESOLVED = False
+
+
+def _get_weixin_image_path():
+    global _WEIXIN_IMAGE_PATH, _WEIXIN_IMAGE_PATH_RESOLVED
+    if not _WEIXIN_IMAGE_PATH_RESOLVED:
+        _WEIXIN_IMAGE_PATH = next((p for p in (MUSIC_DIR / 'weixin.png', ROOT / 'weixin.png') if p.exists()), None)
+        _WEIXIN_IMAGE_PATH_RESOLVED = True
+    return _WEIXIN_IMAGE_PATH
 THEMES_DIR = ROOT / "themes"
 
 
@@ -919,6 +928,12 @@ else:
 
     def main():
         raise RuntimeError('PySide6 is not installed in this Python environment')
+
+
+def __getattr__(name: str):
+    if name == 'WEIXIN_IMAGE_PATH':
+        return _get_weixin_image_path()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 if __name__ == '__main__':

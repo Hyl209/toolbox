@@ -145,12 +145,21 @@ class ResourceManager:
         return 0
 
     def get_total_size(self) -> dict[str, int]:
-        """获取所有目录大小"""
-        return {
-            'resources': self._get_dir_size(self._resources_dir),
-            'temp': self._get_dir_size(self._temp_dir),
-            'cache': self._get_dir_size(self._cache_dir)
+        """获取所有目录大小（单次遍历）"""
+        sizes = {'resources': 0, 'temp': 0, 'cache': 0}
+        dir_map = {
+            self._resources_dir: 'resources',
+            self._temp_dir: 'temp',
+            self._cache_dir: 'cache',
         }
+        try:
+            for directory, key in dir_map.items():
+                for item in directory.rglob("*"):
+                    if item.is_file():
+                        sizes[key] += item.stat().st_size
+        except Exception as e:
+            logger.error("计算目录大小失败: %s", e)
+        return sizes
 
     def _get_dir_size(self, directory: Path) -> int:
         """获取目录大小"""

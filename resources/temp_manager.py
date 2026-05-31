@@ -99,23 +99,20 @@ class TempManager:
         logger.info("清理所有临时文件完成")
 
     def cleanup_old(self, max_age_hours: int = 24):
-        """清理过期的临时文件"""
+        """清理过期的临时文件（单次自底向上遍历）"""
         current_time = time.time()
         max_age_seconds = max_age_hours * 3600
 
         try:
             removed_files = 0
-            for item in self.temp_dir.rglob("*"):
+            removed_dirs = 0
+            for item in sorted(self.temp_dir.rglob("*"), reverse=True):
                 if item.is_file():
                     file_age = current_time - item.stat().st_mtime
                     if file_age > max_age_seconds:
                         item.unlink()
                         removed_files += 1
-
-            # 清理空目录
-            removed_dirs = 0
-            for item in self.temp_dir.rglob("*"):
-                if item.is_dir() and not any(item.iterdir()):
+                elif item.is_dir() and not any(item.iterdir()):
                     item.rmdir()
                     removed_dirs += 1
 
@@ -128,37 +125,32 @@ class TempManager:
         except Exception as e:
             logger.error("清理过期临时文件失败: %s", e)
 
-    def get_temp_size(self) -> int:
-        """获取临时文件总大小"""
+    def _scan_temp_files(self) -> tuple[list[Path], int, int]:
+        """单次 rglob 遍历返回 (文件列表, 总大小, 文件数)"""
+        files: list[Path] = []
         total_size = 0
         try:
             for item in self.temp_dir.rglob("*"):
                 if item.is_file():
+                    files.append(item)
                     total_size += item.stat().st_size
         except Exception as e:
-            logger.error("计算临时文件大小失败: %s", e)
+            logger.error("扫描临时文件失败: %s", e)
+        return files, total_size, len(files)
+
+    def get_temp_size(self) -> int:
+        """获取临时文件总大小"""
+        _, total_size, _ = self._scan_temp_files()
         return total_size
 
     def get_temp_count(self) -> int:
         """获取临时文件数量"""
-        count = 0
-        try:
-            for item in self.temp_dir.rglob("*"):
-                if item.is_file():
-                    count += 1
-        except Exception as e:
-            logger.error("计算临时文件数量失败: %s", e)
+        _, _, count = self._scan_temp_files()
         return count
 
     def list_temp_files(self) -> list[Path]:
         """列出所有临时文件"""
-        files = []
-        try:
-            for item in self.temp_dir.rglob("*"):
-                if item.is_file():
-                    files.append(item)
-        except Exception as e:
-            logger.error("列出临时文件失败: %s", e)
+        files, _, _ = self._scan_temp_files()
         return files
 
     def create_temp_copy(self, source: str | Path, name: str = None) -> Path:

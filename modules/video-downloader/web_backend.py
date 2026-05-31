@@ -47,6 +47,8 @@ from .source_parser import (
 ARIA2_PROGRESS_RE = re.compile(r'\((?P<percent>\d+(?:\.\d+)?)%\).*?\bDL:(?P<speed>[^\s\]]+)(?:.*?\bETA:(?P<eta>[^\s\]]+))?', re.IGNORECASE)
 MEDIA_URL_RE = re.compile(r"""(?P<url>(?:https?:)?//[^"'\\\s<>]+?\.(?:mp4|m3u8|webm|mov|m4v)(?:\?[^"'\\\s<>]*)?)""", re.IGNORECASE)
 RELATIVE_MEDIA_RE = re.compile(r"""(?P<url>/[^"'\\\s<>]+?\.(?:mp4|m3u8|webm|mov|m4v)(?:\?[^"'\\\s<>]*)?)""", re.IGNORECASE)
+_ARIA2_ETA_RE = re.compile(r'(\d+)([hms])')
+_DOUYIN_PLAYWM_RE = re.compile(r'/playwm(?=[/?])')
 ARIA2_VERSION = '1.37.0'
 ARIA2_SOURCE_URL = 'https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip'
 COOKIE_RETRY_BROWSERS = ('chrome', 'firefox', 'edge')
@@ -141,7 +143,7 @@ def _normalize_aria2_eta(text: str) -> str:
     if not value:
         return ''
     total = 0
-    for amount, unit in re.findall(r'(\d+)([hms])', value.lower()):
+    for amount, unit in _ARIA2_ETA_RE.findall(value.lower()):
         number = int(amount)
         if unit == 'h':
             total += number * 3600
@@ -278,7 +280,7 @@ def _normalize_douyin_play_url(url: str) -> str:
     text = str(url or '').strip()
     if not text:
         return ''
-    return re.sub(r'/playwm(?=[/?])', '/play', text)
+    return _DOUYIN_PLAYWM_RE.sub('/play', text)
 
 
 def _is_douyin_direct_play_url(url: str) -> bool:
