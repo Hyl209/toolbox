@@ -8,6 +8,7 @@ from pathlib import Path
 
 from toolbox_app.dynamic_modules import DynamicModuleLoader
 from toolbox_app.tool_tabs import build_external_tab_classes
+from toolbox_app.tool_registry import get_dynamic_module_specs
 from toolbox_app.auth_dialog import build_auth_dialog_class
 from toolbox_app.settings_dialog import build_settings_dialog_class
 from toolbox_app.window import build_toolbox_window_class
@@ -187,28 +188,7 @@ class IniSettings:
         return 'default', key
 
 
-_dynamic_modules = DynamicModuleLoader({
-    'zip': ('zipandpng_module', ZIP_DIR / 'zipandpng.py'),
-    'ncm': ('music_ncm_to_mp3', MUSIC_DIR / 'ncm_to_mp3.py'),
-    'mp4': ('mp4_converter_module', MP4_DIR / 'converter.py'),
-    'image_convert': ('image_convert_module', IMAGE_CONVERT_DIR / 'converter.py'),
-    'pdf_tools': ('pdf_tools_module', PDF_TOOLS_DIR / 'converter.py'),
-    'video_downloader': ('video_downloader_module', VIDEO_DOWNLOADER_DIR / 'converter.py'),
-    'video_downloader_tab': ('video_downloader_tab_module', VIDEO_DOWNLOADER_DIR / 'tab.py'),
-    'file_sorter': ('file_sorter_module', FILE_SORTER_DIR / 'converter.py'),
-    'file_sorter_tab': ('file_sorter_tab_module', FILE_SORTER_DIR / 'tab.py'),
-    'name': ('batch_rename_module', NAME_DIR / 'converter.py'),
-    'name_tab': ('batch_rename_tab_module', NAME_DIR / 'tab.py'),
-    'same': ('same_converter_module', SAME_DIR / 'converter.py'),
-    'base64': ('base64_converter_module', BASE64_DIR / 'converter.py'),
-    'music_tab': ('music_tab_module', MUSIC_DIR / 'tab.py'),
-    'zip_tab': ('zip_tab_module', ZIP_DIR / 'tab.py'),
-    'base64_tab': ('base64_tab_module', BASE64_DIR / 'tab.py'),
-    'same_tab': ('same_tab_module', SAME_DIR / 'tab.py'),
-    'mp4_tab': ('mp4_tab_module', MP4_DIR / 'tab.py'),
-    'image_convert_tab': ('image_convert_tab_module', IMAGE_CONVERT_DIR / 'tab.py'),
-    'pdf_tools_tab': ('pdf_tools_tab_module', PDF_TOOLS_DIR / 'tab.py'),
-})
+_dynamic_modules = DynamicModuleLoader(get_dynamic_module_specs(ROOT))
 
 
 def _load_module(module_name: str, file_path: Path):

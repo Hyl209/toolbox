@@ -43,6 +43,34 @@ TOOL_BY_ID = {t.id: t for t in TOOL_DEFINITIONS}
 TOOL_IDS = [t.id for t in TOOL_DEFINITIONS]
 SIDEBAR_LABELS = [t.sidebar_label for t in TOOL_DEFINITIONS]
 
+_CONVERTER_KEYS_BY_TOOL_ID = {
+    'music': ('ncm', 'music'),
+    'zipandpng': ('zip', 'zipandpng'),
+    'mp4mp3': ('mp4', 'mp4mp3'),
+    'imageconvert': ('image_convert', 'imageconvert'),
+    'pdftools': ('pdf_tools', 'pdftools'),
+    'tgdownloader': ('video_downloader', 'tgdownloader'),
+    'webvideodownloader': ('webvideodownloader',),
+    'batchrename': ('name', 'batchrename'),
+    'filesorter': ('file_sorter', 'filesorter'),
+    'same': ('same',),
+    'base64': ('base64',),
+}
+
+_TAB_KEYS_BY_TOOL_ID = {
+    'music': ('music_tab',),
+    'zipandpng': ('zip_tab', 'zipandpng_tab'),
+    'mp4mp3': ('mp4_tab', 'mp4mp3_tab'),
+    'imageconvert': ('image_convert_tab', 'imageconvert_tab'),
+    'pdftools': ('pdf_tools_tab', 'pdftools_tab'),
+    'tgdownloader': ('video_downloader_tab', 'tgdownloader_tab'),
+    'webvideodownloader': ('webvideodownloader_tab',),
+    'batchrename': ('name_tab', 'batchrename_tab'),
+    'filesorter': ('file_sorter_tab', 'filesorter_tab'),
+    'same': ('same_tab',),
+    'base64': ('base64_tab',),
+}
+
 
 def get_tool_definitions() -> list[dict]:
     """Return tool definitions as plain dicts (backward-compatible)."""
@@ -57,15 +85,10 @@ def get_dynamic_module_specs(root: Path) -> dict[str, tuple[str, Path]]:
     specs: dict[str, tuple[str, Path]] = {}
     for t in TOOL_DEFINITIONS:
         dir_path = root / t.dir_name
-        # converter modules
-        conv_key = t.id.replace('mp3', '') if t.id == 'mp4mp3' else t.id
-        conv_module_name = f'{conv_key}_module'
-        specs[conv_key] = (conv_module_name, dir_path / t.converter_file)
-        # tab modules
-        tab_key = f'{t.id}_tab' if t.id not in ('music',) else 'music_tab'
-        tab_module_name = f'{tab_key}_module'
-        specs.setdefault(tab_key, (tab_module_name, dir_path / t.tab_file))
-    # legacy aliases
+        for key in _CONVERTER_KEYS_BY_TOOL_ID[t.id]:
+            specs.setdefault(key, (f'{key}_module', dir_path / t.converter_file))
+        for key in _TAB_KEYS_BY_TOOL_ID[t.id]:
+            specs.setdefault(key, (f'{key}_module', dir_path / t.tab_file))
     specs['ncm'] = ('music_ncm_to_mp3', root / 'modules' / 'ncm-converter' / 'ncm_to_mp3.py')
     return specs
 
