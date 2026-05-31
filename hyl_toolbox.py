@@ -7,7 +7,6 @@ from configparser import ConfigParser
 from pathlib import Path
 
 from toolbox_app.dynamic_modules import DynamicModuleLoader
-from toolbox_app.tool_tabs import build_external_tab_classes
 from toolbox_app.tool_registry import get_dynamic_module_specs
 from toolbox_app.auth_dialog import build_auth_dialog_class
 from toolbox_app.settings_dialog import build_settings_dialog_class
@@ -186,6 +185,20 @@ class IniSettings:
             section, option = key.split('/', 1)
             return section, option
         return 'default', key
+
+
+class LazyTabClass:
+    def __init__(self, module_loader, builder_name: str, deps: dict):
+        self._module_loader = module_loader
+        self._builder_name = builder_name
+        self._deps = deps
+        self._tab_class = None
+
+    def __call__(self, *args, **kwargs):
+        if self._tab_class is None:
+            builder = getattr(self._module_loader(), self._builder_name)
+            self._tab_class = builder(self._deps)
+        return self._tab_class(*args, **kwargs)
 
 
 _dynamic_modules = DynamicModuleLoader(get_dynamic_module_specs(ROOT))
@@ -608,47 +621,86 @@ if QWidget is not None:
         'QColorDialog': QColorDialog,
     })
 
-    _external_tab_classes = build_external_tab_classes(
-        {
-            'QWidget': QWidget,
-            'QVBoxLayout': QVBoxLayout,
-            'QHBoxLayout': QHBoxLayout,
-            'QScrollArea': QScrollArea,
-            'QLineEdit': QLineEdit,
-            'QPushButton': QPushButton,
-            'QLabel': QLabel,
-            'QCheckBox': QCheckBox,
-            'QPlainTextEdit': QPlainTextEdit,
-            'QFileDialog': QFileDialog,
-            'QApplication': QApplication,
-            'QComboBox': QComboBox,
-            'QProgressBar': QProgressBar,
-            'QObject': QObject,
-            'QThread': QThread,
-            'Signal': Signal,
-            'load_setting': load_setting,
-            'save_setting': save_setting,
-            'make_card': make_card,
-            'make_transparent_row': make_transparent_row,
-            'build_global_scrollbar_style': build_global_scrollbar_style,
-            'show_themed_warning': show_themed_warning,
-            'show_themed_error': show_themed_error,
-            'show_themed_success': show_themed_success,
-            'style_combo_popup': style_combo_popup,
-            'get_file_sorter_module': get_file_sorter_module,
-            'get_name_module': get_name_module,
-            'get_video_downloader_module': get_video_downloader_module,
-            '_load_file_sorter_tab_module': _load_file_sorter_tab_module,
-            '_load_name_tab_module': _load_name_tab_module,
-            '_load_video_downloader_tab_module': _load_video_downloader_tab_module,
-            'ROOT': ROOT,
-            'VIDEO_DOWNLOADER_DIR': VIDEO_DOWNLOADER_DIR,
-        }
-    )
-    FileSorterTab = _external_tab_classes['FileSorterTab']
-    BatchRenameTab = _external_tab_classes['BatchRenameTab']
-    VideoDownloaderTab = _external_tab_classes['VideoDownloaderTab']
-    MusicTab = _load_music_tab_module().build_music_tab_class({
+    FileSorterTab = LazyTabClass(_load_file_sorter_tab_module, 'build_file_sorter_tab_class', {
+        'QWidget': QWidget,
+        'QVBoxLayout': QVBoxLayout,
+        'QHBoxLayout': QHBoxLayout,
+        'QScrollArea': QScrollArea,
+        'QLineEdit': QLineEdit,
+        'QPushButton': QPushButton,
+        'QLabel': QLabel,
+        'QCheckBox': QCheckBox,
+        'QPlainTextEdit': QPlainTextEdit,
+        'QFileDialog': QFileDialog,
+        'QApplication': QApplication,
+        'QComboBox': QComboBox,
+        'load_setting': load_setting,
+        'save_setting': save_setting,
+        'make_card': make_card,
+        'make_transparent_row': make_transparent_row,
+        'build_global_scrollbar_style': build_global_scrollbar_style,
+        'show_themed_warning': show_themed_warning,
+        'show_themed_error': show_themed_error,
+        'show_themed_success': show_themed_success,
+        'style_combo_popup': style_combo_popup,
+        'get_file_sorter_module': get_file_sorter_module,
+        'ROOT': ROOT,
+    })
+    BatchRenameTab = LazyTabClass(_load_name_tab_module, 'build_batch_rename_tab_class', {
+        'QWidget': QWidget,
+        'QVBoxLayout': QVBoxLayout,
+        'QHBoxLayout': QHBoxLayout,
+        'QScrollArea': QScrollArea,
+        'QLineEdit': QLineEdit,
+        'QPushButton': QPushButton,
+        'QLabel': QLabel,
+        'QPlainTextEdit': QPlainTextEdit,
+        'QFileDialog': QFileDialog,
+        'QApplication': QApplication,
+        'QComboBox': QComboBox,
+        'load_setting': load_setting,
+        'save_setting': save_setting,
+        'make_card': make_card,
+        'make_transparent_row': make_transparent_row,
+        'build_global_scrollbar_style': build_global_scrollbar_style,
+        'show_themed_warning': show_themed_warning,
+        'show_themed_error': show_themed_error,
+        'show_themed_success': show_themed_success,
+        'style_combo_popup': style_combo_popup,
+        'get_name_module': get_name_module,
+        'ROOT': ROOT,
+    })
+    VideoDownloaderTab = LazyTabClass(_load_video_downloader_tab_module, 'build_video_downloader_tab_class', {
+        'QWidget': QWidget,
+        'QVBoxLayout': QVBoxLayout,
+        'QHBoxLayout': QHBoxLayout,
+        'QScrollArea': QScrollArea,
+        'QLineEdit': QLineEdit,
+        'QPushButton': QPushButton,
+        'QLabel': QLabel,
+        'QCheckBox': QCheckBox,
+        'QComboBox': QComboBox,
+        'QPlainTextEdit': QPlainTextEdit,
+        'QProgressBar': QProgressBar,
+        'QFileDialog': QFileDialog,
+        'QApplication': QApplication,
+        'QObject': QObject,
+        'QThread': QThread,
+        'Signal': Signal,
+        'load_setting': load_setting,
+        'save_setting': save_setting,
+        'make_card': make_card,
+        'make_transparent_row': make_transparent_row,
+        'build_global_scrollbar_style': build_global_scrollbar_style,
+        'show_themed_warning': show_themed_warning,
+        'show_themed_error': show_themed_error,
+        'show_themed_success': show_themed_success,
+        'style_combo_popup': style_combo_popup,
+        'get_video_downloader_module': get_video_downloader_module,
+        'ROOT': ROOT,
+        'VIDEO_DOWNLOADER_DIR': VIDEO_DOWNLOADER_DIR,
+    })
+    MusicTab = LazyTabClass(_load_music_tab_module, 'build_music_tab_class', {
         'QWidget': QWidget,
         'QVBoxLayout': QVBoxLayout,
         'QHBoxLayout': QHBoxLayout,
@@ -675,7 +727,7 @@ if QWidget is not None:
         'load_pixmap_from_data_url': load_pixmap_from_data_url,
         'ROOT': ROOT,
     })
-    ZipAndPngTab = _load_zip_tab_module().build_zipandpng_tab_class({
+    ZipAndPngTab = LazyTabClass(_load_zip_tab_module, 'build_zipandpng_tab_class', {
         'QWidget': QWidget,
         'QVBoxLayout': QVBoxLayout,
         'QHBoxLayout': QHBoxLayout,
@@ -698,7 +750,7 @@ if QWidget is not None:
         'get_zip_module': get_zip_module,
         'ROOT': ROOT,
     })
-    Mp4ToMp3Tab = _load_mp4_tab_module().build_mp4_tab_class({
+    Mp4ToMp3Tab = LazyTabClass(_load_mp4_tab_module, 'build_mp4_tab_class', {
         'QWidget': QWidget,
         'QVBoxLayout': QVBoxLayout,
         'QHBoxLayout': QHBoxLayout,
@@ -719,7 +771,7 @@ if QWidget is not None:
         'show_themed_success': show_themed_success,
         'ROOT': ROOT,
     })
-    ImageConvertTab = _load_image_convert_tab_module().build_image_convert_tab_class({
+    ImageConvertTab = LazyTabClass(_load_image_convert_tab_module, 'build_image_convert_tab_class', {
         'QWidget': QWidget,
         'QVBoxLayout': QVBoxLayout,
         'QHBoxLayout': QHBoxLayout,
@@ -745,7 +797,7 @@ if QWidget is not None:
         'get_image_convert_module': get_image_convert_module,
         'ROOT': ROOT,
     })
-    PdfToolsTab = _load_pdf_tools_tab_module().build_pdf_tools_tab_class({
+    PdfToolsTab = LazyTabClass(_load_pdf_tools_tab_module, 'build_pdf_tools_tab_class', {
         'QWidget': QWidget,
         'QVBoxLayout': QVBoxLayout,
         'QHBoxLayout': QHBoxLayout,
@@ -771,7 +823,7 @@ if QWidget is not None:
         'get_pdf_tools_module': get_pdf_tools_module,
         'ROOT': ROOT,
     })
-    Base64Tab = _load_base64_tab_module().build_base64_tab_class({
+    Base64Tab = LazyTabClass(_load_base64_tab_module, 'build_base64_tab_class', {
         'QWidget': QWidget,
         'QVBoxLayout': QVBoxLayout,
         'QHBoxLayout': QHBoxLayout,
@@ -797,7 +849,7 @@ if QWidget is not None:
         'get_base64_module': get_base64_module,
         'ROOT': ROOT,
     })
-    SameTab = _load_same_tab_module().build_same_tab_class({
+    SameTab = LazyTabClass(_load_same_tab_module, 'build_same_tab_class', {
         'QWidget': QWidget,
         'QVBoxLayout': QVBoxLayout,
         'QHBoxLayout': QHBoxLayout,
