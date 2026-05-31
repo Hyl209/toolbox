@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
+import functools
 import os
 import shutil
 import threading
@@ -41,15 +42,21 @@ VIDEO_PARALLEL_WORKERS = max(2, min(6, os.cpu_count() or 4))
 _CACHE_MAX_SIZE = 2048
 
 
+@functools.lru_cache(maxsize=1)
+def _cached_ffprobe_path() -> str | None:
+    return shutil.which('ffprobe')
+
+
+@functools.lru_cache(maxsize=1)
+def _cached_ffmpeg_path() -> str | None:
+    return shutil.which('ffmpeg')
+
+
 def __getattr__(name: str):
     if name == 'FFPROBE_PATH':
-        value = shutil.which('ffprobe')
-        globals()['FFPROBE_PATH'] = value
-        return value
+        return _cached_ffprobe_path()
     if name == 'FFMPEG_PATH':
-        value = shutil.which('ffmpeg')
-        globals()['FFMPEG_PATH'] = value
-        return value
+        return _cached_ffmpeg_path()
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 

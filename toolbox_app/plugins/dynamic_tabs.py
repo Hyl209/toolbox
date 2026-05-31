@@ -30,7 +30,7 @@ class DynamicTabLoader:
     def register_tab(self, name: str, builder: Callable[..., Any]) -> None:
         """注册 tab builder 函数"""
         self._registry[name] = builder
-        logger.debug(f'注册 tab: {name}')
+        logger.debug('注册 tab: %s', name)
 
     def register_tabs(self, mapping: dict[str, Callable[..., Any]]) -> None:
         """批量注册 tab"""
@@ -54,7 +54,7 @@ class DynamicTabLoader:
         if builder is None:
             raise KeyError(f'未注册的 tab: {tab_name}')
 
-        logger.info(f'动态加载 tab: {tab_name}')
+        logger.info('动态加载 tab: %s', tab_name)
         tab_class = builder(deps)
         tab_instance = tab_class(deps.get('settings'))
         self._cache[tab_name] = tab_instance

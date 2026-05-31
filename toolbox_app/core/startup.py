@@ -51,7 +51,7 @@ class StartupManager:
                 importlib.import_module(import_name)
             except ImportError:
                 missing.append(f'{package} ({desc})')
-                logger.warning(f'缺失依赖: {package}')
+                logger.warning('缺失依赖: %s', package)
         if missing:
             logger.warning('缺失 %s 个依赖', len(missing))
         else:
