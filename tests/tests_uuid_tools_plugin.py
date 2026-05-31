@@ -4,8 +4,6 @@ import importlib.util
 import uuid
 from pathlib import Path
 
-from toolbox_app.plugins.manager import PluginManager, reset_plugin_manager
-
 
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_DIR = ROOT / "plugins" / "uuid_tools"
@@ -25,15 +23,11 @@ def _load_converter():
     return module
 
 
-def test_uuid_tools_plugin_loads():
-    reset_plugin_manager()
-    manager = PluginManager(ROOT / "plugins")
-    found = manager.discover_plugins()
+def test_uuid_tools_plugin_loads(shared_plugin_manager):
+    found = shared_plugin_manager.discovery.discover_plugins()
     assert "uuid_tools" in found
     assert found["uuid_tools"].sidebar_label == "UUID 工具"
-    results = manager.load_all_plugins()
-    assert results.get("uuid_tools") is True
-    plugin = manager.get_plugin("uuid_tools")
+    plugin = shared_plugin_manager.get_plugin("uuid_tools")
     assert plugin is not None
     assert plugin.get_sidebar_label() == "UUID 工具"
 

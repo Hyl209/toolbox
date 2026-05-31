@@ -4,8 +4,6 @@ import hashlib
 import importlib.util
 from pathlib import Path
 
-from toolbox_app.plugins.manager import PluginManager, reset_plugin_manager
-
 
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_DIR = ROOT / "plugins" / "file_hasher"
@@ -25,14 +23,10 @@ def _load_converter():
     return module
 
 
-def test_file_hasher_plugin_loads():
-    reset_plugin_manager()
-    manager = PluginManager(ROOT / "plugins")
-    found = manager.discover_plugins()
+def test_file_hasher_plugin_loads(shared_plugin_manager):
+    found = shared_plugin_manager.discovery.discover_plugins()
     assert "file_hasher" in found
-    results = manager.load_all_plugins()
-    assert results.get("file_hasher") is True
-    plugin = manager.get_plugin("file_hasher")
+    plugin = shared_plugin_manager.get_plugin("file_hasher")
     assert plugin is not None
     assert plugin.get_sidebar_label() == "哈希校验"
 

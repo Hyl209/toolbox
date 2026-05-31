@@ -3,8 +3,6 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
-from toolbox_app.plugins.manager import PluginManager, reset_plugin_manager
-
 
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_DIR = ROOT / "plugins" / "url_tools"
@@ -24,15 +22,11 @@ def _load_converter():
     return module
 
 
-def test_url_tools_plugin_loads():
-    reset_plugin_manager()
-    manager = PluginManager(ROOT / "plugins")
-    found = manager.discover_plugins()
+def test_url_tools_plugin_loads(shared_plugin_manager):
+    found = shared_plugin_manager.discovery.discover_plugins()
     assert "url_tools" in found
     assert found["url_tools"].sidebar_label == "URL 工具"
-    results = manager.load_all_plugins()
-    assert results.get("url_tools") is True
-    plugin = manager.get_plugin("url_tools")
+    plugin = shared_plugin_manager.get_plugin("url_tools")
     assert plugin is not None
     assert plugin.get_sidebar_label() == "URL 工具"
 

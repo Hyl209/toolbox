@@ -5,8 +5,6 @@ import tarfile
 import zipfile
 from pathlib import Path
 
-from toolbox_app.plugins.manager import PluginManager, reset_plugin_manager
-
 
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_DIR = ROOT / "plugins" / "archive_extractor"
@@ -26,14 +24,10 @@ def _load_converter():
     return module
 
 
-def test_archive_extractor_plugin_loads():
-    reset_plugin_manager()
-    manager = PluginManager(ROOT / "plugins")
-    found = manager.discover_plugins()
+def test_archive_extractor_plugin_loads(shared_plugin_manager):
+    found = shared_plugin_manager.discovery.discover_plugins()
     assert "archive_extractor" in found
-    results = manager.load_all_plugins()
-    assert results.get("archive_extractor") is True
-    plugin = manager.get_plugin("archive_extractor")
+    plugin = shared_plugin_manager.get_plugin("archive_extractor")
     assert plugin is not None
     assert plugin.get_sidebar_label() == "解压"
 

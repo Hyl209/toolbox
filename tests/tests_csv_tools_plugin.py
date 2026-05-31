@@ -4,8 +4,6 @@ import importlib.util
 import json
 from pathlib import Path
 
-from toolbox_app.plugins.manager import PluginManager, reset_plugin_manager
-
 
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_DIR = ROOT / "plugins" / "csv_tools"
@@ -25,15 +23,11 @@ def _load_converter():
     return module
 
 
-def test_csv_tools_plugin_loads():
-    reset_plugin_manager()
-    manager = PluginManager(ROOT / "plugins")
-    found = manager.discover_plugins()
+def test_csv_tools_plugin_loads(shared_plugin_manager):
+    found = shared_plugin_manager.discovery.discover_plugins()
     assert "csv_tools" in found
     assert found["csv_tools"].sidebar_label == "CSV 工具"
-    results = manager.load_all_plugins()
-    assert results.get("csv_tools") is True
-    plugin = manager.get_plugin("csv_tools")
+    plugin = shared_plugin_manager.get_plugin("csv_tools")
     assert plugin is not None
     assert plugin.get_sidebar_label() == "CSV 工具"
 
