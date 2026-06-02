@@ -399,40 +399,68 @@ def _download_direct_media_file(
         suffix = '.mp4'
     base_stem = _s.ensure_unique_stem(output_root, _s.sanitize_filename_component(task.target_title or 'video'))
     output_path = _s.ensure_unique_path(output_root / f'{base_stem}{suffix}')
-    request = Request(media_url, headers=_s._build_web_headers(referer_url))
-    downloaded = 0
-    started_at = monotonic()
-    last_emit_at = started_at
-    token = _current_token()
-    try:
-        with urlopen(request, timeout=60) as response, output_path.open('wb') as fh:
-            total_bytes = int(response.headers.get('Content-Length') or 0)
-            while True:
-                if token is not None:
-                    _check_cancel(token)
-                chunk = response.read(256 * 1024)
-                if not chunk:
-                    break
-                fh.write(chunk)
-                downloaded += len(chunk)
-                now = monotonic()
-                if downloaded < total_bytes and now - last_emit_at < 0.35:
-                    continue
-                elapsed = max(now - started_at, 1e-6)
-                speed_text = _format_byte_rate(downloaded / elapsed)
-                percent_text = ''
-                eta_text = ''
-                if total_bytes > 0:
-                    percent_text = f'{downloaded * 100.0 / total_bytes:.2f}'
-                    if downloaded > 0 and downloaded < total_bytes:
-                        remaining = total_bytes - downloaded
-                        eta_text = _format_eta_seconds(int(remaining / max(downloaded / elapsed, 1e-6)))
-                _emit_web_transfer_progress(progress_cb, output_path.name, percent_text, speed_text, eta_text)
-                last_emit_at = now
-    except Exception:
-        if output_path.exists() and output_path.stat().st_size <= 0:
-            output_path.unlink(missing_ok=True)
-        raise
+    max_reconnects = 3
+    downloaded_total = 0
+    for reconnect_attempt in range(max_reconnects + 1):
+        headers = _s._build_web_headers(referer_url)
+        if downloaded_total > 0:
+            headers['Range'] = f'bytes={downloaded_total}-'
+        request = Request(media_url, headers=headers)
+        downloaded = 0
+        started_at = monotonic()
+        last_emit_at = started_at
+        token = _current_token()
+        should_reconnect = False
+        try:
+            with urlopen(request, timeout=60) as response:
+                # Verify server actually supports range requests
+                if downloaded_total > 0 and getattr(response, 'status', 200) != 206:
+                    downloaded_total = 0
+                mode = 'ab' if downloaded_total > 0 else 'wb'
+                with output_path.open(mode) as fh:
+                    raw_total = int(response.headers.get('Content-Length') or 0)
+                    # For 206 responses, Content-Length is remaining bytes; compute full size
+                    total_bytes = downloaded_total + raw_total if downloaded_total > 0 else raw_total
+                    while True:
+                        if token is not None:
+                            _check_cancel(token)
+                        _wait_if_paused(token, progress_cb)
+                        if token and token.reconnect.is_set():
+                            token.reconnect.clear()
+                            should_reconnect = True
+                            break
+                        chunk = response.read(256 * 1024)
+                        if not chunk:
+                            break
+                        fh.write(chunk)
+                        downloaded += len(chunk)
+                        now = monotonic()
+                        effective_downloaded = downloaded_total + downloaded
+                        if effective_downloaded < total_bytes and now - last_emit_at < 0.35:
+                            continue
+                        elapsed = max(now - started_at, 1e-6)
+                        speed_text = _format_byte_rate(downloaded / elapsed)
+                        percent_text = ''
+                        eta_text = ''
+                        if total_bytes > 0:
+                            percent_text = f'{effective_downloaded * 100.0 / total_bytes:.2f}'
+                            if effective_downloaded > 0 and effective_downloaded < total_bytes:
+                                remaining = total_bytes - effective_downloaded
+                                eta_text = _format_eta_seconds(int(remaining / max(downloaded / elapsed, 1e-6)))
+                        _emit_web_transfer_progress(progress_cb, output_path.name, percent_text, speed_text, eta_text)
+                        last_emit_at = now
+        except CancelledError:
+            raise
+        except Exception:
+            if output_path.exists() and output_path.stat().st_size <= 0:
+                output_path.unlink(missing_ok=True)
+            raise
+        downloaded_total += downloaded
+        if not should_reconnect:
+            break
+        if reconnect_attempt >= max_reconnects:
+            raise DownloadError('重连次数已达上限')
+        _emit(progress_cb, f'重连中... (第{reconnect_attempt + 1}次)')
     _emit(progress_cb, f'网页 OK -> {output_path.name}')
     return {
         'success': True,
@@ -524,7 +552,19 @@ def _speed_to_concurrency(bytes_per_sec: float) -> int:
 # ---------------------------------------------------------------------------
 def _run_web_task(task, output_root, options, progress_cb, token):
     _set_current_token(token)
+    _wait_if_paused(token, progress_cb)
     return _download_web_task(task, output_root, options, progress_cb)
+
+
+def _wait_if_paused(token: Token | None, progress_cb: ProgressCallback | None = None) -> None:
+    """Block until pause is cleared. Raises CancelledError if cancel is set."""
+    if token is None or not token.pause.is_set():
+        return
+    _emit(progress_cb, '下载已暂停')
+    while token.pause.is_set():
+        _check_cancel(token)
+        sleep(0.2)
+    _emit(progress_cb, '下载已恢复')
 
 
 def _download_web_entries(
@@ -556,13 +596,7 @@ def _download_web_sequential(
     remaining = len(web_entries)
     for index, task in web_entries:
         _check_cancel(_require_token())
-        token = _current_token()
-        if token and token.pause.is_set():
-            _emit(progress_cb, '下载已暂停')
-            while token.pause.is_set():
-                _check_cancel(token)
-                sleep(0.2)
-            _emit(progress_cb, '下载已恢复')
+        _wait_if_paused(_current_token(), progress_cb)
         _emit_task_start(progress_cb, index, total_tasks, task)
         _set_current_token(_require_token())
         try:
@@ -608,6 +642,7 @@ def _download_web_concurrent(
         pending = set(future_map)
         while pending:
             _check_cancel(token)
+            _wait_if_paused(token, progress_cb)
             try:
                 future = next(as_completed(tuple(pending), timeout=0.2))
             except FutureTimeoutError:
@@ -651,6 +686,7 @@ def _download_web_auto(
     for i in range(sample_count):
         tracker = _SpeedTracker(progress_cb)
         index, task = web_entries[i]
+        _wait_if_paused(_require_token(), progress_cb)
         _emit_task_start(progress_cb, index, total_tasks, task)
         _set_current_token(_require_token())
         try:
@@ -1541,78 +1577,94 @@ def _download_m3u8_with_ffmpeg(
     base_stem = _s.ensure_unique_stem(output_root, _s.sanitize_filename_component(task.target_title or 'video'))
     output_path = _s.ensure_unique_path(output_root / f'{base_stem}.mp4')
     total_duration = _probe_stream_duration(media_url, ffmpeg)
-    command = [
-        ffmpeg,
-        '-y' if options.overwrite else '-n',
-        '-reconnect', '1',
-        '-reconnect_streamed', '1',
-        '-reconnect_on_network_error', '1',
-        '-reconnect_on_http_error', '429,500,502,503,504',
-        '-reconnect_delay_max', '15',
-        '-rw_timeout', '30000000',
-        '-multiple_requests', '1',
-        '-user_agent', _s.WEB_USER_AGENT,
-        '-headers', _s._build_ffmpeg_header_text(referer_url),
-        '-i', media_url,
-        '-c', 'copy',
-        '-progress', 'pipe:1',
-        '-nostats',
-        '-loglevel', 'error',
-        str(output_path),
-    ]
-    proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    if proc.stdout is None:
-        raise RuntimeError('ffmpeg Popen 没有 stdout')
-    started = monotonic()
-    last_emit = 0.0
-    for line in proc.stdout:
-        token = _current_token()
-        if token and token.cancel.is_set():
-            proc.terminate()
+    max_reconnects = 3
+    for reconnect_attempt in range(max_reconnects + 1):
+        overwrite_flag = '-y' if options.overwrite or reconnect_attempt > 0 else '-n'
+        command = [
+            ffmpeg,
+            overwrite_flag,
+            '-reconnect', '1',
+            '-reconnect_streamed', '1',
+            '-reconnect_on_network_error', '1',
+            '-reconnect_on_http_error', '429,500,502,503,504',
+            '-reconnect_delay_max', '15',
+            '-rw_timeout', '30000000',
+            '-multiple_requests', '1',
+            '-user_agent', _s.WEB_USER_AGENT,
+            '-headers', _s._build_ffmpeg_header_text(referer_url),
+            '-i', media_url,
+            '-c', 'copy',
+            '-progress', 'pipe:1',
+            '-nostats',
+            '-loglevel', 'error',
+            str(output_path),
+        ]
+        proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if proc.stdout is None:
+            raise RuntimeError('ffmpeg Popen 没有 stdout')
+        started = monotonic()
+        last_emit = 0.0
+        should_reconnect = False
+        for line in proc.stdout:
+            token = _current_token()
+            if token and token.cancel.is_set():
+                _terminate_ffmpeg(proc)
+                raise CancelledError('ffmpeg 下载已取消')
             try:
-                proc.wait(timeout=3)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-            raise CancelledError('ffmpeg 下载已取消')
-        if token and token.reconnect.is_set():
-            proc.terminate()
-            try:
-                proc.wait(timeout=3)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-            raise CancelledError('ffmpeg 手动重连')
-        line = line.strip()
-        if not line.startswith('out_time='):
-            continue
-        time_val = line.split('=', 1)[1].strip()
-        if time_val == '00:00:00.000000':
-            continue
-        now = monotonic()
-        if now - last_emit < 0.5:
-            continue
-        last_emit = now
-        seconds = _parse_ffmpeg_time(time_val)
-        elapsed = max(now - started, 1e-6)
-        speed_text = _format_byte_rate(_estimate_download_rate(elapsed, seconds)) if seconds > 0 else ''
-        percent_text = ''
-        eta_text = ''
-        if total_duration and total_duration > 0 and seconds > 0:
-            percent_text = _format_progress_percent(min(seconds / total_duration * 100, 99.9))
-            remaining = max(0, total_duration - seconds)
-            if seconds > 0:
-                eta_sec = int(remaining * elapsed / seconds)
-                eta_text = _format_eta_seconds(eta_sec)
-        _emit(progress_cb, _build_download_log_message(output_path.name, speed_text, percent_text, eta_text))
-        _emit_web_transfer_progress(progress_cb, output_path.name, percent_text.replace('%', ''), speed_text, eta_text)
-    proc.wait()
-    if proc.returncode != 0:
-        stderr = (proc.stderr.read() if proc.stderr else '').strip()
-        raise DownloadError(stderr or 'ffmpeg 下载失败')
+                _wait_if_paused(token, progress_cb)
+            except CancelledError:
+                _terminate_ffmpeg(proc)
+                raise
+            if token and token.reconnect.is_set():
+                token.reconnect.clear()
+                _terminate_ffmpeg(proc)
+                should_reconnect = True
+                break
+            line = line.strip()
+            if not line.startswith('out_time='):
+                continue
+            time_val = line.split('=', 1)[1].strip()
+            if time_val == '00:00:00.000000':
+                continue
+            now = monotonic()
+            if now - last_emit < 0.5:
+                continue
+            last_emit = now
+            seconds = _parse_ffmpeg_time(time_val)
+            elapsed = max(now - started, 1e-6)
+            speed_text = _format_byte_rate(_estimate_download_rate(elapsed, seconds)) if seconds > 0 else ''
+            percent_text = ''
+            eta_text = ''
+            if total_duration and total_duration > 0 and seconds > 0:
+                percent_text = _format_progress_percent(min(seconds / total_duration * 100, 99.9))
+                remaining = max(0, total_duration - seconds)
+                if seconds > 0:
+                    eta_sec = int(remaining * elapsed / seconds)
+                    eta_text = _format_eta_seconds(eta_sec)
+            _emit(progress_cb, _build_download_log_message(output_path.name, speed_text, percent_text, eta_text))
+            _emit_web_transfer_progress(progress_cb, output_path.name, percent_text.replace('%', ''), speed_text, eta_text)
+        if not should_reconnect:
+            proc.wait()
+            if proc.returncode != 0:
+                stderr = (proc.stderr.read() if proc.stderr else '').strip()
+                raise DownloadError(stderr or 'ffmpeg 下载失败')
+            break
+        if reconnect_attempt >= max_reconnects:
+            raise DownloadError('重连次数已达上限')
+        _emit(progress_cb, f'重新下载中... (第{reconnect_attempt + 1}次)')
     _emit(progress_cb, f'网页 OK -> {output_path.name}')
     return {
         'success': True,
         'files': [output_path],
     }
+
+
+def _terminate_ffmpeg(proc: subprocess.Popen) -> None:
+    proc.terminate()
+    try:
+        proc.wait(timeout=3)
+    except subprocess.TimeoutExpired:
+        proc.kill()
 
 
 def _probe_stream_duration(url: str, ffmpeg_path: str = '') -> float | None:
@@ -1641,6 +1693,7 @@ def _make_web_progress_hook(progress_cb: ProgressCallback | None, token: Token |
             raise CancelledError('yt-dlp 下载已取消')
         if token and token.reconnect.is_set():
             raise CancelledError('手动重连')
+        _wait_if_paused(token, progress_cb)
         state = str(status.get('status') or '')
         if state == 'downloading':
             filename = Path(str(status.get('filename') or '')).name

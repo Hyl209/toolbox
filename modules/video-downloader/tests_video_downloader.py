@@ -648,6 +648,8 @@ def test_run_download_ignores_stale_web_candidate_text_when_all_candidates_check
                 self.log = types.SimpleNamespace(clear=lambda: None)
                 self.worker = None
                 self.worker_thread = None
+                self._downloaded_urls = set()
+                self._current_options = None
 
             def save_form_settings(self):
                 pass
@@ -692,6 +694,9 @@ def test_run_download_ignores_stale_web_candidate_text_when_all_candidates_check
 
             def _resolve_candidate_mode(self):
                 return 'pick'
+
+            def _start_worker(self, tasks, options=None):
+                self.module.download_batch(tasks, self.output_edit.text(), self.build_config(), options)
 
         tab = DummyTab()
         tab_class.run_download(tab)
@@ -1791,6 +1796,57 @@ def test_ffmpeg_m3u8_command_enables_reconnect_options():
         assert '-headers' in command
         assert any('Referer: https://example.com/post/1\r\n' in item for item in command)
     finally:
+        wb.subprocess.Popen = original_popen
+        wb._probe_stream_duration = original_probe
+
+
+def test_ffmpeg_m3u8_reconnect_overwrites_partial_output():
+    module = load_module()
+    wb = load_web_backend()
+    commands: list[list[str]] = []
+    original_popen = wb.subprocess.Popen
+    original_probe = wb._probe_stream_duration
+    token = module.Token()
+    token.reconnect.set()
+    try:
+        class FakeProcess:
+            def __init__(self, stdout):
+                self.stdout = stdout
+                self.stderr = None
+                self.returncode = 0
+
+            def terminate(self):
+                self.returncode = -15
+
+            def kill(self):
+                self.returncode = -9
+
+            def wait(self, timeout=None):
+                return self.returncode
+
+        def fake_popen(command, **kwargs):
+            commands.append(list(command))
+            stdout = ['out_time=00:00:01.000000\n'] if len(commands) == 1 else []
+            return FakeProcess(stdout)
+
+        wb.subprocess.Popen = fake_popen
+        wb._probe_stream_duration = lambda url, ffmpeg_path='': None
+        wb._set_current_token(token)
+        with tempfile.TemporaryDirectory() as tmp:
+            task = module.DownloadTask('https://example.com/post/1', 'web', 'demo')
+            wb._download_m3u8_with_ffmpeg(
+                'https://cdn.example.com/live.m3u8',
+                task,
+                pathlib.Path(tmp),
+                module.DownloadOptions(overwrite=False),
+                None,
+                ffmpeg_path='ffmpeg',
+            )
+        assert len(commands) == 2
+        assert commands[0][1] == '-n'
+        assert commands[1][1] == '-y'
+    finally:
+        wb._set_current_token(None)
         wb.subprocess.Popen = original_popen
         wb._probe_stream_duration = original_probe
 

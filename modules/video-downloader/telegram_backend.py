@@ -15,7 +15,7 @@ from .progress import (
     _emit, _emit_scan_progress, _emit_task_done, _emit_task_start,
     _make_telegram_progress_callback, _make_result,
 )
-from .source_parser import _coerce_tasks
+from .source_parser import _check_cancel, _coerce_tasks, _current_token
 
 
 def _require_telegram_backend() -> None:
@@ -134,7 +134,16 @@ async def _download_telegram_entries(
                 results[index] = _make_result(task, False, [], message)
                 _emit_task_done(progress_cb, len(results), total_tasks)
             return results
+        token = _current_token()
         for index, task in entries:
+            if token:
+                _check_cancel(token)
+                if token.pause.is_set():
+                    _emit(progress_cb, '下载已暂停')
+                    while token.pause.is_set():
+                        _check_cancel(token)
+                        await asyncio.sleep(0.2)
+                    _emit(progress_cb, '下载已恢复')
             _emit_task_start(progress_cb, index, total_tasks, task)
             try:
                 results[index] = await _download_single_telegram_task(client, task, output_root, options, progress_cb)
@@ -196,6 +205,9 @@ async def _download_single_telegram_task(client, task: DownloadTask, output_root
             continue
         matched_count += 1
         _emit_scan_progress(progress_cb, scanned_count, matched_count)
+        token = _current_token()
+        if token:
+            _check_cancel(token)
         file_path = await _download_telegram_message_media(
             client, message, output_folder,
             fallback_prefix=f'{task.target_title or "telegram_video"}_{message.id}',

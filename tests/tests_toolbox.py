@@ -2,6 +2,7 @@ import importlib.util
 import pathlib
 import tempfile
 import sys
+import time
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 MODULE_PATH = ROOT / 'hyl_toolbox.py'
@@ -897,6 +898,73 @@ def test_web_video_downloader_tab_properties():
             assert tab.refresh_status_button is None
             assert tab.backend_status_label is None
         finally:
+            window.close()
+            app.quit()
+
+
+def test_video_downloader_embed_thumbnail_without_source_url_starts_worker_when_pyside_available():
+    toolbox = load_module()
+    if toolbox.QWidget is None or toolbox.QThread is None:
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        window, app = toolbox.build_main_window_for_test(tmp)
+        original_get_open_file_names = toolbox.QFileDialog.getOpenFileNames
+        try:
+            tab = window.web_video_downloader_tab
+            video_path = pathlib.Path(tmp) / 'demo.mp4'
+            video_path.write_text('video', encoding='utf-8')
+            embed_calls = []
+            finalized = []
+            errors = []
+
+            def fake_get_open_file_names(*_args, **_kwargs):
+                return [str(video_path)], ''
+
+            def fake_embed_thumbnail(path, source_url, progress_cb=None, candidate_index=None, thumbnail_mode='web_then_frame'):
+                embed_calls.append({
+                    'path': path,
+                    'source_url': source_url,
+                    'candidate_index': candidate_index,
+                    'thumbnail_mode': thumbnail_mode,
+                })
+                if progress_cb is not None:
+                    progress_cb(f'补封面 1/1: {pathlib.Path(path).name}')
+                return {'success': True}
+
+            def fake_finalize_thumbnail(results):
+                finalized.append(results)
+                tab.cleanup_thumbnail_worker()
+                tab.set_busy(False)
+
+            def fake_handle_thumbnail_error(message):
+                errors.append(message)
+                tab.cleanup_thumbnail_worker()
+                tab.set_busy(False)
+
+            toolbox.QFileDialog.getOpenFileNames = fake_get_open_file_names
+            tab._choose_thumbnail_mode = lambda has_source_url: 'frame'
+            tab.module.embed_thumbnail = fake_embed_thumbnail
+            tab.finalize_thumbnail = fake_finalize_thumbnail
+            tab.handle_thumbnail_error = fake_handle_thumbnail_error
+
+            tab.embed_thumbnail_clicked()
+
+            deadline = time.monotonic() + 3
+            while time.monotonic() < deadline:
+                app.processEvents()
+                if finalized or errors:
+                    break
+                time.sleep(0.01)
+
+            assert errors == []
+            assert len(embed_calls) == 1
+            assert embed_calls[0]['source_url'] == ''
+            assert embed_calls[0]['thumbnail_mode'] == 'frame'
+            assert finalized and finalized[0][0]['success'] is True
+            assert tab.thumbnail_worker is None
+            assert tab.thumbnail_worker_thread is None
+        finally:
+            toolbox.QFileDialog.getOpenFileNames = original_get_open_file_names
             window.close()
             app.quit()
 

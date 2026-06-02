@@ -197,6 +197,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             self._last_log_is_progress = False
             self._token = None
             self._active_web_queue_lines: list[str] = []
+            self._downloaded_urls: set[str] = set()
             self._scan_started_while_running = False
             self.module = get_video_downloader_module()
             self.session_file = VIDEO_DOWNLOADER_DIR / self.module.SESSION_FILE_NAME
@@ -362,6 +363,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
         def handle_download_cancelled(self):
             self.append_log('下载已取消')
             self.progress_label.setText('下载已取消')
+            self._downloaded_urls.clear()
             self.cleanup_worker()
             self.set_busy(False)
 
@@ -514,6 +516,17 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                     pass
 
         def finalize_download(self, results: list[dict[str, object]]):
+            for item in results:
+                url = str(item.get('source_url') or '')
+                if url:
+                    self._downloaded_urls.add(url)
+            self._remove_completed_web_queue_items(results)
+            self.cleanup_worker()
+            new_tasks = self._collect_new_download_tasks()
+            if new_tasks:
+                self.append_log('---- 检测到新任务，继续下载 ----')
+                self._start_worker(new_tasks)
+                return
             self.progress_bar.setMaximum(100)
             self.progress_bar.setValue(100)
             summary_lines = summarize_download_results(results)
@@ -524,14 +537,16 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             self.append_log('----')
             for line in summary_lines:
                 self.append_log(line)
-            self.progress_label.setText(f'下载完成，成功 {summary_lines[1].split(": ", 1)[-1]}，失败 {summary_lines[2].split(": ", 1)[-1]}')
-            self._remove_completed_web_queue_items(results)
-            self.cleanup_worker()
+            success_count = sum(1 for r in results if r.get('success'))
+            fail_count = len(results) - success_count
+            self.progress_label.setText(f'下载完成，成功 {success_count}，失败 {fail_count}')
+            self._downloaded_urls.clear()
             self.set_busy(False)
 
         def handle_worker_error(self, message: str):
             self.append_log(f'错误：{message}')
             self.progress_label.setText('下载失败')
+            self._downloaded_urls.clear()
             self.cleanup_worker()
             self.set_busy(False)
             show_themed_error(self, '下载失败', message)
@@ -542,6 +557,24 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                 self.worker_thread.wait()
             self.worker_thread = None
             self.worker = None
+
+        def _start_worker(self, tasks: list, options=None):
+            module = self.module
+            if options is not None:
+                self._current_options = options
+            self._token = module.Token()
+            self.worker = DownloadWorker(module, tasks, self.output_edit.text().strip(), self.build_config(), self._current_options, token=self._token)
+            self.worker.progress.connect(self.handle_worker_progress)
+            self.worker.finished.connect(self.finalize_download)
+            self.worker.failed.connect(self.handle_worker_error)
+            self.worker.cancelled.connect(self.handle_download_cancelled)
+            if QThread is None:
+                self.worker.run()
+                return
+            self.worker_thread = QThread(self)
+            self.worker.moveToThread(self.worker_thread)
+            self.worker_thread.started.connect(self.worker.run)
+            self.worker_thread.start()
 
         def _choose_thumbnail_mode(self, has_source_url: bool) -> str | None:
             try:
@@ -752,6 +785,34 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             self._active_web_queue_lines = []
             self.refresh_summary()
 
+        def _collect_new_download_tasks(self) -> list:
+            """After a batch finishes, find tasks in the queue that haven't been attempted yet."""
+            task_text = self.task_edit.toPlainText().strip()
+            if not task_text:
+                return []
+            module = self.module
+            if self.source_mode == 'web':
+                queue_tasks = build_web_queue_tasks(
+                    task_text.splitlines(),
+                    getattr(self, 'web_candidate_sources', {}),
+                )
+                new_items = [item for item in queue_tasks if item['url'] not in self._downloaded_urls]
+                if not new_items:
+                    return []
+                self._active_web_queue_lines = [
+                    format_web_queue_line(index, item['title'], item['url'])
+                    for index, item in enumerate(new_items, start=1)
+                ]
+                if self._active_web_queue_lines and hasattr(self.task_edit, 'setPlainText'):
+                    self.task_edit.setPlainText('\n'.join(self._active_web_queue_lines))
+                return [module.DownloadTask(item['url'], 'web', item['title']) for item in new_items]
+            all_tasks = filter_tasks_for_source_mode(
+                module.build_download_tasks(module.parse_task_lines(task_text)),
+                self.source_mode,
+            )
+            new_tasks = [t for t in all_tasks if t.source_url not in self._downloaded_urls]
+            return new_tasks
+
         def choose_output_dir(self):
             path = QFileDialog.getExistingDirectory(self, '选择视频输出目录', self.output_edit.text() or str(ROOT))
             if not path:
@@ -839,6 +900,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             # Save directory for next time
             self._last_cover_dir = str(Path(files[0]).parent)
             save_setting(self.settings, self._mode_setting_key('cover_dir'), self._last_cover_dir)
+            self.cleanup_thumbnail_worker()
             self.set_busy(True)
             self.log.clear()
             self.append_log(f'补封面: 共 {len(files)} 个文件，源链接: {source_url}')
@@ -854,7 +916,6 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             if QThread is None:
                 self.thumbnail_worker.run()
                 return
-            self.cleanup_thumbnail_worker()
             self.thumbnail_worker_thread = QThread(self)
             self.thumbnail_worker.moveToThread(self.thumbnail_worker_thread)
             self.thumbnail_worker_thread.started.connect(self.thumbnail_worker.run)
@@ -905,6 +966,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
 
         def run_download(self):
             self.cleanup_worker()
+            self._downloaded_urls.clear()
             self.save_form_settings()
             module = self.module
             web_all_candidates = self._is_checked(self.web_all_candidates_checkbox)
@@ -968,24 +1030,13 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             )
             if web_all_candidates:
                 options = replace(options, web_candidate_indices=None)
+            self._current_options = options
             self.set_busy(True)
             self.log.clear()
             self._last_log_is_progress = False
             if options.web_download_all_candidates:
                 tasks = module._expand_web_all_candidates(tasks, self.append_log)
             self.reset_progress_ui(len(tasks))
-            self._token = module.Token()
-            self.worker = DownloadWorker(module, tasks, self.output_edit.text().strip(), self.build_config(), options, token=self._token)
-            self.worker.progress.connect(self.handle_worker_progress)
-            self.worker.finished.connect(self.finalize_download)
-            self.worker.failed.connect(self.handle_worker_error)
-            self.worker.cancelled.connect(self.handle_download_cancelled)
-            if QThread is None:
-                self.worker.run()
-                return
-            self.worker_thread = QThread(self)
-            self.worker.moveToThread(self.worker_thread)
-            self.worker_thread.started.connect(self.worker.run)
-            self.worker_thread.start()
+            self._start_worker(tasks, options)
 
     return VideoDownloaderTab
