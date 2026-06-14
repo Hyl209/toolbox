@@ -890,10 +890,21 @@ def test_web_video_downloader_tab_properties():
             assert tab.output_edit.placeholderText() == '选择视频输出目录'
             assert tab.run_button.text() == '开始下载'
             assert tab.progress_bar.value() == 0
-            assert tab.task_edit.minimumHeight() == 110
+            assert tab.task_edit.minimumHeight() == 210
             assert tab.log.minimumHeight() == 110
             assert tab.progress_label.text() == '等待开始'
             assert tab.web_candidate_index_edit is not None
+            assert tab.web_candidate_mode_combo is not None
+            assert tab.web_candidate_mode_combo.currentText() == '自动'
+            assert tab.web_candidate_index_edit.isEnabled() is False
+            assert tab._resolve_candidate_mode() == 'auto'
+            assert tab._web_candidate_mode_value() == 'auto'
+            tab.set_busy(True)
+            assert tab.run_button.isHidden() is True
+            assert tab.scan_button.isHidden() is True
+            assert tab.add_candidates_button.isHidden() is True
+            assert tab.pause_button.isHidden() is False
+            tab.set_busy(False)
             assert tab.send_code_button is None
             assert tab.refresh_status_button is None
             assert tab.backend_status_label is None

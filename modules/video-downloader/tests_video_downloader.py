@@ -565,6 +565,44 @@ def test_validate_video_downloader_form_accepts_preloaded_module():
     assert errors == []
 
 
+def test_validate_video_downloader_form_uses_explicit_candidate_mode():
+    tab_module = load_tab_module()
+    module = load_module()
+    with tempfile.TemporaryDirectory() as tmp:
+        errors = tab_module.validate_video_downloader_form(
+            'https://example.com/video',
+            tmp,
+            '',
+            '',
+            '',
+            '500',
+            web_candidate_index='3,5',
+            web_candidate_mode='before',
+            source_mode='web',
+            module=module,
+        )
+    assert any('before/after' in item for item in errors)
+
+
+def test_validate_video_downloader_form_requires_index_for_candidate_modes():
+    tab_module = load_tab_module()
+    module = load_module()
+    with tempfile.TemporaryDirectory() as tmp:
+        errors = tab_module.validate_video_downloader_form(
+            'https://example.com/video',
+            tmp,
+            '',
+            '',
+            '',
+            '500',
+            web_candidate_index='',
+            web_candidate_mode='specified',
+            source_mode='web',
+            module=module,
+        )
+    assert '请选择网页候选序号' in errors
+
+
 def test_run_download_ignores_stale_web_candidate_text_when_all_candidates_checked():
     tab_module = load_tab_module()
     module = load_module()
@@ -705,6 +743,112 @@ def test_run_download_ignores_stale_web_candidate_text_when_all_candidates_check
     finally:
         module.download_batch = original_download_batch
         module._expand_web_all_candidates = original_expand
+
+
+def test_run_download_blocks_specified_mode_without_index():
+    tab_module = load_tab_module()
+    module = load_module()
+    warnings = []
+    tab_class = tab_module.build_video_downloader_tab_class({
+        'QWidget': object,
+        'QVBoxLayout': object,
+        'QHBoxLayout': object,
+        'QScrollArea': object,
+        'QFrame': object,
+        'QLabel': object,
+        'QLineEdit': object,
+        'QPlainTextEdit': object,
+        'QPushButton': object,
+        'QProgressBar': object,
+        'QFileDialog': object,
+        'QApplication': object,
+        'QCheckBox': object,
+        'QComboBox': object,
+        'QObject': None,
+        'QThread': None,
+        'Signal': None,
+        'load_setting': lambda *args, **kwargs: '',
+        'save_setting': lambda *args, **kwargs: None,
+        'make_card': lambda *args, **kwargs: object(),
+        'make_transparent_row': lambda *args, **kwargs: object(),
+        'build_global_scrollbar_style': lambda: '',
+        'show_themed_warning': lambda *args: warnings.append(args[2]),
+        'show_themed_error': lambda *args, **kwargs: None,
+        'show_themed_success': lambda *args, **kwargs: None,
+        'style_combo_popup': lambda *args, **kwargs: None,
+        'get_video_downloader_module': lambda: module,
+        'ROOT': ROOT,
+        'VIDEO_DOWNLOADER_DIR': ROOT,
+    })
+
+    class DummyField:
+        def __init__(self, value=''):
+            self._value = value
+
+        def toPlainText(self):
+            return self._value
+
+        def text(self):
+            return self._value
+
+        def clear(self):
+            self._value = ''
+
+        def isChecked(self):
+            return bool(self._value)
+
+    class DummyTab:
+        def __init__(self):
+            self.module = module
+            self.source_mode = 'web'
+            self.task_edit = DummyField('https://example.com/post/1')
+            self.output_edit = DummyField('C:/tmp')
+            self.api_id_edit = DummyField('')
+            self.api_hash_edit = DummyField('')
+            self.phone_edit = DummyField('')
+            self.recent_count_edit = DummyField('500')
+            self.all_messages_checkbox = DummyField('')
+            self.date_from_edit = DummyField('')
+            self.date_to_edit = DummyField('')
+            self.include_video_checkbox = DummyField('')
+            self.include_photo_checkbox = DummyField('')
+            self.web_candidate_index_edit = DummyField('')
+            self.web_all_candidates_checkbox = DummyField(False)
+            self.overwrite_checkbox = DummyField('')
+            self.concurrent_combo = None
+            self.log = types.SimpleNamespace(clear=lambda: None)
+            self.worker = None
+            self.worker_thread = None
+            self._downloaded_urls = set()
+            self._current_options = None
+
+        def save_form_settings(self):
+            pass
+
+        def _is_checked(self, widget):
+            return widget.isChecked()
+
+        def _widget_text(self, widget):
+            return widget.text()
+
+        def _concurrent_value(self):
+            return '1'
+
+        def _web_candidate_index_text_for_request(self):
+            return ''
+
+        def _resolve_candidate_mode(self):
+            return 'specified'
+
+        def set_busy(self, value):
+            raise AssertionError('should not start download when specified mode has no index')
+
+        def cleanup_worker(self):
+            pass
+
+    tab = DummyTab()
+    tab_class.run_download(tab)
+    assert any('网页候选序号' in item for item in warnings)
 
 
 def test_validate_video_downloader_form_rejects_web_link_on_telegram_page():
