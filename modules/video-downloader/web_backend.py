@@ -62,6 +62,19 @@ COOKIE_FILE_NAMES = (
 DOUYIN_HOSTS = {'douyin.com', 'www.douyin.com', 'iesdouyin.com', 'www.iesdouyin.com', 'v.douyin.com'}
 
 
+def _run_async(coro):
+    """Run an async coroutine safely, even if an event loop is already running."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+    if loop and loop.is_running():
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(asyncio.run, coro).result()
+    return asyncio.run(coro)
+
+
 @functools.lru_cache(maxsize=1)
 def _ffmpeg_path() -> str:
     return shutil.which('ffmpeg') or ''
@@ -77,44 +90,43 @@ def _capture_aria2_console_progress(progress_cb: ProgressCallback | None, file_n
     if progress_cb is None:
         yield
         return
-    with _console_capture_lock:
-        saved_stdout = os.dup(1)
-        saved_stderr = os.dup(2)
-        read_fd, write_fd = os.pipe()
-        stop = Event()
+    saved_stdout = os.dup(1)
+    saved_stderr = os.dup(2)
+    read_fd, write_fd = os.pipe()
+    stop = Event()
 
-        def reader() -> None:
-            buffer = ''
-            try:
-                with os.fdopen(read_fd, 'rb', closefd=True) as pipe:
-                    while not stop.is_set():
-                        chunk = pipe.read(512)
-                        if not chunk:
-                            break
-                        buffer += chunk.decode('utf-8', errors='ignore')
-                        parts = re.split(r'[\r\n]+', buffer)
-                        buffer = parts.pop() if parts else ''
-                        for part in parts:
-                            _emit_aria2_progress(progress_cb, file_name, part)
-                    if buffer:
-                        _emit_aria2_progress(progress_cb, file_name, buffer)
-            except OSError:
-                pass
-
-        thread = _threading.Thread(target=reader, daemon=True)
+    def reader() -> None:
+        buffer = ''
         try:
-            os.dup2(write_fd, 1)
-            os.dup2(write_fd, 2)
-            os.close(write_fd)
-            thread.start()
-            yield
-        finally:
-            os.dup2(saved_stdout, 1)
-            os.dup2(saved_stderr, 2)
-            os.close(saved_stdout)
-            os.close(saved_stderr)
-            stop.set()
-            thread.join(timeout=1)
+            with os.fdopen(read_fd, 'rb', closefd=True) as pipe:
+                while not stop.is_set():
+                    chunk = pipe.read(512)
+                    if not chunk:
+                        break
+                    buffer += chunk.decode('utf-8', errors='ignore')
+                    parts = re.split(r'[\r\n]+', buffer)
+                    buffer = parts.pop() if parts else ''
+                    for part in parts:
+                        _emit_aria2_progress(progress_cb, file_name, part)
+                if buffer:
+                    _emit_aria2_progress(progress_cb, file_name, buffer)
+        except OSError:
+            pass
+
+    thread = _threading.Thread(target=reader, daemon=True)
+    try:
+        os.dup2(write_fd, 1)
+        os.dup2(write_fd, 2)
+        os.close(write_fd)
+        thread.start()
+        yield
+    finally:
+        os.dup2(saved_stdout, 1)
+        os.dup2(saved_stderr, 2)
+        os.close(saved_stdout)
+        os.close(saved_stderr)
+        stop.set()
+        thread.join(timeout=1)
 
 
 def _emit_aria2_progress(progress_cb: ProgressCallback | None, file_name: str, raw_line: str) -> None:
@@ -330,7 +342,7 @@ def _extract_douyin_page_json(html_text: str) -> dict[str, object] | None:
         return None
     try:
         parsed = json.loads(str(html_text)[start:end])
-    except Exception:
+    except (json.JSONDecodeError, ValueError):
         return None
     if isinstance(parsed, dict):
         return parsed
@@ -360,7 +372,7 @@ def _extract_douyin_share_candidates(source_url: str) -> list[str]:
         return []
     try:
         html = _fetch_douyin_share_html(source_url)
-    except Exception:
+    except (OSError, ValueError, TimeoutError):
         return []
     page_data = _extract_douyin_page_json(html)
     if not page_data:
@@ -532,7 +544,7 @@ def _run_ytdlp_with_cookie_retry(
 
 
 def _speed_to_concurrency(bytes_per_sec: float) -> int:
-    """Map download speed to recommended concurrency (1-8)."""
+    """Map download speed to recommended concurrent task count (1-8)."""
     if bytes_per_sec <= 0:
         return 3
     mbps = bytes_per_sec / (1024 * 1024)
@@ -565,6 +577,11 @@ def _wait_if_paused(token: Token | None, progress_cb: ProgressCallback | None = 
         _check_cancel(token)
         sleep(0.2)
     _emit(progress_cb, '下载已恢复')
+
+
+def _check_paused_non_blocking(token: Token | None) -> bool:
+    """Non-blocking pause check. Returns True if paused (caller should skip work)."""
+    return token is not None and token.pause.is_set()
 
 
 def _download_web_entries(
@@ -783,7 +800,7 @@ def download_batch(
     try:
         telegram_entries = [(index, task) for index, task in enumerate(task_list) if task.source_kind.startswith('telegram')]
         if telegram_entries:
-            telegram_results = asyncio.run(
+            telegram_results = _run_async(
                 _download_telegram_entries(
                     telegram_entries,
                     output_root,
@@ -1102,13 +1119,13 @@ def _collect_web_media_candidates(source_url: str) -> tuple[list[str], str]:
     ytdlp_candidates: list[str] = []
     try:
         ytdlp_candidates = _extract_ytdlp_entry_candidates(source_url)
-    except Exception:
+    except (DownloadError, OSError, ValueError):
         ytdlp_candidates = []
     if ytdlp_candidates:
         return ytdlp_candidates, 'yt-dlp'
     try:
         html_candidates = _extract_media_candidates(_fetch_webpage_html(source_url), source_url)
-    except Exception:
+    except (OSError, ValueError, TimeoutError):
         html_candidates = []
     if html_candidates:
         return html_candidates, 'html'
@@ -1214,9 +1231,10 @@ def _download_url_with_ytdlp(
             '--allow-overwrite=true',
         ]
         if referer_url:
+            safe_referer = referer_url.replace('"', '%22').replace('\\', '%5C').replace('\n', '').replace('\r', '')
             ydl_opts['external_downloader_args'].extend([
                 f'--user-agent={_s.WEB_USER_AGENT}',
-                f'--header=Referer: {referer_url}',
+                f'--header=Referer: {safe_referer}',
             ])
         _emit(progress_cb, f'网页加速: 使用 aria2c -> {aria2c}')
     if options.web_use_browser_cookies:
@@ -1693,7 +1711,9 @@ def _make_web_progress_hook(progress_cb: ProgressCallback | None, token: Token |
             raise CancelledError('yt-dlp 下载已取消')
         if token and token.reconnect.is_set():
             raise CancelledError('手动重连')
-        _wait_if_paused(token, progress_cb)
+        # Use non-blocking pause check to avoid blocking yt-dlp's download thread
+        if _check_paused_non_blocking(token):
+            raise CancelledError('下载已暂停')
         state = str(status.get('status') or '')
         if state == 'downloading':
             filename = Path(str(status.get('filename') or '')).name

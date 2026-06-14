@@ -14,12 +14,36 @@ WHITESPACE_RE = re.compile(r'\s+')
 EMBEDDED_URL_RE = re.compile(r'https?://[^\s<>"\'`]+', re.IGNORECASE)
 WEB_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
 SESSION_FILE_NAME = 'telegram.session'
+_WINDOWS_RESERVED_NAMES = frozenset({
+    'CON', 'PRN', 'AUX', 'NUL',
+    'COM1', 'COM2', 'COM3', 'COM4', 'COM5', 'COM6', 'COM7', 'COM8', 'COM9',
+    'LPT1', 'LPT2', 'LPT3', 'LPT4', 'LPT5', 'LPT6', 'LPT7', 'LPT8', 'LPT9',
+})
 _stem_lock = threading.Lock()
+_dir_locks: dict[str, threading.Lock] = {}
+_dir_locks_guard = threading.Lock()
+
+
+def _get_dir_lock(directory: Path) -> threading.Lock:
+    key = str(directory.resolve())
+    with _dir_locks_guard:
+        if key not in _dir_locks:
+            _dir_locks[key] = threading.Lock()
+        return _dir_locks[key]
 
 
 def sanitize_filename_component(text: str, fallback: str = 'video') -> str:
     cleaned = INVALID_FILENAME_CHARS.sub('_', str(text or '').strip())
     cleaned = WHITESPACE_RE.sub(' ', cleaned).strip(' .')
+    if not cleaned:
+        return fallback
+    # Handle Windows reserved names (CON, AUX, etc.)
+    stem = cleaned.split('.')[0].upper()
+    if stem in _WINDOWS_RESERVED_NAMES:
+        cleaned = f'{cleaned}_'
+    # Handle trailing dots (Windows issue)
+    if cleaned.endswith('.'):
+        cleaned = cleaned.rstrip('.') + '_'
     return cleaned or fallback
 
 
@@ -38,7 +62,8 @@ def ensure_unique_path(path: str | Path) -> Path:
 def ensure_unique_stem(directory: str | Path, stem: str) -> str:
     folder = Path(directory)
     safe_stem = sanitize_filename_component(stem)
-    with _stem_lock:
+    lock = _get_dir_lock(folder)
+    with lock:
         candidate = safe_stem
         index = 1
         while any(_find_files_by_stem(folder, candidate)):

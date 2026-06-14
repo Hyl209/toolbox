@@ -73,7 +73,10 @@ async def _begin_telegram_login_async(config: TelegramConfig) -> dict[str, objec
         await client.disconnect()
 
 
-async def _complete_telegram_login_async(config: TelegramConfig, code: str, phone_code_hash: str) -> dict[str, object]:
+async def _complete_telegram_login_async(
+    config: TelegramConfig, code: str, phone_code_hash: str,
+    password_callback=None,
+) -> dict[str, object]:
     _require_telegram_backend()
     cleaned_code = str(code or '').strip()
     cleaned_hash = str(phone_code_hash or '').strip()
@@ -90,23 +93,41 @@ async def _complete_telegram_login_async(config: TelegramConfig, code: str, phon
             return {'authorized': True, 'message': 'Telegram 会话已登录'}
         try:
             await client.sign_in(phone=config.phone, code=cleaned_code, phone_code_hash=cleaned_hash)
-        except SessionPasswordNeededError as exc:
-            raise DownloadError('当前账号开启了两步验证，v1 暂不支持密码验证') from exc
+        except SessionPasswordNeededError:
+            if password_callback is None:
+                raise DownloadError('当前账号开启了两步验证，请提供密码回调函数或在界面输入密码')
+            password = password_callback()
+            if not password:
+                raise DownloadError('两步验证密码不能为空')
+            await client.sign_in(password=str(password))
         return {'authorized': True, 'message': 'Telegram 登录成功'}
     finally:
         await client.disconnect()
 
 
+def _run_async(coro):
+    """Run an async coroutine safely, even if an event loop is already running."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+    if loop and loop.is_running():
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(asyncio.run, coro).result()
+    return asyncio.run(coro)
+
+
 def check_telegram_authorization(config: TelegramConfig) -> dict[str, object]:
-    return asyncio.run(_check_telegram_authorization_async(config))
+    return _run_async(_check_telegram_authorization_async(config))
 
 
 def begin_telegram_login(config: TelegramConfig) -> dict[str, object]:
-    return asyncio.run(_begin_telegram_login_async(config))
+    return _run_async(_begin_telegram_login_async(config))
 
 
-def complete_telegram_login(config: TelegramConfig, code: str, phone_code_hash: str) -> dict[str, object]:
-    return asyncio.run(_complete_telegram_login_async(config, code, phone_code_hash))
+def complete_telegram_login(config: TelegramConfig, code: str, phone_code_hash: str, password_callback=None) -> dict[str, object]:
+    return _run_async(_complete_telegram_login_async(config, code, phone_code_hash, password_callback=password_callback))
 
 
 async def _download_telegram_entries(
@@ -188,7 +209,9 @@ async def _download_single_telegram_task(client, task: DownloadTask, output_root
     files: list[Path] = []
     scanned_count = 0
     matched_count = 0
-    async for message in client.iter_messages(entity, limit=recent_limit or None):
+    # Use offset_date to skip directly to start date for efficiency
+    offset_date = before_utc if before_utc is not None else None
+    async for message in client.iter_messages(entity, limit=recent_limit or None, offset_date=offset_date):
         scanned_count += 1
         message_date = _normalize_message_datetime(getattr(message, 'date', None))
         if before_utc is not None and message_date is not None and message_date > before_utc:
@@ -196,9 +219,10 @@ async def _download_single_telegram_task(client, task: DownloadTask, output_root
                 _emit_scan_progress(progress_cb, scanned_count, matched_count)
             continue
         if after_utc is not None and message_date is not None and message_date < after_utc:
+            # Past the start date, no more messages in range — stop early
             if scanned_count == 1 or scanned_count % 25 == 0:
                 _emit_scan_progress(progress_cb, scanned_count, matched_count)
-            continue
+            break
         if not _message_matches_media_selection(message, options):
             if scanned_count == 1 or scanned_count % 25 == 0:
                 _emit_scan_progress(progress_cb, scanned_count, matched_count)
