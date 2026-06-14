@@ -299,6 +299,50 @@ def test_export_text_uses_ocr_fallback_when_enabled_and_text_blank():
         assert output.read_text(encoding='utf-8') == 'OCR文字'
 
 
+def test_export_text_probes_tesseract_once_for_multiple_ocr_pages():
+    mod = load_module()
+
+    class FakePage:
+        def get_text(self, mode='text'):
+            return ''
+        def get_pixmap(self, matrix=None, alpha=False):
+            class FakePixmap:
+                def save(self, path):
+                    pathlib.Path(path).write_bytes(b'img')
+            return FakePixmap()
+
+    class FakeDocument:
+        def __iter__(self):
+            return iter([FakePage(), FakePage()])
+        def close(self):
+            pass
+
+    class FakeMatrix:
+        def __init__(self, x, y):
+            self.x = x
+            self.y = y
+
+    class FakeFitz:
+        Matrix = FakeMatrix
+        @staticmethod
+        def open(_path):
+            return FakeDocument()
+
+    calls = {'probe': 0}
+    mod.fitz = FakeFitz
+    def fake_probe():
+        calls['probe'] += 1
+        return True, ''
+    mod.probe_tesseract = fake_probe
+    mod.run_ocr_on_image = lambda _path: 'OCR文字'
+    with tempfile.TemporaryDirectory() as tmp:
+        source = pathlib.Path(tmp) / 'input.pdf'
+        source.write_bytes(b'%PDF-1.4')
+        output = mod.export_pdf_text(source, pathlib.Path(tmp), 'txt', ocr_fallback=True)
+        assert output.read_text(encoding='utf-8') == 'OCR文字\n\nOCR文字'
+    assert calls['probe'] == 1
+
+
 def test_export_text_requires_docx_dependency_for_word_output():
     mod = load_module()
     mod.Document = None

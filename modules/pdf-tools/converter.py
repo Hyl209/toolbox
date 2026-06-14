@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import shutil
 import tempfile
 from pathlib import Path
@@ -43,14 +44,53 @@ def collect_pdf_inputs(paths: list[str]) -> list[Path]:
 
 
 def probe_tesseract() -> tuple[bool, str]:
+    try:
+        import pytesseract
+        from PIL import Image  # noqa: F401
+    except ModuleNotFoundError:
+        return False, '未安装 pytesseract/Pillow 或 Tesseract，请先安装后再使用 OCR 功能'
     command = shutil.which('tesseract')
     if not command:
         return False, '未检测到 Tesseract，请先安装后再使用 OCR 功能'
+    try:
+        pytesseract.get_tesseract_version()
+    except Exception as exc:
+        return False, f'Tesseract 初始化失败: {exc}'
     return True, ''
 
 
+@functools.lru_cache(maxsize=1)
+def _choose_tesseract_language() -> str:
+    import pytesseract
+
+    try:
+        installed = set(pytesseract.get_languages(config=''))
+    except Exception:
+        return 'chi_sim+eng'
+    preferred = [lang for lang in ('chi_sim', 'eng') if lang in installed]
+    if preferred:
+        return '+'.join(preferred)
+    return next(iter(sorted(installed)), '')
+
+
 def run_ocr_on_image(image_path: Path) -> str:
-    raise PdfToolsError('OCR 实现待接入')
+    try:
+        import pytesseract
+        from PIL import Image
+    except ModuleNotFoundError as exc:
+        raise PdfToolsError('未安装 pytesseract 或 Pillow，无法执行 OCR') from exc
+    if not Path(image_path).exists():
+        raise PdfToolsError(f'OCR 图片不存在: {image_path}')
+    language = _choose_tesseract_language()
+    try:
+        with Image.open(image_path) as image:
+            if language:
+                text = pytesseract.image_to_string(image, lang=language)
+            else:
+                text = pytesseract.image_to_string(image)
+    except Exception as exc:
+        raise PdfToolsError(f'OCR 识别失败: {exc}') from exc
+    return text.strip()
 
 
 def parse_page_ranges(raw: str, total_pages: int) -> list[int]:
@@ -180,6 +220,7 @@ def extract_text_from_pdf(input_path: Path, ocr_fallback: bool = False, dpi: int
         raise PdfToolsError('未安装 PyMuPDF，无法提取 PDF 文字')
     document = fitz.open(str(input_path))
     chunks: list[str] = []
+    ocr_probe_result: tuple[bool, str] | None = None
     try:
         for page_index, page in enumerate(document, start=1):
             text = page.get_text('text')
@@ -188,7 +229,9 @@ def extract_text_from_pdf(input_path: Path, ocr_fallback: bool = False, dpi: int
                 chunks.append(text.strip())
                 continue
             if mode == 'ocr':
-                available, message = probe_tesseract()
+                if ocr_probe_result is None:
+                    ocr_probe_result = probe_tesseract()
+                available, message = ocr_probe_result
                 if not available:
                     raise PdfToolsError(message)
                 scale = dpi / 72.0

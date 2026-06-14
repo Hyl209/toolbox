@@ -102,7 +102,11 @@ a = Analysis(
         ('plugins/uuid_tools/plugin.py', 'plugins/uuid_tools'),
         ('plugins/uuid_tools/README.md', 'plugins/uuid_tools'),
     ] + music_datas,
-    hiddenimports=['ncmdump', 'yt_dlp', 'telethon', 'docx', 'docx.oxml', 'docx.oxml.ns', 'docx.shared'],
+    hiddenimports=[
+        'ncmdump', 'yt_dlp', 'telethon',
+        'fitz', 'pypdf', 'pytesseract', 'PIL', 'PIL.Image',
+        'docx', 'docx.oxml', 'docx.oxml.ns', 'docx.shared',
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

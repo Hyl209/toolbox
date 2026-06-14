@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import functools
+import importlib.util
 import shutil
 import subprocess
 from pathlib import Path
@@ -12,9 +13,14 @@ class ConvertError(Exception):
 
 
 def _get_default_output_dir():
-    """Lazy import to avoid bare 'from config_store' at module level."""
-    from config_store import get_default_output_dir
-    return get_default_output_dir()
+    """Load sibling config_store.py even after dynamic loader restores sys.path."""
+    config_path = Path(__file__).with_name('config_store.py')
+    spec = importlib.util.spec_from_file_location('audio_extractor_config_store', config_path)
+    if spec is None or spec.loader is None:
+        return None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.get_default_output_dir()
 
 
 @functools.lru_cache(maxsize=1)

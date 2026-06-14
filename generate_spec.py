@@ -91,7 +91,11 @@ a = Analysis(
     datas=[
 {datas_block}
     ] + music_datas,
-    hiddenimports=['ncmdump', 'yt_dlp', 'telethon', 'docx', 'docx.oxml', 'docx.oxml.ns', 'docx.shared'],
+    hiddenimports=[
+        'ncmdump', 'yt_dlp', 'telethon',
+        'fitz', 'pypdf', 'pytesseract', 'PIL', 'PIL.Image',
+        'docx', 'docx.oxml', 'docx.oxml.ns', 'docx.shared',
+    ],
     hookspath=[],
     hooksconfig={{}},
     runtime_hooks=[],

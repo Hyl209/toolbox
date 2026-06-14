@@ -132,21 +132,36 @@ def build_task_section(self, layout, center_row, textedit_style, task_min_height
     QLineEdit = deps['QLineEdit']
     QPushButton = deps['QPushButton']
     QHBoxLayout = deps['QHBoxLayout']
+    QVBoxLayout = deps['QVBoxLayout']
+    QWidget = deps['QWidget']
     QCheckBox = deps['QCheckBox']
     QComboBox = deps['QComboBox']
 
     settings = self.settings
     task_card_title = '链接' if self.source_mode == 'web' else '下载任务'
     task_card, task_layout = make_card(task_card_title)
-    compact_card_layout(task_layout)
+    compact_card_layout(task_layout, 16 if self.source_mode == 'web' else 18, 10 if self.source_mode == 'web' else 12)
     if self.source_mode == 'web':
-        task_layout.addWidget(QLabel('网页链接'))
+        workflow_widget, workflow_row = make_transparent_row()
+        workflow_row.setSpacing(14)
+
+        def add_workflow_column(title, editor, stretch):
+            column = QWidget()
+            column.setStyleSheet('background: transparent;')
+            column_layout = QVBoxLayout(column)
+            column_layout.setContentsMargins(0, 0, 0, 0)
+            column_layout.setSpacing(8)
+            column_layout.addWidget(QLabel(title))
+            column_layout.addWidget(editor)
+            workflow_row.addWidget(column, stretch)
+
         self.source_edit = QPlainTextEdit()
         self.source_edit.setPlaceholderText(WEB_SOURCE_PLACEHOLDER)
-        self.source_edit.setMinimumHeight(76)
+        self.source_edit.setMinimumHeight(210)
+        self.source_edit.setMaximumHeight(240)
         apply_video_textedit_surface(self.source_edit, textedit_style, self.current_theme)
         self.source_edit.textChanged.connect(self.handle_web_source_text_changed)
-        task_layout.addWidget(self.source_edit)
+        add_workflow_column('网页链接', self.source_edit, 2)
     else:
         task_layout.addWidget(QLabel('任务链接'))
     self.task_edit = QPlainTextEdit()
@@ -158,16 +173,21 @@ def build_task_section(self, layout, center_row, textedit_style, task_min_height
     self.summary_label = QLabel(SUMMARY_EMPTY_TEXT)
     self.summary_label.setProperty('cardSub', True)
     self.summary_label.setWordWrap(True)
-    task_layout.addWidget(self.summary_label)
     if self.source_mode == 'web':
-        task_layout.addWidget(QLabel('识别结果'))
         self.candidate_results_edit = QPlainTextEdit()
         self.candidate_results_edit.setPlaceholderText(WEB_CANDIDATE_PLACEHOLDER)
-        self.candidate_results_edit.setMinimumHeight(92)
+        self.candidate_results_edit.setMinimumHeight(210)
+        self.candidate_results_edit.setMaximumHeight(240)
         apply_video_textedit_surface(self.candidate_results_edit, textedit_style, self.current_theme)
-        task_layout.addWidget(self.candidate_results_edit)
-        task_layout.addWidget(QLabel('任务区'))
-    task_layout.addWidget(self.task_edit)
+        add_workflow_column('识别结果', self.candidate_results_edit, 2)
+        self.task_edit.setMinimumHeight(210)
+        self.task_edit.setMaximumHeight(240)
+        add_workflow_column('任务区', self.task_edit, 2)
+        task_layout.addWidget(self.summary_label)
+        task_layout.addWidget(workflow_widget)
+    else:
+        task_layout.addWidget(self.summary_label)
+        task_layout.addWidget(self.task_edit)
 
     output_row = QHBoxLayout()
     output_row.setSpacing(10)
@@ -207,9 +227,11 @@ def build_task_section(self, layout, center_row, textedit_style, task_min_height
     action_row.setSpacing(10)
     if self.source_mode == 'web':
         self.scan_button = QPushButton('识别网页视频')
+        self.scan_button.setToolTip('从上方网页链接中识别可下载视频')
         self.scan_button.clicked.connect(self.scan_web_candidates)
         action_row.addWidget(self.scan_button)
         self.add_candidates_button = QPushButton('添加到任务区')
+        self.add_candidates_button.setToolTip('把识别结果合并为下方下载队列')
         self.add_candidates_button.clicked.connect(self.add_web_candidates_to_queue)
         action_row.addWidget(self.add_candidates_button)
     self.cover_button = QPushButton('补封面')
@@ -218,6 +240,7 @@ def build_task_section(self, layout, center_row, textedit_style, task_min_height
     action_row.addWidget(self.cover_button)
     action_row.addStretch(1)
     self.run_button = QPushButton(RUN_BUTTON_TEXT)
+    self.run_button.setMinimumWidth(104)
     self.run_button.clicked.connect(self.run_download)
     action_row.addWidget(self.run_button)
     self.pause_button = QPushButton('暂停')
@@ -234,7 +257,10 @@ def build_task_section(self, layout, center_row, textedit_style, task_min_height
     action_row.addWidget(self.reconnect_button)
     task_layout.addLayout(action_row)
     if self.source_mode == 'web':
-        layout.addWidget(task_card, 1)
+        if center_row is not None:
+            center_row.addWidget(task_card, 3)
+        else:
+            layout.addWidget(task_card, 1)
     else:
         center_row.addWidget(task_card, 3)
 
@@ -300,37 +326,81 @@ def build_web_options_section(self, layout, deps):
     make_card = deps['make_card']
     make_transparent_row = deps['make_transparent_row']
     load_setting = deps['load_setting']
+    style_combo_popup = deps['style_combo_popup']
+    QLabel = deps['QLabel']
     QLineEdit = deps['QLineEdit']
     QCheckBox = deps['QCheckBox']
+    QComboBox = deps['QComboBox']
 
     settings = self.settings
     web_card, web_layout = make_card('选项')
-    compact_card_layout(web_layout)
+    compact_card_layout(web_layout, 16, 10)
     web_row_widget, web_row = make_transparent_row()
     web_row.setSpacing(10)
+    web_row.addWidget(QLabel('候选模式'))
+    self.web_candidate_mode_combo = QComboBox()
+    self.web_candidate_mode_combo.addItem('自动', 'auto')
+    self.web_candidate_mode_combo.addItem('指定序号', 'specified')
+    self.web_candidate_mode_combo.addItem('跳过序号', 'exclude')
+    self.web_candidate_mode_combo.addItem('序号之前', 'before')
+    self.web_candidate_mode_combo.addItem('序号之后', 'after')
+    self.web_candidate_mode_combo.addItem('全部候选', 'all')
+    self.web_candidate_mode_combo.setMinimumWidth(132)
+    self.web_candidate_mode_combo.setMaximumWidth(132)
+    style_combo_popup(self.web_candidate_mode_combo, self.current_theme)
+    web_row.addWidget(self.web_candidate_mode_combo)
+    web_row.addWidget(QLabel('序号'))
     self.web_candidate_index_edit = QLineEdit(load_setting(settings, self._mode_setting_key('web_candidate_index')))
     self.web_candidate_index_edit.setPlaceholderText(WEB_INDEX_PLACEHOLDER)
-    self.web_candidate_index_edit.setMaximumWidth(160)
+    self.web_candidate_index_edit.setMinimumWidth(260)
+    self.web_candidate_index_edit.setMaximumWidth(320)
     self.web_candidate_index_edit.editingFinished.connect(self.save_form_settings)
     web_row.addWidget(self.web_candidate_index_edit)
+    web_row.addStretch(1)
+    web_layout.addWidget(web_row_widget)
+
     self.web_candidate_exclude_checkbox = QCheckBox('跳过')
     self.web_candidate_exclude_checkbox.setChecked(load_setting(settings, self._mode_setting_key('web_candidate_exclude'), '0') == '1')
     self.web_candidate_exclude_checkbox.clicked.connect(self.handle_exclude_checked)
-    web_row.addWidget(self.web_candidate_exclude_checkbox)
     self.web_candidate_before_checkbox = QCheckBox('之前')
     self.web_candidate_before_checkbox.setChecked(load_setting(settings, self._mode_setting_key('web_candidate_before'), '0') == '1')
     self.web_candidate_before_checkbox.clicked.connect(self.handle_before_checked)
-    web_row.addWidget(self.web_candidate_before_checkbox)
     self.web_candidate_after_checkbox = QCheckBox('之后')
     self.web_candidate_after_checkbox.setChecked(load_setting(settings, self._mode_setting_key('web_candidate_after'), '0') == '1')
     self.web_candidate_after_checkbox.clicked.connect(self.handle_after_checked)
-    web_row.addWidget(self.web_candidate_after_checkbox)
     self.web_all_candidates_checkbox = QCheckBox('全部候选')
     self.web_all_candidates_checkbox.setChecked(load_setting(settings, self._mode_setting_key('web_all_candidates'), '0') == '1')
     self.web_all_candidates_checkbox.clicked.connect(self.handle_web_all_candidates_changed)
-    web_row.addWidget(self.web_all_candidates_checkbox)
-    web_row.addStretch(1)
-    web_layout.addWidget(web_row_widget)
+    for legacy_widget in (
+        self.web_candidate_exclude_checkbox,
+        self.web_candidate_before_checkbox,
+        self.web_candidate_after_checkbox,
+        self.web_all_candidates_checkbox,
+    ):
+        legacy_widget.setVisible(False)
+        web_layout.addWidget(legacy_widget)
+
+    saved_mode = str(load_setting(settings, self._mode_setting_key('web_candidate_mode'), '') or '').strip()
+    if saved_mode in {'auto', 'specified', 'exclude', 'before', 'after', 'all'}:
+        initial_mode = saved_mode
+    elif self.web_all_candidates_checkbox.isChecked():
+        initial_mode = 'all'
+    elif self.web_candidate_exclude_checkbox.isChecked():
+        initial_mode = 'exclude'
+    elif self.web_candidate_before_checkbox.isChecked():
+        initial_mode = 'before'
+    elif self.web_candidate_after_checkbox.isChecked():
+        initial_mode = 'after'
+    elif self.web_candidate_index_edit.text().strip():
+        initial_mode = 'specified'
+    else:
+        initial_mode = 'auto'
+    for index in range(self.web_candidate_mode_combo.count()):
+        if self.web_candidate_mode_combo.itemData(index) == initial_mode:
+            self.web_candidate_mode_combo.setCurrentIndex(index)
+            break
+    self.web_candidate_mode_combo.currentIndexChanged.connect(self.handle_web_candidate_mode_changed)
+    self.handle_web_candidate_mode_changed()
     layout.addWidget(web_card, 1)
 
 
@@ -342,27 +412,33 @@ def build_log_section(self, layout, center_row, textedit_style, log_min_height, 
 
     log_card_title = '日志' if self.source_mode == 'web' else '运行日志'
     log_card, log_layout = make_card(log_card_title)
-    compact_card_layout(log_layout)
+    compact_card_layout(log_layout, 16 if self.source_mode == 'web' else 18, 10 if self.source_mode == 'web' else 12)
     self.log = QPlainTextEdit()
     self.log.setReadOnly(True)
     self.log.setMinimumHeight(log_min_height)
     apply_video_textedit_surface(self.log, textedit_style, self.current_theme)
-    log_layout.addWidget(self.log)
 
     self.progress_label = QLabel('等待开始')
     self.progress_label.setProperty('cardSub', True)
     self.progress_label.setWordWrap(True)
-    log_layout.addWidget(self.progress_label)
 
     self.task_counter_label = QLabel('')
     self.task_counter_label.setProperty('cardSub', True)
-    log_layout.addWidget(self.task_counter_label)
 
     self.progress_bar = QProgressBar()
     self.progress_bar.setMinimum(0)
     self.progress_bar.setMaximum(100)
     self.progress_bar.setValue(0)
-    log_layout.addWidget(self.progress_bar)
+    if self.source_mode == 'web':
+        log_layout.addWidget(self.log)
+        log_layout.addWidget(self.progress_label)
+        log_layout.addWidget(self.task_counter_label)
+        log_layout.addWidget(self.progress_bar)
+    else:
+        log_layout.addWidget(self.log)
+        log_layout.addWidget(self.progress_label)
+        log_layout.addWidget(self.task_counter_label)
+        log_layout.addWidget(self.progress_bar)
     if self.source_mode == 'web':
         layout.addWidget(log_card, 1)
     else:

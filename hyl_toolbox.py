@@ -470,6 +470,7 @@ def validate_video_downloader_form(
     telegram_include_photos: bool = False,
     web_candidate_index: str = '',
     web_download_all_candidates: bool = False,
+    web_candidate_mode: str = '',
 ) -> list[str]:
     module = _load_video_downloader_tab_module()
     return module.validate_video_downloader_form(
@@ -486,6 +487,7 @@ def validate_video_downloader_form(
         telegram_include_photos,
         web_candidate_index,
         web_download_all_candidates,
+        web_candidate_mode=web_candidate_mode,
         get_video_downloader_module=get_video_downloader_module,
     )
 
