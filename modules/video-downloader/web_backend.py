@@ -19,6 +19,7 @@ from random import uniform
 from threading import Event, Lock
 from time import monotonic, sleep
 from collections.abc import Iterable
+from typing import Any
 from urllib.parse import urljoin, urlparse
 from urllib.request import Request, urlopen
 
@@ -413,6 +414,7 @@ def _download_direct_media_file(
     output_path = _s.ensure_unique_path(output_root / f'{base_stem}{suffix}')
     max_reconnects = 3
     downloaded_total = 0
+    reconnect_count = 0
     for reconnect_attempt in range(max_reconnects + 1):
         headers = _s._build_web_headers(referer_url)
         if downloaded_total > 0:
@@ -432,6 +434,7 @@ def _download_direct_media_file(
                 with output_path.open(mode) as fh:
                     raw_total = int(response.headers.get('Content-Length') or 0)
                     # For 206 responses, Content-Length is remaining bytes; compute full size
+                    # If Content-Length is missing (some servers), progress percentage won't be shown
                     total_bytes = downloaded_total + raw_total if downloaded_total > 0 else raw_total
                     while True:
                         if token is not None:
@@ -470,9 +473,10 @@ def _download_direct_media_file(
         downloaded_total += downloaded
         if not should_reconnect:
             break
-        if reconnect_attempt >= max_reconnects:
+        reconnect_count += 1
+        if reconnect_count >= max_reconnects:
             raise DownloadError('重连次数已达上限')
-        _emit(progress_cb, f'重连中... (第{reconnect_attempt + 1}次)')
+        _emit(progress_cb, f'重连中... (第{reconnect_count}次)')
     _emit(progress_cb, f'网页 OK -> {output_path.name}')
     return {
         'success': True,
@@ -1240,6 +1244,7 @@ def _download_url_with_ytdlp(
     if options.web_use_browser_cookies:
         ydl_opts['cookiesfrombrowser'] = ('chrome',)
     max_reconnects = 3
+    reconnect_count = 0
     for reconnect_attempt in range(max_reconnects + 1):
         try:
             with _capture_aria2_console_progress(progress_cb, unique_stem):
@@ -1252,7 +1257,10 @@ def _download_url_with_ytdlp(
             token = _current_token()
             if token and token.reconnect.is_set():
                 token.reconnect.clear()
-                _emit(progress_cb, f'重连中... (第{reconnect_attempt + 1}次)')
+                reconnect_count += 1
+                if reconnect_count >= max_reconnects:
+                    raise DownloadError('重连次数已达上限')
+                _emit(progress_cb, f'重连中... (第{reconnect_count}次)')
                 continue
             raise
         except Exception:
@@ -1270,7 +1278,10 @@ def _download_url_with_ytdlp(
         token = _current_token()
         if token and token.reconnect.is_set():
             token.reconnect.clear()
-            _emit(progress_cb, f'重连中... (第{reconnect_attempt + 1}次)')
+            reconnect_count += 1
+            if reconnect_count >= max_reconnects:
+                raise DownloadError('重连次数已达上限')
+            _emit(progress_cb, f'重连中... (第{reconnect_count}次)')
             continue
         break
     else:
@@ -1596,6 +1607,7 @@ def _download_m3u8_with_ffmpeg(
     output_path = _s.ensure_unique_path(output_root / f'{base_stem}.mp4')
     total_duration = _probe_stream_duration(media_url, ffmpeg)
     max_reconnects = 3
+    reconnect_count = 0
     for reconnect_attempt in range(max_reconnects + 1):
         overwrite_flag = '-y' if options.overwrite or reconnect_attempt > 0 else '-n'
         command = [
@@ -1667,9 +1679,10 @@ def _download_m3u8_with_ffmpeg(
                 stderr = (proc.stderr.read() if proc.stderr else '').strip()
                 raise DownloadError(stderr or 'ffmpeg 下载失败')
             break
-        if reconnect_attempt >= max_reconnects:
+        reconnect_count += 1
+        if reconnect_count >= max_reconnects:
             raise DownloadError('重连次数已达上限')
-        _emit(progress_cb, f'重新下载中... (第{reconnect_attempt + 1}次)')
+        _emit(progress_cb, f'重新下载中... (第{reconnect_count}次)')
     _emit(progress_cb, f'网页 OK -> {output_path.name}')
     return {
         'success': True,
@@ -1706,7 +1719,7 @@ def _probe_stream_duration(url: str, ffmpeg_path: str = '') -> float | None:
 # Progress hook
 # ---------------------------------------------------------------------------
 def _make_web_progress_hook(progress_cb: ProgressCallback | None, token: Token | None = None):
-    def hook(status: dict[str, object]) -> None:
+    def hook(status: dict[str, Any]) -> None:
         if token and token.cancel.is_set():
             raise CancelledError('yt-dlp 下载已取消')
         if token and token.reconnect.is_set():
@@ -1760,8 +1773,9 @@ def embed_thumbnail(
     if not ffmpeg:
         return {'success': False, 'error': '未检测到 ffmpeg'}
 
-    thumb_dir = video_path.parent / '.thumb_tmp'
-    thumb_dir.mkdir(exist_ok=True)
+    import tempfile
+    thumb_tmp = tempfile.TemporaryDirectory(dir=video_path.parent, prefix='.thumb_tmp_')
+    thumb_dir = Path(thumb_tmp.name)
     stem = video_path.stem
     try:
         if direct_frame:
@@ -1876,7 +1890,4 @@ def embed_thumbnail(
     except Exception as exc:
         return {'success': False, 'error': str(exc)}
     finally:
-        # Cleanup temp thumbnail dir
-        for f in thumb_dir.iterdir():
-            f.unlink(missing_ok=True)
-        thumb_dir.rmdir()
+        thumb_tmp.cleanup()

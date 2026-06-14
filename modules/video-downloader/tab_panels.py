@@ -245,7 +245,7 @@ def build_task_section(self, layout, center_row, textedit_style, task_min_height
                             self.title_edit.setReadOnly(True)
                             self._on_rename(self.title_edit.text())
                         return True
-                    if etype == QEvent.KeyPress and ev.key() == deps['Qt'].Key_Return:
+                    if etype == QEvent.KeyPress and ev.key() == (deps['Qt'].Key_Return if 'Qt' in deps else 16777220):
                         self.title_edit.setReadOnly(True)
                         self._on_rename(self.title_edit.text())
                         return True
