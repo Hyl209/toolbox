@@ -629,7 +629,8 @@ def test_video_downloader_tab_source_contains_log_recent_limit_and_status_contro
     assert "elif kind == 'tg_scan':" in source or 'tg_scan' in source
     assert "elif kind == 'file':" in source or "kind == 'file'" in source
     assert 'self.web_candidate_index_edit' in source or 'web_candidate_index_edit' in source
-    assert 'self.web_all_candidates_checkbox' in source or 'web_all_candidates_checkbox' in source
+    assert 'self.web_candidate_mode_combo' in source or 'web_candidate_mode_combo' in source
+    assert "'全部候选'" in source
     assert 'self.send_code_button' in source or 'send_code_button' in source
     assert 'self.check_status_button' in source or 'check_status_button' in source
 

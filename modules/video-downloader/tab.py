@@ -173,8 +173,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             self.backend_status_label = None
             self.refresh_status_button = None
             self.source_edit = None
-            self.candidate_results_edit = None
-            self.add_candidates_button = None
+            self.task_edit = None
             self.recent_count_edit = None
             self.all_messages_checkbox = None
             self.date_from_edit = None
@@ -182,10 +181,6 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             self.include_video_checkbox = None
             self.include_photo_checkbox = None
             self.web_candidate_index_edit = None
-            self.web_candidate_exclude_checkbox = None
-            self.web_candidate_before_checkbox = None
-            self.web_candidate_after_checkbox = None
-            self.web_all_candidates_checkbox = None
             self.web_candidate_mode_combo = None
             self.concurrent_combo = None
             self.scan_button = None
@@ -267,10 +262,6 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             if self.web_candidate_index_edit is not None:
                 save_setting(self.settings, self._mode_setting_key('web_candidate_index'), self._widget_text(self.web_candidate_index_edit))
                 save_setting(self.settings, self._mode_setting_key('web_candidate_mode'), self._web_candidate_mode_value())
-                save_setting(self.settings, self._mode_setting_key('web_candidate_exclude'), '1' if self._is_checked(self.web_candidate_exclude_checkbox) else '0')
-                save_setting(self.settings, self._mode_setting_key('web_candidate_before'), '1' if self._is_checked(self.web_candidate_before_checkbox) else '0')
-                save_setting(self.settings, self._mode_setting_key('web_candidate_after'), '1' if self._is_checked(self.web_candidate_after_checkbox) else '0')
-                save_setting(self.settings, self._mode_setting_key('web_all_candidates'), '1' if self._is_checked(self.web_all_candidates_checkbox) else '0')
             save_setting(self.settings, self._mode_setting_key('overwrite'), '1' if self._is_checked(self.overwrite_checkbox) else '0')
             save_setting(self.settings, self._mode_setting_key('concurrent'), self._concurrent_value() if self.concurrent_combo is not None else '1')
             save_setting(self.settings, self._shared_setting_key('phone_code_hash'), self.phone_code_hash)
@@ -305,10 +296,6 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                 self.include_video_checkbox,
                 self.include_photo_checkbox,
                 self.web_candidate_index_edit,
-                self.web_candidate_exclude_checkbox,
-                self.web_candidate_before_checkbox,
-                self.web_candidate_after_checkbox,
-                self.web_all_candidates_checkbox,
                 self.web_candidate_mode_combo,
                 self.output_edit,
                 self.overwrite_checkbox,
@@ -333,16 +320,11 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                 for widget in (
                     self.source_edit,
                     self.task_edit,
-                    self.candidate_results_edit,
                 ):
                     if widget is not None:
                         widget.setEnabled(True)
-                for widget in (
-                    self.scan_button,
-                    self.add_candidates_button,
-                ):
-                    if widget is not None:
-                        widget.setVisible(not busy)
+                if self.scan_button is not None:
+                    self.scan_button.setVisible(not busy)
             self.run_button.setVisible(not busy)
             if self.pause_button is not None:
                 self.pause_button.setVisible(busy)
@@ -392,36 +374,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             selected = self._web_candidate_mode_value()
             if selected in {'auto', 'specified', 'all', 'exclude', 'before', 'after'}:
                 return selected
-            if self._is_checked(self.web_candidate_exclude_checkbox):
-                return 'exclude'
-            if self._is_checked(self.web_candidate_before_checkbox):
-                return 'before'
-            if self._is_checked(self.web_candidate_after_checkbox):
-                return 'after'
             return self.module._parse_candidate_mode(self._widget_text(self.web_candidate_index_edit))[0]
-
-        def _uncheck_mode_checkboxes(self, keep: str = ''):
-            if keep != 'exclude' and self.web_candidate_exclude_checkbox is not None:
-                self.web_candidate_exclude_checkbox.setChecked(False)
-            if keep != 'before' and self.web_candidate_before_checkbox is not None:
-                self.web_candidate_before_checkbox.setChecked(False)
-            if keep != 'after' and self.web_candidate_after_checkbox is not None:
-                self.web_candidate_after_checkbox.setChecked(False)
-
-        def handle_exclude_checked(self):
-            if self.web_candidate_exclude_checkbox is not None and self.web_candidate_exclude_checkbox.isChecked():
-                self._uncheck_mode_checkboxes('exclude')
-            self.save_form_settings()
-
-        def handle_before_checked(self):
-            if self.web_candidate_before_checkbox is not None and self.web_candidate_before_checkbox.isChecked():
-                self._uncheck_mode_checkboxes('before')
-            self.save_form_settings()
-
-        def handle_after_checked(self):
-            if self.web_candidate_after_checkbox is not None and self.web_candidate_after_checkbox.isChecked():
-                self._uncheck_mode_checkboxes('after')
-            self.save_form_settings()
 
         def _web_candidate_mode_value(self) -> str:
             if self.web_candidate_mode_combo is None:
@@ -435,32 +388,14 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             return self._widget_text(self.web_candidate_index_edit)
 
         def handle_web_candidate_mode_changed(self):
-            mode = self._web_candidate_mode_value()
-            if self.web_all_candidates_checkbox is not None:
-                self.web_all_candidates_checkbox.setChecked(mode == 'all')
-            if self.web_candidate_exclude_checkbox is not None:
-                self.web_candidate_exclude_checkbox.setChecked(mode == 'exclude')
-            if self.web_candidate_before_checkbox is not None:
-                self.web_candidate_before_checkbox.setChecked(mode == 'before')
-            if self.web_candidate_after_checkbox is not None:
-                self.web_candidate_after_checkbox.setChecked(mode == 'after')
             self.handle_web_all_candidates_changed()
 
         def handle_web_all_candidates_changed(self):
-            if self.web_candidate_index_edit is None or self.web_all_candidates_checkbox is None:
+            if self.web_candidate_index_edit is None:
                 return
             mode = self._web_candidate_mode_value()
-            enabled = not self.web_all_candidates_checkbox.isChecked()
-            index_enabled = enabled and mode in {'specified', 'exclude', 'before', 'after'}
-            self.web_candidate_index_edit.setEnabled(enabled)
-            if mode:
-                self.web_candidate_index_edit.setEnabled(index_enabled)
-            if self.web_candidate_exclude_checkbox is not None:
-                self.web_candidate_exclude_checkbox.setEnabled(enabled)
-            if self.web_candidate_before_checkbox is not None:
-                self.web_candidate_before_checkbox.setEnabled(enabled)
-            if self.web_candidate_after_checkbox is not None:
-                self.web_candidate_after_checkbox.setEnabled(enabled)
+            index_enabled = mode in {'specified', 'exclude', 'before', 'after'}
+            self.web_candidate_index_edit.setEnabled(index_enabled)
             self.save_form_settings()
 
         def reset_progress_ui(self, total_tasks: int):
@@ -666,9 +601,10 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             style = build_video_textedit_style(build_global_scrollbar_style, self.current_theme)
             if self.source_edit is not None:
                 apply_video_textedit_surface(self.source_edit, style, self.current_theme)
-            apply_video_textedit_surface(self.task_edit, style, self.current_theme)
-            if self.candidate_results_edit is not None:
-                apply_video_textedit_surface(self.candidate_results_edit, style, self.current_theme)
+            if hasattr(self.task_edit, 'applyTheme'):
+                self.task_edit.applyTheme(self.current_theme)
+            elif self.task_edit is not None:
+                apply_video_textedit_surface(self.task_edit, style, self.current_theme)
             apply_video_textedit_surface(self.log, style, self.current_theme)
             if self.concurrent_combo is not None:
                 style_combo_popup(self.concurrent_combo, self.current_theme)
@@ -717,8 +653,6 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                 show_themed_warning(self, '提示', '请先输入网页链接')
                 return
             self.web_scan_results = {}
-            if self.candidate_results_edit is not None:
-                self.candidate_results_edit.clear()
             self.web_candidate_sources = {}
             self.refresh_summary()
             self.progress_label.setText(f'正在扫描候选 0/{len(web_urls)}')
@@ -766,8 +700,10 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                     urls = self.module.parse_task_lines(str(candidate or ''))
                     if urls:
                         self.web_candidate_sources[urls[0]] = source_url
-            if self.candidate_results_edit is not None:
-                self.candidate_results_edit.setPlainText('\n'.join(format_web_candidate_lines(results)))
+            candidate_lines = format_web_candidate_lines(results)
+            if candidate_lines:
+                merged = append_web_queue_text(self.task_edit.toPlainText(), '\n'.join(candidate_lines))
+                self.task_edit.setPlainText(merged)
             self.refresh_summary()
             success_count = sum(1 for item in results if item.get('success'))
             candidate_count = sum(int(item.get('candidate_count', 0) or 0) for item in results if item.get('success'))
@@ -787,21 +723,6 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             self._scan_started_while_running = False
             show_themed_error(self, '候选扫描失败', message)
 
-        def add_web_candidates_to_queue(self):
-            if self.source_mode != 'web' or self.candidate_results_edit is None:
-                return
-            candidate_text = self.candidate_results_edit.toPlainText()
-            if not self.module.parse_task_lines(candidate_text):
-                show_themed_warning(self, '提示', '请先识别网页视频')
-                return
-            merged = append_web_queue_text(self.task_edit.toPlainText(), candidate_text)
-            if merged == self.task_edit.toPlainText().strip():
-                show_themed_warning(self, '提示', '任务区已包含这些视频')
-                return
-            self.task_edit.setPlainText(merged)
-            self.refresh_summary()
-            self.append_log('已添加到任务区')
-
         def cleanup_scan_worker(self):
             if self.scan_worker_thread is not None:
                 self.scan_worker_thread.quit()
@@ -811,6 +732,11 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
 
         def _remove_completed_web_queue_items(self, results: list[dict[str, object]]):
             if self.source_mode != 'web' or not self._active_web_queue_lines:
+                return
+            if hasattr(self.task_edit, 'removeCompleted'):
+                self.task_edit.removeCompleted(results)
+                self._active_web_queue_lines = []
+                self.refresh_summary()
                 return
             success_urls = {
                 str(item.get('source_url') or '')
@@ -1022,7 +948,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             self._downloaded_urls.clear()
             self.save_form_settings()
             module = self.module
-            web_all_candidates = self._is_checked(self.web_all_candidates_checkbox)
+            web_all_candidates = self._web_candidate_mode_value() == 'all'
             web_candidate_text = '' if web_all_candidates else self._web_candidate_index_text_for_request()
             web_candidate_mode = self._resolve_candidate_mode()
             errors = validate_video_downloader_form(

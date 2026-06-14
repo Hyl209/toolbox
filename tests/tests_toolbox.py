@@ -890,7 +890,7 @@ def test_web_video_downloader_tab_properties():
             assert tab.output_edit.placeholderText() == '选择视频输出目录'
             assert tab.run_button.text() == '开始下载'
             assert tab.progress_bar.value() == 0
-            assert tab.task_edit.minimumHeight() == 210
+            assert tab.task_edit.minimumHeight() == 150
             assert tab.log.minimumHeight() == 110
             assert tab.progress_label.text() == '等待开始'
             assert tab.web_candidate_index_edit is not None
@@ -902,12 +902,67 @@ def test_web_video_downloader_tab_properties():
             tab.set_busy(True)
             assert tab.run_button.isHidden() is True
             assert tab.scan_button.isHidden() is True
-            assert tab.add_candidates_button.isHidden() is True
             assert tab.pause_button.isHidden() is False
             tab.set_busy(False)
             assert tab.send_code_button is None
             assert tab.refresh_status_button is None
             assert tab.backend_status_label is None
+        finally:
+            window.close()
+            app.quit()
+
+
+def test_web_video_downloader_task_delete_matches_exact_item():
+    toolbox = load_module()
+    if toolbox.QWidget is None:
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        window, app = toolbox.build_main_window_for_test(tmp)
+        try:
+            tab = window.web_video_downloader_tab
+            first = '1.short：https://cdn.example.com/video.mp4'
+            second = '2.long：https://cdn.example.com/video.mp4?token=abc'
+            tab.task_edit.setPlainText('\n'.join([first, second]))
+            tab.task_edit._deleteItem(tab.task_edit.item(0))
+            assert tab.task_edit.count() == 1
+            assert 'token=abc' in tab.task_edit.toPlainText()
+        finally:
+            window.close()
+            app.quit()
+
+
+def test_web_video_downloader_task_rename_emits_change():
+    toolbox = load_module()
+    if toolbox.QWidget is None:
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        window, app = toolbox.build_main_window_for_test(tmp)
+        try:
+            tab = window.web_video_downloader_tab
+            changed = []
+            tab.task_edit.entryChanged.connect(lambda: changed.append(True))
+            tab.task_edit.setPlainText('1.old：https://cdn.example.com/video.mp4')
+            widget = tab.task_edit.itemWidget(tab.task_edit.item(0))
+            tab.task_edit._renameByWidget(widget, 'new title')
+            assert changed
+            assert tab.task_edit.toPlainText().startswith('1.new title')
+        finally:
+            window.close()
+            app.quit()
+
+
+def test_web_video_downloader_migrates_legacy_all_candidates_setting():
+    toolbox = load_module()
+    if toolbox.QWidget is None:
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        settings = toolbox.make_settings(tmp)
+        toolbox.save_setting(settings, 'video_downloader/web/web_all_candidates', '1')
+        window, app = toolbox.build_main_window_for_test(tmp)
+        try:
+            tab = window.web_video_downloader_tab
+            assert tab._web_candidate_mode_value() == 'all'
+            assert tab.web_candidate_index_edit.isEnabled() is False
         finally:
             window.close()
             app.quit()

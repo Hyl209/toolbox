@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import re
+
 from .tab_constants import (
     DEFAULT_RECENT_LIMIT, DATE_FROM_PLACEHOLDER, DATE_TO_PLACEHOLDER,
-    WEB_INDEX_PLACEHOLDER, WEB_SOURCE_PLACEHOLDER, WEB_CANDIDATE_PLACEHOLDER,
+    WEB_INDEX_PLACEHOLDER, WEB_SOURCE_PLACEHOLDER,
     OUTPUT_PLACEHOLDER, SUMMARY_EMPTY_TEXT,
     RUN_BUTTON_TEXT, SEND_CODE_BUTTON_TEXT, LOGIN_BUTTON_TEXT, STATUS_BUTTON_TEXT,
     apply_video_textedit_surface, compact_card_layout,
 )
+from .tab_formatters import parse_web_queue_entry, format_web_queue_line
 
 
 def build_root_container(self, deps):
@@ -50,6 +53,7 @@ def build_telegram_login_section(self, layout, deps):
     QLineEdit = deps['QLineEdit']
     QPushButton = deps['QPushButton']
     QHBoxLayout = deps['QHBoxLayout']
+    QWidget = deps['QWidget']
 
     settings = self.settings
     status_card, status_layout = make_card('运行状态')
@@ -75,10 +79,19 @@ def build_telegram_login_section(self, layout, deps):
     self.refresh_status_button.clicked.connect(self.refresh_backend_status)
     status_layout.addWidget(self.refresh_status_button)
 
-    top_row_widget, top_row = make_transparent_row()
-    top_row.setSpacing(18)
+    # Collapsible credential section
+    self._login_collapsed = True
+    self._login_collapse_button = QPushButton('▸ Telegram 登录')
+    self._login_collapse_button.setStyleSheet(
+        'QPushButton { border: none; text-align: left; padding: 4px 0; font-weight: bold; }'
+        'QPushButton:hover { color: #7ea6d9; }'
+    )
+    self._login_content = QWidget()
+    _login_content_layout = QHBoxLayout(self._login_content)
+    _login_content_layout.setContentsMargins(0, 0, 0, 0)
+    _login_content_layout.setSpacing(18)
 
-    credential_card, credential_layout = make_card('Telegram 登录')
+    credential_card, credential_layout = make_card('凭据')
     compact_card_layout(credential_layout)
 
     row1 = QHBoxLayout()
@@ -117,9 +130,18 @@ def build_telegram_login_section(self, layout, deps):
     login_button_row.addStretch(1)
     credential_layout.addLayout(login_button_row)
 
-    top_row.addWidget(credential_card, 3)
-    top_row.addWidget(status_card, 2)
-    layout.addWidget(top_row_widget)
+    _login_content_layout.addWidget(credential_card, 3)
+    _login_content_layout.addWidget(status_card, 2)
+    self._login_content.setVisible(False)
+
+    def _toggle_login():
+        self._login_collapsed = not self._login_collapsed
+        self._login_content.setVisible(not self._login_collapsed)
+        self._login_collapse_button.setText('▾ Telegram 登录' if not self._login_collapsed else '▸ Telegram 登录')
+
+    self._login_collapse_button.clicked.connect(_toggle_login)
+    layout.addWidget(self._login_collapse_button)
+    layout.addWidget(self._login_content)
 
 
 def build_task_section(self, layout, center_row, textedit_style, task_min_height, deps):
@@ -132,8 +154,6 @@ def build_task_section(self, layout, center_row, textedit_style, task_min_height
     QLineEdit = deps['QLineEdit']
     QPushButton = deps['QPushButton']
     QHBoxLayout = deps['QHBoxLayout']
-    QVBoxLayout = deps['QVBoxLayout']
-    QWidget = deps['QWidget']
     QCheckBox = deps['QCheckBox']
     QComboBox = deps['QComboBox']
 
@@ -142,50 +162,287 @@ def build_task_section(self, layout, center_row, textedit_style, task_min_height
     task_card, task_layout = make_card(task_card_title)
     compact_card_layout(task_layout, 16 if self.source_mode == 'web' else 18, 10 if self.source_mode == 'web' else 12)
     if self.source_mode == 'web':
-        workflow_widget, workflow_row = make_transparent_row()
-        workflow_row.setSpacing(14)
-
-        def add_workflow_column(title, editor, stretch):
-            column = QWidget()
-            column.setStyleSheet('background: transparent;')
-            column_layout = QVBoxLayout(column)
-            column_layout.setContentsMargins(0, 0, 0, 0)
-            column_layout.setSpacing(8)
-            column_layout.addWidget(QLabel(title))
-            column_layout.addWidget(editor)
-            workflow_row.addWidget(column, stretch)
-
         self.source_edit = QPlainTextEdit()
         self.source_edit.setPlaceholderText(WEB_SOURCE_PLACEHOLDER)
-        self.source_edit.setMinimumHeight(210)
-        self.source_edit.setMaximumHeight(240)
+        self.source_edit.setMinimumHeight(120)
+        self.source_edit.setMaximumHeight(160)
         apply_video_textedit_surface(self.source_edit, textedit_style, self.current_theme)
         self.source_edit.textChanged.connect(self.handle_web_source_text_changed)
-        add_workflow_column('网页链接', self.source_edit, 2)
+        task_layout.addWidget(QLabel('网页链接'))
+        task_layout.addWidget(self.source_edit)
+
+        # -- WebTaskListWidget: interactive task list with hover highlight and × delete --
+        QListWidget = deps['QListWidget']
+        QListWidgetItem = deps['QListWidgetItem']
+        QFrame = deps.get('QFrame')
+        Signal = deps.get('Signal')
+
+        _entry_bg = 'rgba(60, 68, 80, 0.55)' if self.current_theme == 'dark' else 'rgba(230, 236, 245, 0.7)'
+        _entry_hover_bg = 'rgba(80, 90, 108, 0.7)' if self.current_theme == 'dark' else 'rgba(210, 222, 240, 0.9)'
+        _del_hover_bg = '#e74c3c' if self.current_theme == 'dark' else '#d32f2f'
+
+        class _TaskEntryWidget(QFrame):
+            def __init__(self, title, url, on_delete, on_rename):
+                super().__init__()
+                self._on_rename = on_rename
+                self._btn_w = 32
+                self.setStyleSheet(
+                    f'QFrame {{ background: {_entry_bg}; border: none; border-bottom: 1px solid rgba(128,128,128,0.2); }}'
+                )
+                self.setAttribute(deps['Qt'].WA_Hover) if 'Qt' in deps else None
+                lay = deps['QHBoxLayout'](self)
+                lay.setContentsMargins(10, 6, 4, 6)
+                lay.setSpacing(6)
+                info = deps['QVBoxLayout']()
+                info.setSpacing(2)
+                self.title_edit = QLineEdit(title)
+                self.title_edit.setReadOnly(True)
+                self.title_edit.setStyleSheet(
+                    'QLineEdit { background:transparent; border:none; font-weight:bold; color:inherit; padding:0; }'
+                    'QLineEdit:focus { border:1px solid #7ea6d9; border-radius:4px; padding:1px 4px; background:rgba(255,255,255,0.08); }'
+                    'QLineEdit[readOnly="true"] { cursor:pointer; }'
+                )
+                self.title_edit.installEventFilter(self)
+                u = QLabel(url)
+                u.setProperty('cardSub', True)
+                u.setStyleSheet('background:transparent; border:none;')
+                u.setWordWrap(True)
+                info.addWidget(self.title_edit)
+                info.addWidget(u)
+                lay.addLayout(info, 1)
+                del_btn = QPushButton('\u00d7')
+                del_btn.setToolTip('删除任务')
+                del_btn.setAccessibleName('删除任务')
+                del_btn.setFixedSize(self._btn_w, self._btn_w)
+                del_btn.setCursor(deps['Qt'].PointingHandCursor) if 'Qt' in deps else None
+                del_btn.setStyleSheet(
+                    'QPushButton { background:transparent; border:none;'
+                    f'border-radius:{self._btn_w // 2}px; font-size:18px; font-weight:bold; color:rgba(160,160,160,0.6);'
+                    " font-family:'Segoe UI','Arial',sans-serif; padding:0px 0px 3px 0px; }}"
+                    f'QPushButton:hover {{ background:{_del_hover_bg}; color:white; }}'
+                )
+                del_btn.clicked.connect(on_delete)
+                lay.addWidget(del_btn, 0, deps['Qt'].AlignVCenter) if 'Qt' in deps else lay.addWidget(del_btn)
+
+            def eventFilter(self, obj, ev):
+                QEvent = deps.get('QEvent')
+                if QEvent is None:
+                    return super().eventFilter(obj, ev)
+                if obj is self.title_edit:
+                    etype = ev.type()
+                    if etype == QEvent.MouseButtonDblClick:
+                        self.title_edit.setReadOnly(False)
+                        self.title_edit.selectAll()
+                        self.title_edit.setFocus()
+                        return True
+                    if etype == QEvent.FocusOut:
+                        if not self.title_edit.isReadOnly():
+                            self.title_edit.setReadOnly(True)
+                            self._on_rename(self.title_edit.text())
+                        return True
+                    if etype == QEvent.KeyPress and ev.key() == deps['Qt'].Key_Return:
+                        self.title_edit.setReadOnly(True)
+                        self._on_rename(self.title_edit.text())
+                        return True
+                return super().eventFilter(obj, ev)
+
+            def enterEvent(self, ev):
+                self.setStyleSheet(
+                    f'QFrame {{ background: {_entry_hover_bg}; border: none; border-bottom: 1px solid rgba(128,128,128,0.2); }}'
+                )
+                super().enterEvent(ev)
+
+            def leaveEvent(self, ev):
+                self.setStyleSheet(
+                    f'QFrame {{ background: {_entry_bg}; border: none; border-bottom: 1px solid rgba(128,128,128,0.2); }}'
+                )
+                super().leaveEvent(ev)
+
+            def sizeHint(self):
+                sh = super().sizeHint()
+                min_h = 56
+                min_w = self._btn_w + 10 + 4 + 6  # btn + margins + spacing
+                if sh.height() < min_h:
+                    sh.setHeight(min_h)
+                if sh.width() < min_w:
+                    sh.setWidth(min_w)
+                return sh
+
+        class WebTaskListWidget(QListWidget):
+            if Signal is not None:
+                entryChanged = Signal()
+
+            def __init__(self, theme, placeholder):
+                super().__init__()
+                self._theme = theme
+                bg = 'rgba(44, 50, 59, 0.88)' if theme == 'dark' else 'rgba(255, 255, 255, 0.76)'
+                border = '#46505c' if theme == 'dark' else '#d8dee6'
+                sb_thumb = 'rgba(100,110,130,0.55)' if theme == 'dark' else 'rgba(160,170,190,0.45)'
+                sb_hover = 'rgba(120,130,150,0.7)' if theme == 'dark' else 'rgba(130,140,160,0.6)'
+                self.setStyleSheet(
+                    f'QListWidget {{ background: {bg}; border: 1px solid {border}; border-radius: 16px; padding: 4px; }}'
+                    f'QListWidget::item {{ background: transparent; border: none; padding: 0px; margin: 0px; }}'
+                    f'QListWidget::item:selected {{ background: transparent; }}'
+                    f'QScrollBar {{ background: transparent; width: 8px; border-radius: 4px; }}'
+                    f'QScrollBar::handle:vertical {{ background: {sb_thumb}; min-height: 30px; border-radius: 4px; }}'
+                    f'QScrollBar::handle:vertical:hover {{ background: {sb_hover}; }}'
+                    f'QScrollBar::add-line, QScrollBar::sub-line, QScrollBar::add-page, QScrollBar::sub-page {{ height: 0; background: transparent; }}'
+                )
+                if self.viewport():
+                    self.viewport().setAutoFillBackground(False)
+                    self.viewport().setStyleSheet(f'background: transparent;')
+                self.setMinimumHeight(150)
+                self.setMaximumHeight(300)
+                self.setSelectionMode(QListWidget.NoSelection)
+                self.setHorizontalScrollMode(QListWidget.ScrollPerPixel)
+                self.setVerticalScrollMode(QListWidget.ScrollPerPixel)
+                self.viewport().setContentsMargins(0, 0, 0, 0)
+                self._placeholder = placeholder
+                self._entry_count = 0
+
+            def text(self):
+                lines = []
+                for i in range(self.count()):
+                    item = self.item(i)
+                    lines.append(item.data(deps['Qt'].UserRole) if 'Qt' in deps else item.data(256))
+                return '\n'.join(lines)
+
+            def setText(self, text):
+                self.clear()
+                for line in str(text).splitlines():
+                    self.addEntry(line)
+
+            def toPlainText(self):
+                return self.text()
+
+            def setPlainText(self, text):
+                self.setText(text)
+
+            def clear(self):
+                super().clear()
+                self._entry_count = 0
+
+            def addEntry(self, line):
+                entry = parse_web_queue_entry(str(line))
+                if not entry:
+                    return
+                display_title = entry.get('title', entry['url'])
+                item = QListWidgetItem()
+                w = _TaskEntryWidget(
+                    display_title, entry['url'],
+                    lambda item=item: self._deleteItem(item),
+                    lambda new_title: self._renameByWidget(w, new_title),
+                )
+                w.setMinimumHeight(56)
+                role = deps['Qt'].UserRole if 'Qt' in deps else 256
+                item.setData(role, format_web_queue_line(self.count() + 1, entry['title'], entry['url']))
+                self.addItem(item)
+                self.setItemWidget(item, w)
+                self._fitItemSize(item, w)
+                self._entry_count = self.count()
+
+            def _fitItemSize(self, item, widget):
+                QSize = deps.get('QSize')
+                if QSize is None:
+                    return
+                vp_w = self.viewport().width()
+                if vp_w < 100:
+                    vp_w = 600
+                item.setSizeHint(QSize(vp_w, 56))
+                widget.setFixedWidth(vp_w)
+
+            def resizeEvent(self, ev):
+                super().resizeEvent(ev)
+                for i in range(self.count()):
+                    item = self.item(i)
+                    w = self.itemWidget(item)
+                    if w:
+                        self._fitItemSize(item, w)
+
+            def _renameByWidget(self, widget, new_title):
+                for i in range(self.count()):
+                    if self.itemWidget(self.item(i)) is widget:
+                        role = deps['Qt'].UserRole if 'Qt' in deps else 256
+                        old = str(self.item(i).data(role) or '')
+                        entry = parse_web_queue_entry(old)
+                        url = entry.get('url') or old
+                        self.item(i).setData(role, format_web_queue_line(i + 1, new_title, url))
+                        self._emitChanged()
+                        break
+
+            def _deleteItem(self, item):
+                row = self.row(item)
+                if row >= 0:
+                    self.takeItem(row)
+                self._renumber()
+                self._emitChanged()
+
+            def removeCompleted(self, results):
+                success_urls = {str(r.get('source_url') or '') for r in results if r.get('success')}
+                if not success_urls:
+                    return
+                for i in range(self.count() - 1, -1, -1):
+                    item = self.item(i)
+                    role = deps['Qt'].UserRole if 'Qt' in deps else 256
+                    line = str(item.data(role) or '')
+                    entry = parse_web_queue_entry(line)
+                    if entry.get('url') in success_urls:
+                        self.takeItem(i)
+                self._renumber()
+                self._emitChanged()
+
+            def _renumber(self):
+                role = deps['Qt'].UserRole if 'Qt' in deps else 256
+                for i in range(self.count()):
+                    item = self.item(i)
+                    old = str(item.data(role) or '')
+                    cleaned = re.sub(r'^\d+[.、．]\s*', '', old)
+                    item.setData(role, f'{i + 1}.{cleaned}')
+
+            def _emitChanged(self):
+                try:
+                    self.entryChanged.emit()
+                except Exception:
+                    pass
+
+            def applyTheme(self, theme):
+                self._theme = theme
+                bg = 'rgba(44, 50, 59, 0.88)' if theme == 'dark' else 'rgba(255, 255, 255, 0.76)'
+                border = '#46505c' if theme == 'dark' else '#d8dee6'
+                sb_thumb = 'rgba(100,110,130,0.55)' if theme == 'dark' else 'rgba(160,170,190,0.45)'
+                sb_hover = 'rgba(120,130,150,0.7)' if theme == 'dark' else 'rgba(130,140,160,0.6)'
+                self.setStyleSheet(
+                    f'QListWidget {{ background: {bg}; border: 1px solid {border}; border-radius: 16px; padding: 4px; }}'
+                    f'QListWidget::item {{ background: transparent; border: none; padding: 0px; margin: 0px; }}'
+                    f'QListWidget::item:selected {{ background: transparent; }}'
+                    f'QScrollBar {{ background: transparent; width: 8px; border-radius: 4px; }}'
+                    f'QScrollBar::handle:vertical {{ background: {sb_thumb}; min-height: 30px; border-radius: 4px; }}'
+                    f'QScrollBar::handle:vertical:hover {{ background: {sb_hover}; }}'
+                    f'QScrollBar::add-line, QScrollBar::sub-line, QScrollBar::add-page, QScrollBar::sub-page {{ height: 0; background: transparent; }}'
+                )
+                if self.viewport():
+                    self.viewport().setStyleSheet(f'background: transparent;')
+
+        self.task_edit = WebTaskListWidget(self.current_theme, self.mode_meta['task_placeholder'])
+        self.task_edit.entryChanged.connect(self.handle_task_text_changed)
+        task_layout.addWidget(QLabel('任务区'))
+        task_layout.addWidget(self.task_edit)
+
+        self.summary_label = QLabel(SUMMARY_EMPTY_TEXT)
+        self.summary_label.setProperty('cardSub', True)
+        self.summary_label.setWordWrap(True)
+        task_layout.addWidget(self.summary_label)
     else:
         task_layout.addWidget(QLabel('任务链接'))
-    self.task_edit = QPlainTextEdit()
-    self.task_edit.setPlaceholderText(self.mode_meta['task_placeholder'])
-    self.task_edit.setMinimumHeight(task_min_height)
-    apply_video_textedit_surface(self.task_edit, textedit_style, self.current_theme)
-    self.task_edit.textChanged.connect(self.handle_task_text_changed)
+        self.task_edit = QPlainTextEdit()
+        self.task_edit.setPlaceholderText(self.mode_meta['task_placeholder'])
+        self.task_edit.setMinimumHeight(task_min_height)
+        apply_video_textedit_surface(self.task_edit, textedit_style, self.current_theme)
+        self.task_edit.textChanged.connect(self.handle_task_text_changed)
 
-    self.summary_label = QLabel(SUMMARY_EMPTY_TEXT)
-    self.summary_label.setProperty('cardSub', True)
-    self.summary_label.setWordWrap(True)
-    if self.source_mode == 'web':
-        self.candidate_results_edit = QPlainTextEdit()
-        self.candidate_results_edit.setPlaceholderText(WEB_CANDIDATE_PLACEHOLDER)
-        self.candidate_results_edit.setMinimumHeight(210)
-        self.candidate_results_edit.setMaximumHeight(240)
-        apply_video_textedit_surface(self.candidate_results_edit, textedit_style, self.current_theme)
-        add_workflow_column('识别结果', self.candidate_results_edit, 2)
-        self.task_edit.setMinimumHeight(210)
-        self.task_edit.setMaximumHeight(240)
-        add_workflow_column('任务区', self.task_edit, 2)
-        task_layout.addWidget(self.summary_label)
-        task_layout.addWidget(workflow_widget)
-    else:
+        self.summary_label = QLabel(SUMMARY_EMPTY_TEXT)
+        self.summary_label.setProperty('cardSub', True)
+        self.summary_label.setWordWrap(True)
         task_layout.addWidget(self.summary_label)
         task_layout.addWidget(self.task_edit)
 
@@ -226,14 +483,10 @@ def build_task_section(self, layout, center_row, textedit_style, task_min_height
     action_row = QHBoxLayout()
     action_row.setSpacing(10)
     if self.source_mode == 'web':
-        self.scan_button = QPushButton('识别网页视频')
-        self.scan_button.setToolTip('从上方网页链接中识别可下载视频')
+        self.scan_button = QPushButton('识别并添加')
+        self.scan_button.setToolTip('从网页链接中识别视频并自动添加到任务区')
         self.scan_button.clicked.connect(self.scan_web_candidates)
         action_row.addWidget(self.scan_button)
-        self.add_candidates_button = QPushButton('添加到任务区')
-        self.add_candidates_button.setToolTip('把识别结果合并为下方下载队列')
-        self.add_candidates_button.clicked.connect(self.add_web_candidates_to_queue)
-        action_row.addWidget(self.add_candidates_button)
     self.cover_button = QPushButton('补封面')
     self.cover_button.setToolTip('给已下载的视频嵌入封面（需提供源链接）')
     self.cover_button.clicked.connect(self.embed_thumbnail_clicked)
@@ -257,10 +510,7 @@ def build_task_section(self, layout, center_row, textedit_style, task_min_height
     action_row.addWidget(self.reconnect_button)
     task_layout.addLayout(action_row)
     if self.source_mode == 'web':
-        if center_row is not None:
-            center_row.addWidget(task_card, 3)
-        else:
-            layout.addWidget(task_card, 1)
+        layout.addWidget(task_card, 1)
     else:
         center_row.addWidget(task_card, 3)
 
@@ -329,7 +579,6 @@ def build_web_options_section(self, layout, deps):
     style_combo_popup = deps['style_combo_popup']
     QLabel = deps['QLabel']
     QLineEdit = deps['QLineEdit']
-    QCheckBox = deps['QCheckBox']
     QComboBox = deps['QComboBox']
 
     settings = self.settings
@@ -359,37 +608,16 @@ def build_web_options_section(self, layout, deps):
     web_row.addStretch(1)
     web_layout.addWidget(web_row_widget)
 
-    self.web_candidate_exclude_checkbox = QCheckBox('跳过')
-    self.web_candidate_exclude_checkbox.setChecked(load_setting(settings, self._mode_setting_key('web_candidate_exclude'), '0') == '1')
-    self.web_candidate_exclude_checkbox.clicked.connect(self.handle_exclude_checked)
-    self.web_candidate_before_checkbox = QCheckBox('之前')
-    self.web_candidate_before_checkbox.setChecked(load_setting(settings, self._mode_setting_key('web_candidate_before'), '0') == '1')
-    self.web_candidate_before_checkbox.clicked.connect(self.handle_before_checked)
-    self.web_candidate_after_checkbox = QCheckBox('之后')
-    self.web_candidate_after_checkbox.setChecked(load_setting(settings, self._mode_setting_key('web_candidate_after'), '0') == '1')
-    self.web_candidate_after_checkbox.clicked.connect(self.handle_after_checked)
-    self.web_all_candidates_checkbox = QCheckBox('全部候选')
-    self.web_all_candidates_checkbox.setChecked(load_setting(settings, self._mode_setting_key('web_all_candidates'), '0') == '1')
-    self.web_all_candidates_checkbox.clicked.connect(self.handle_web_all_candidates_changed)
-    for legacy_widget in (
-        self.web_candidate_exclude_checkbox,
-        self.web_candidate_before_checkbox,
-        self.web_candidate_after_checkbox,
-        self.web_all_candidates_checkbox,
-    ):
-        legacy_widget.setVisible(False)
-        web_layout.addWidget(legacy_widget)
-
     saved_mode = str(load_setting(settings, self._mode_setting_key('web_candidate_mode'), '') or '').strip()
     if saved_mode in {'auto', 'specified', 'exclude', 'before', 'after', 'all'}:
         initial_mode = saved_mode
-    elif self.web_all_candidates_checkbox.isChecked():
+    elif load_setting(settings, self._mode_setting_key('web_all_candidates'), '0') == '1':
         initial_mode = 'all'
-    elif self.web_candidate_exclude_checkbox.isChecked():
+    elif load_setting(settings, self._mode_setting_key('web_candidate_exclude'), '0') == '1':
         initial_mode = 'exclude'
-    elif self.web_candidate_before_checkbox.isChecked():
+    elif load_setting(settings, self._mode_setting_key('web_candidate_before'), '0') == '1':
         initial_mode = 'before'
-    elif self.web_candidate_after_checkbox.isChecked():
+    elif load_setting(settings, self._mode_setting_key('web_candidate_after'), '0') == '1':
         initial_mode = 'after'
     elif self.web_candidate_index_edit.text().strip():
         initial_mode = 'specified'
@@ -412,7 +640,7 @@ def build_log_section(self, layout, center_row, textedit_style, log_min_height, 
 
     log_card_title = '日志' if self.source_mode == 'web' else '运行日志'
     log_card, log_layout = make_card(log_card_title)
-    compact_card_layout(log_layout, 16 if self.source_mode == 'web' else 18, 10 if self.source_mode == 'web' else 12)
+    compact_card_layout(log_layout, 16, 10)
     self.log = QPlainTextEdit()
     self.log.setReadOnly(True)
     self.log.setMinimumHeight(log_min_height)
@@ -429,16 +657,10 @@ def build_log_section(self, layout, center_row, textedit_style, log_min_height, 
     self.progress_bar.setMinimum(0)
     self.progress_bar.setMaximum(100)
     self.progress_bar.setValue(0)
-    if self.source_mode == 'web':
-        log_layout.addWidget(self.log)
-        log_layout.addWidget(self.progress_label)
-        log_layout.addWidget(self.task_counter_label)
-        log_layout.addWidget(self.progress_bar)
-    else:
-        log_layout.addWidget(self.log)
-        log_layout.addWidget(self.progress_label)
-        log_layout.addWidget(self.task_counter_label)
-        log_layout.addWidget(self.progress_bar)
+    log_layout.addWidget(self.log)
+    log_layout.addWidget(self.progress_label)
+    log_layout.addWidget(self.task_counter_label)
+    log_layout.addWidget(self.progress_bar)
     if self.source_mode == 'web':
         layout.addWidget(log_card, 1)
     else:

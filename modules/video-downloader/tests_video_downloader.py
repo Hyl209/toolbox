@@ -680,7 +680,7 @@ def test_run_download_ignores_stale_web_candidate_text_when_all_candidates_check
                 self.include_video_checkbox = DummyField('')
                 self.include_photo_checkbox = DummyField('')
                 self.web_candidate_index_edit = DummyField('before1')
-                self.web_all_candidates_checkbox = DummyField(True)
+                self.web_candidate_mode_combo = None
                 self.overwrite_checkbox = DummyField('')
                 self.concurrent_combo = None
                 self.log = types.SimpleNamespace(clear=lambda: None)
@@ -699,6 +699,9 @@ def test_run_download_ignores_stale_web_candidate_text_when_all_candidates_check
                 if widget is self.web_candidate_index_edit:
                     raise AssertionError('stale web candidate text was read')
                 return widget.text()
+
+            def _web_candidate_mode_value(self):
+                return 'all'
 
             def _concurrent_value(self):
                 return '1'
@@ -813,7 +816,7 @@ def test_run_download_blocks_specified_mode_without_index():
             self.include_video_checkbox = DummyField('')
             self.include_photo_checkbox = DummyField('')
             self.web_candidate_index_edit = DummyField('')
-            self.web_all_candidates_checkbox = DummyField(False)
+            self.web_candidate_mode_combo = None
             self.overwrite_checkbox = DummyField('')
             self.concurrent_combo = None
             self.log = types.SimpleNamespace(clear=lambda: None)
@@ -833,6 +836,9 @@ def test_run_download_blocks_specified_mode_without_index():
 
         def _concurrent_value(self):
             return '1'
+
+        def _web_candidate_mode_value(self):
+            return 'specified'
 
         def _web_candidate_index_text_for_request(self):
             return ''
@@ -2057,6 +2063,22 @@ def test_append_web_queue_text_deduplicates_and_renumbers():
         '1.旧名字：https://cdn.example.com/existing.mp4',
         '2.course_002：https://cdn.example.com/new.mp4',
     ])
+
+
+def test_web_queue_delete_button_uses_text_symbol_not_emoji():
+    source = (ROOT / 'tab_panels.py').read_text(encoding='utf-8')
+    assert "QPushButton('\\u00d7')" in source
+    assert "QPushButton('❌')" not in source
+    assert "font-family:'Segoe UI','Arial',sans-serif" in source
+
+
+def test_web_queue_completed_url_matches_colon_separated_line():
+    tab_panels = (ROOT / 'tab_panels.py').read_text(encoding='utf-8')
+    assert 'parse_web_queue_entry(line)' in tab_panels
+    line = '1.course_001：https://cdn.example.com/a.mp4'
+    assert [u for u in line.split() if u.startswith('http')] == []
+    entry = load_tab_module().parse_web_queue_entry(line)
+    assert entry['url'] == 'https://cdn.example.com/a.mp4'
 
 
 def test_build_web_queue_tasks_applies_one_custom_name_to_same_source():

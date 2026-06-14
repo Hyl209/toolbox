@@ -21,7 +21,7 @@ def _get_weixin_image_base64() -> str:
     global _WEIXIN_IMAGE_BASE64_CACHE
     if _WEIXIN_IMAGE_BASE64_CACHE is None:
         _WEIXIN_IMAGE_BASE64_CACHE = _WEIXIN_B64_FILE.read_text(encoding="utf-8").strip() if _WEIXIN_B64_FILE.exists() else ""
-    return _WEIXIN_IMAGE_BASE64_CACHE 
+    return _WEIXIN_IMAGE_BASE64_CACHE
 
 
 def build_help_popup_state(image_path: Path | None):
@@ -45,7 +45,7 @@ def build_help_popup_state(image_path: Path | None):
     }
 
 try:
-    from PySide6.QtCore import QSettings, Qt, QPoint, QSize, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, QEventLoop, QTimer, QFileInfo, QObject, QThread, Signal, QUrl
+    from PySide6.QtCore import QSettings, Qt, QPoint, QSize, QEvent, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, QEventLoop, QTimer, QFileInfo, QObject, QThread, Signal, QUrl
     from PySide6.QtGui import QIcon, QPixmap, QPainter, QPen, QColor
     from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
     from PySide6.QtWidgets import (
@@ -59,6 +59,7 @@ try:
         QLabel,
         QLineEdit,
         QListWidget,
+        QListWidgetItem,
         QListView,
         QMainWindow,
         QMessageBox,
@@ -90,8 +91,9 @@ except ModuleNotFoundError:
     QTimer = None
     QIcon = QPixmap = QPainter = QPen = QColor = None
     QFileInfo = None
+    QEvent = None
     QObject = QThread = Signal = None
-    QCheckBox = QFileDialog = QFileIconProvider = QFrame = QGraphicsOpacityEffect = QHBoxLayout = QLabel = QLineEdit = QListWidget = QListView = QColorDialog = None
+    QCheckBox = QFileDialog = QFileIconProvider = QFrame = QGraphicsOpacityEffect = QHBoxLayout = QLabel = QLineEdit = QListWidget = QListWidgetItem = QListView = QColorDialog = None
     QMainWindow = QMessageBox = QPushButton = QPlainTextEdit = QProgressBar = QStackedWidget = QDialog = None
     QVBoxLayout = QWidget = QComboBox = QSizePolicy = QStyledItemDelegate = QScrollArea = QSpacerItem = QSpinBox = None
     QMediaPlayer = QAudioOutput = QUrl = None
@@ -706,6 +708,12 @@ if QWidget is not None:
         'QObject': QObject,
         'QThread': QThread,
         'Signal': Signal,
+        'QListWidget': QListWidget,
+        'QListWidgetItem': QListWidgetItem,
+        'QFrame': QFrame,
+        'Qt': Qt,
+        'QSize': QSize,
+        'QEvent': QEvent,
         'load_setting': load_setting,
         'save_setting': save_setting,
         'make_card': make_card,
