@@ -75,6 +75,6 @@ def make_panel_transparent(widget) -> None:
     widget.setStyleSheet('background: transparent;')
 
 
-def compact_card_layout(layout, margin: int = 18, spacing: int = 12) -> None:
+def compact_card_layout(layout, margin: int = 20, spacing: int = 12) -> None:
     layout.setContentsMargins(margin, margin, margin, margin)
     layout.setSpacing(spacing)

@@ -177,22 +177,27 @@ def build_task_section(self, layout, center_row, textedit_style, task_min_height
         QFrame = deps.get('QFrame')
         Signal = deps.get('Signal')
 
-        _entry_bg = 'rgba(60, 68, 80, 0.55)' if self.current_theme == 'dark' else 'rgba(230, 236, 245, 0.7)'
-        _entry_hover_bg = 'rgba(80, 90, 108, 0.7)' if self.current_theme == 'dark' else 'rgba(210, 222, 240, 0.9)'
-        _del_hover_bg = '#e74c3c' if self.current_theme == 'dark' else '#d32f2f'
+        _current_theme = self.current_theme
+        _entry_bg = 'rgba(60, 68, 80, 0.55)' if _current_theme == 'dark' else 'rgba(230, 236, 245, 0.7)'
+        _entry_hover_bg = 'rgba(80, 90, 108, 0.7)' if _current_theme == 'dark' else 'rgba(210, 222, 240, 0.9)'
+        _del_hover_bg = '#e74c3c' if _current_theme == 'dark' else '#d32f2f'
+        _entry_divider = 'rgba(128,128,128,0.08)' if _current_theme == 'dark' else 'rgba(128,128,128,0.1)'
 
         class _TaskEntryWidget(QFrame):
             def __init__(self, title, url, on_delete, on_rename):
                 super().__init__()
                 self._on_rename = on_rename
                 self._btn_w = 32
+                self._entry_bg = _entry_bg
+                self._entry_hover_bg = _entry_hover_bg
+                self._entry_divider = _entry_divider
                 self.setStyleSheet(
-                    f'QFrame {{ background: {_entry_bg}; border: none; border-bottom: 1px solid rgba(128,128,128,0.2); }}'
+                    f'QFrame {{ background: {_entry_bg}; border: none; border-bottom: 1px solid {_entry_divider}; }}'
                 )
                 self.setAttribute(deps['Qt'].WA_Hover) if 'Qt' in deps else None
                 lay = deps['QHBoxLayout'](self)
-                lay.setContentsMargins(10, 6, 4, 6)
-                lay.setSpacing(6)
+                lay.setContentsMargins(12, 8, 6, 8)
+                lay.setSpacing(8)
                 info = deps['QVBoxLayout']()
                 info.setSpacing(2)
                 self.title_edit = QLineEdit(title)
@@ -248,13 +253,13 @@ def build_task_section(self, layout, center_row, textedit_style, task_min_height
 
             def enterEvent(self, ev):
                 self.setStyleSheet(
-                    f'QFrame {{ background: {_entry_hover_bg}; border: none; border-bottom: 1px solid rgba(128,128,128,0.2); }}'
+                    f'QFrame {{ background: {self._entry_hover_bg}; border: none; border-bottom: 1px solid {self._entry_divider}; }}'
                 )
                 super().enterEvent(ev)
 
             def leaveEvent(self, ev):
                 self.setStyleSheet(
-                    f'QFrame {{ background: {_entry_bg}; border: none; border-bottom: 1px solid rgba(128,128,128,0.2); }}'
+                    f'QFrame {{ background: {self._entry_bg}; border: none; border-bottom: 1px solid {self._entry_divider}; }}'
                 )
                 super().leaveEvent(ev)
 
@@ -276,7 +281,7 @@ def build_task_section(self, layout, center_row, textedit_style, task_min_height
                 super().__init__()
                 self._theme = theme
                 bg = 'rgba(44, 50, 59, 0.88)' if theme == 'dark' else 'rgba(255, 255, 255, 0.76)'
-                border = '#46505c' if theme == 'dark' else '#d8dee6'
+                border = 'rgba(70, 80, 92, 0.5)' if theme == 'dark' else 'rgba(216, 222, 230, 0.6)'
                 sb_thumb = 'rgba(100,110,130,0.55)' if theme == 'dark' else 'rgba(160,170,190,0.45)'
                 sb_hover = 'rgba(120,130,150,0.7)' if theme == 'dark' else 'rgba(130,140,160,0.6)'
                 self.setStyleSheet(
@@ -408,7 +413,7 @@ def build_task_section(self, layout, center_row, textedit_style, task_min_height
             def applyTheme(self, theme):
                 self._theme = theme
                 bg = 'rgba(44, 50, 59, 0.88)' if theme == 'dark' else 'rgba(255, 255, 255, 0.76)'
-                border = '#46505c' if theme == 'dark' else '#d8dee6'
+                border = 'rgba(70, 80, 92, 0.5)' if theme == 'dark' else 'rgba(216, 222, 230, 0.6)'
                 sb_thumb = 'rgba(100,110,130,0.55)' if theme == 'dark' else 'rgba(160,170,190,0.45)'
                 sb_hover = 'rgba(120,130,150,0.7)' if theme == 'dark' else 'rgba(130,140,160,0.6)'
                 self.setStyleSheet(
@@ -447,7 +452,7 @@ def build_task_section(self, layout, center_row, textedit_style, task_min_height
         task_layout.addWidget(self.task_edit)
 
     output_row = QHBoxLayout()
-    output_row.setSpacing(10)
+    output_row.setSpacing(8)
     self.output_edit = QLineEdit(load_setting(settings, self._mode_setting_key('output_dir')))
     self.output_edit.setPlaceholderText(OUTPUT_PLACEHOLDER)
     self.output_edit.editingFinished.connect(self.save_form_settings)
@@ -458,7 +463,7 @@ def build_task_section(self, layout, center_row, textedit_style, task_min_height
     task_layout.addLayout(output_row)
 
     common_row_widget, common_row = make_transparent_row()
-    common_row.setSpacing(10)
+    common_row.setSpacing(8)
     self.overwrite_checkbox = QCheckBox('覆盖同名文件')
     self.overwrite_checkbox.setChecked(load_setting(settings, self._mode_setting_key('overwrite'), '0') == '1')
     self.overwrite_checkbox.clicked.connect(self.save_form_settings)
@@ -481,7 +486,7 @@ def build_task_section(self, layout, center_row, textedit_style, task_min_height
     task_layout.addWidget(common_row_widget)
 
     action_row = QHBoxLayout()
-    action_row.setSpacing(10)
+    action_row.setSpacing(8)
     if self.source_mode == 'web':
         self.scan_button = QPushButton('识别并添加')
         self.scan_button.setToolTip('从网页链接中识别视频并自动添加到任务区')
@@ -493,7 +498,7 @@ def build_task_section(self, layout, center_row, textedit_style, task_min_height
     action_row.addWidget(self.cover_button)
     action_row.addStretch(1)
     self.run_button = QPushButton(RUN_BUTTON_TEXT)
-    self.run_button.setMinimumWidth(104)
+    self.run_button.setMinimumWidth(110)
     self.run_button.clicked.connect(self.run_download)
     action_row.addWidget(self.run_button)
     self.pause_button = QPushButton('暂停')
