@@ -1,7 +1,10 @@
 import importlib.util
+import os
 import pathlib
 import tempfile
 import sys
+import threading
+import time
 import types
 
 
@@ -455,6 +458,22 @@ def test_make_web_progress_hook_can_compute_percent_from_bytes():
     })
     assert any(item.startswith('__HYL_PROGRESS__|web_percent|percent=25.0') for item in captured)
     assert '正在下载 "demo.mp4" "2.0 KiB/s" "25%"' in captured
+
+
+def test_make_web_progress_hook_uses_internal_pause_signal_not_cancel():
+    module = load_module()
+    wb = load_web_backend()
+    token = module.Token()
+    token.pause.set()
+    hook = wb._make_web_progress_hook(None, token)
+    try:
+        hook({'status': 'downloading', 'filename': 'demo.mp4'})
+    except module.CancelledError as exc:
+        raise AssertionError('pause must not surface as cancellation') from exc
+    except wb._PausedDownload:
+        pass
+    else:
+        raise AssertionError('paused hook should stop the current yt-dlp attempt')
 
 
 def test_download_web_concurrent_reraises_cancelled_error():
@@ -924,6 +943,24 @@ def test_inspect_web_media_candidates_prefers_detected_candidates():
     assert result['success'] is True
     assert result['candidate_count'] == 2
     assert result['source'] == 'yt-dlp'
+
+
+def test_collect_web_media_candidates_falls_back_to_html_when_ytdlp_errors():
+    wb = load_web_backend()
+    original_douyin = wb._extract_douyin_share_candidates
+    original_extract = wb._extract_ytdlp_entry_candidates
+    original_fetch = wb._fetch_webpage_html
+    try:
+        wb._extract_douyin_share_candidates = lambda url: []
+        wb._extract_ytdlp_entry_candidates = lambda url: (_ for _ in ()).throw(RuntimeError('yt-dlp failed'))
+        wb._fetch_webpage_html = lambda url: '<video src="https://cdn.example.com/a.mp4"></video>'
+        candidates, source = wb._collect_web_media_candidates('https://example.com/page')
+    finally:
+        wb._extract_douyin_share_candidates = original_douyin
+        wb._extract_ytdlp_entry_candidates = original_extract
+        wb._fetch_webpage_html = original_fetch
+    assert candidates == ['https://cdn.example.com/a.mp4']
+    assert source == 'html'
 
 
 def test_resolve_aria2c_path_prefers_bundled_binary():
@@ -1554,6 +1591,139 @@ def test_download_url_with_ytdlp_keeps_completed_file_when_aria2_finish_trips_er
         wb.shutil.which = original_ffmpeg
 
 
+def test_download_url_with_ytdlp_waits_for_pause_then_resumes():
+    module = load_module()
+    wb = load_web_backend()
+    sh = load_shared()
+    fake_ytdlp = types.ModuleType('yt_dlp')
+    token = module.Token()
+    download_calls = []
+    clear_threads: list[threading.Thread] = []
+
+    class FakeYoutubeDL:
+        def __init__(self, opts):
+            self.opts = opts
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def extract_info(self, url, download=False):
+            if not download:
+                return {'title': 'Demo', 'id': 'abc'}
+            download_calls.append(url)
+            if len(download_calls) == 1:
+                token.pause.set()
+                clearer = threading.Thread(target=lambda: (time.sleep(0.05), token.pause.clear()))
+                clear_threads.append(clearer)
+                clearer.start()
+                self.opts['progress_hooks'][0]({'status': 'downloading', 'filename': 'demo.mp4'})
+            pathlib.Path(str(self.opts['outtmpl']).replace('%(ext)s', 'mp4')).write_text('ok', encoding='utf-8')
+            return {'ok': True}
+
+    fake_ytdlp.YoutubeDL = FakeYoutubeDL
+    original_module = sys.modules.get('yt_dlp')
+    original_require = wb._require_web_backend
+    original_resolve_aria2 = sh._resolve_aria2c_path
+    original_ffmpeg = wb.shutil.which
+    try:
+        sys.modules['yt_dlp'] = fake_ytdlp
+        wb._require_web_backend = lambda: None
+        sh._resolve_aria2c_path = lambda: ''
+        wb.shutil.which = lambda name: ''
+        wb._ffmpeg_path.cache_clear()
+        wb._set_current_token(token)
+        with tempfile.TemporaryDirectory() as tmp:
+            result = wb._download_url_with_ytdlp('https://example.com/video', pathlib.Path(tmp), module.DownloadOptions(), None)
+        assert result['success'] is True
+        assert len(download_calls) == 2
+    finally:
+        for thread in clear_threads:
+            thread.join(timeout=1)
+        wb._set_current_token(None)
+        if original_module is None:
+            sys.modules.pop('yt_dlp', None)
+        else:
+            sys.modules['yt_dlp'] = original_module
+        wb._require_web_backend = original_require
+        sh._resolve_aria2c_path = original_resolve_aria2
+        wb.shutil.which = original_ffmpeg
+        wb._ffmpeg_path.cache_clear()
+
+
+def test_concurrent_ytdlp_downloads_are_not_serialized_by_aria2_progress_capture():
+    module = load_module()
+    wb = load_web_backend()
+    sh = load_shared()
+    fake_ytdlp = types.ModuleType('yt_dlp')
+    token = module.Token()
+    barrier = threading.Barrier(2)
+    entered: list[str] = []
+    entry_lock = threading.Lock()
+
+    class FakeYoutubeDL:
+        def __init__(self, opts):
+            self.opts = opts
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def extract_info(self, url, download=False):
+            if not download:
+                return {'title': pathlib.PurePosixPath(url).name or 'Demo', 'id': 'abc'}
+            with entry_lock:
+                entered.append(url)
+            try:
+                barrier.wait(timeout=1)
+            except threading.BrokenBarrierError as exc:
+                raise AssertionError('concurrent downloads did not overlap') from exc
+            pathlib.Path(str(self.opts['outtmpl']).replace('%(ext)s', 'mp4')).write_text('ok', encoding='utf-8')
+            return {'ok': True}
+
+    fake_ytdlp.YoutubeDL = FakeYoutubeDL
+    original_module = sys.modules.get('yt_dlp')
+    original_require = wb._require_web_backend
+    original_resolve_aria2 = sh._resolve_aria2c_path
+    original_ffmpeg = wb.shutil.which
+    try:
+        sys.modules['yt_dlp'] = fake_ytdlp
+        wb._require_web_backend = lambda: None
+        sh._resolve_aria2c_path = lambda: 'aria2c'
+        wb.shutil.which = lambda name: ''
+        wb._ffmpeg_path.cache_clear()
+        wb._set_current_token(token)
+        with tempfile.TemporaryDirectory() as tmp:
+            tasks = [
+                (0, module.DownloadTask('https://example.com/a', 'web', 'a')),
+                (1, module.DownloadTask('https://example.com/b', 'web', 'b')),
+            ]
+            results = wb._download_web_entries(
+                tasks,
+                pathlib.Path(tmp),
+                module.DownloadOptions(max_concurrent_downloads=2),
+                lambda message: None,
+                2,
+                0,
+            )
+        assert len(entered) == 2
+        assert all(item['success'] for item in results.values())
+    finally:
+        wb._set_current_token(None)
+        if original_module is None:
+            sys.modules.pop('yt_dlp', None)
+        else:
+            sys.modules['yt_dlp'] = original_module
+        wb._require_web_backend = original_require
+        sh._resolve_aria2c_path = original_resolve_aria2
+        wb.shutil.which = original_ffmpeg
+        wb._ffmpeg_path.cache_clear()
+
+
 def test_download_url_with_ytdlp_sets_legacy_server_connect_for_tls_edge_cases():
     module = load_module()
     wb = load_web_backend()
@@ -1906,6 +2076,44 @@ def test_emit_aria2_progress_reports_speed_without_overall_percent():
     assert any('正在下载 "demo.mp4" "4.5MiB/s" "--"' in item for item in captured)
 
 
+def test_capture_aria2_console_progress_serializes_process_stdout_redirect():
+    wb = load_web_backend()
+    entered_a = threading.Event()
+    out_a: list[str] = []
+    out_b: list[str] = []
+    errors: list[BaseException] = []
+
+    def worker_a():
+        try:
+            with wb._capture_aria2_console_progress(out_a.append, 'A.mp4'):
+                entered_a.set()
+                os.write(1, b'[#aaa 1MiB/10MiB(10%) CN:1 DL:1MiB ETA:9s]\n')
+                time.sleep(0.2)
+        except BaseException as exc:
+            errors.append(exc)
+
+    def worker_b():
+        try:
+            assert entered_a.wait(timeout=1)
+            with wb._capture_aria2_console_progress(out_b.append, 'B.mp4'):
+                os.write(1, b'[#bbb 2MiB/10MiB(20%) CN:1 DL:2MiB ETA:8s]\n')
+        except BaseException as exc:
+            errors.append(exc)
+
+    first = threading.Thread(target=worker_a)
+    second = threading.Thread(target=worker_b)
+    first.start()
+    second.start()
+    first.join(timeout=2)
+    second.join(timeout=2)
+
+    assert errors == []
+    assert any('name=A.mp4' in item and 'percent=10' in item for item in out_a)
+    assert any('name=B.mp4' in item and 'percent=20' in item for item in out_b)
+    assert not any('name=B.mp4' in item for item in out_a)
+    assert not any('name=A.mp4' in item for item in out_b)
+
+
 def test_ffmpeg_m3u8_command_enables_reconnect_options():
     module = load_module()
     wb = load_web_backend()
@@ -2001,10 +2209,72 @@ def test_ffmpeg_m3u8_reconnect_overwrites_partial_output():
         wb._probe_stream_duration = original_probe
 
 
+def test_ffmpeg_m3u8_allows_three_reconnects_before_success():
+    module = load_module()
+    wb = load_web_backend()
+    commands: list[list[str]] = []
+    original_popen = wb.subprocess.Popen
+    original_probe = wb._probe_stream_duration
+    token = module.Token()
+    try:
+        class FakeStdout:
+            def __iter__(self):
+                if len(commands) <= 3:
+                    token.reconnect.set()
+                    yield 'out_time=00:00:01.000000\n'
+
+        class FakeProcess:
+            def __init__(self):
+                self.stdout = FakeStdout()
+                self.stderr = None
+                self.returncode = 0
+
+            def terminate(self):
+                self.returncode = -15
+
+            def kill(self):
+                self.returncode = -9
+
+            def wait(self, timeout=None):
+                return self.returncode
+
+        def fake_popen(command, **kwargs):
+            commands.append(list(command))
+            return FakeProcess()
+
+        wb.subprocess.Popen = fake_popen
+        wb._probe_stream_duration = lambda url, ffmpeg_path='': None
+        wb._set_current_token(token)
+        with tempfile.TemporaryDirectory() as tmp:
+            task = module.DownloadTask('https://example.com/post/1', 'web', 'demo')
+            result = wb._download_m3u8_with_ffmpeg(
+                'https://cdn.example.com/live.m3u8',
+                task,
+                pathlib.Path(tmp),
+                module.DownloadOptions(overwrite=False),
+                None,
+                ffmpeg_path='ffmpeg',
+            )
+        assert result['success'] is True
+        assert len(commands) == 4
+        assert [command[1] for command in commands] == ['-n', '-y', '-y', '-y']
+    finally:
+        wb._set_current_token(None)
+        wb.subprocess.Popen = original_popen
+        wb._probe_stream_duration = original_probe
+
+
 def test_hyltoolbox_spec_bundles_aria2c():
     spec_text = (ROOT.parent.parent / 'HylToolbox.spec').read_text(encoding='utf-8')
     assert "video-downloader/bin/aria2c.exe" in spec_text
     assert "video-downloader/bin/aria2c.SHA256.txt" in spec_text
+
+
+def test_telegram_login_wires_password_callback_for_2fa():
+    source = (ROOT / 'tab.py').read_text(encoding='utf-8')
+    assert 'password_callback=self._request_telegram_password' in source
+    assert 'QInputDialog.getText' in source
+    assert 'QLineEdit.Password' in source
 
 
 def test_build_source_mode_summary_for_web_hides_telegram_counts():

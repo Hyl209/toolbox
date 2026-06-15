@@ -11,7 +11,7 @@ import shutil
 import subprocess
 import threading as _threading
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError, as_completed
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import replace
 from html import unescape
 from pathlib import Path
@@ -63,6 +63,10 @@ COOKIE_FILE_NAMES = (
 DOUYIN_HOSTS = {'douyin.com', 'www.douyin.com', 'iesdouyin.com', 'www.iesdouyin.com', 'v.douyin.com'}
 
 
+class _PausedDownload(RuntimeError):
+    pass
+
+
 def _run_async(coro):
     """Run an async coroutine safely, even if an event loop is already running."""
     try:
@@ -91,43 +95,46 @@ def _capture_aria2_console_progress(progress_cb: ProgressCallback | None, file_n
     if progress_cb is None:
         yield
         return
-    saved_stdout = os.dup(1)
-    saved_stderr = os.dup(2)
-    read_fd, write_fd = os.pipe()
-    stop = Event()
+    # os.dup2 redirects process-level file descriptors, so concurrent captures
+    # must be serialized to avoid mixing aria2 progress between tasks.
+    with _console_capture_lock:
+        saved_stdout = os.dup(1)
+        saved_stderr = os.dup(2)
+        read_fd, write_fd = os.pipe()
+        stop = Event()
 
-    def reader() -> None:
-        buffer = ''
+        def reader() -> None:
+            buffer = ''
+            try:
+                with os.fdopen(read_fd, 'rb', closefd=True) as pipe:
+                    while not stop.is_set():
+                        chunk = pipe.read(512)
+                        if not chunk:
+                            break
+                        buffer += chunk.decode('utf-8', errors='ignore')
+                        parts = re.split(r'[\r\n]+', buffer)
+                        buffer = parts.pop() if parts else ''
+                        for part in parts:
+                            _emit_aria2_progress(progress_cb, file_name, part)
+                    if buffer:
+                        _emit_aria2_progress(progress_cb, file_name, buffer)
+            except OSError:
+                pass
+
+        thread = _threading.Thread(target=reader, daemon=True)
         try:
-            with os.fdopen(read_fd, 'rb', closefd=True) as pipe:
-                while not stop.is_set():
-                    chunk = pipe.read(512)
-                    if not chunk:
-                        break
-                    buffer += chunk.decode('utf-8', errors='ignore')
-                    parts = re.split(r'[\r\n]+', buffer)
-                    buffer = parts.pop() if parts else ''
-                    for part in parts:
-                        _emit_aria2_progress(progress_cb, file_name, part)
-                if buffer:
-                    _emit_aria2_progress(progress_cb, file_name, buffer)
-        except OSError:
-            pass
-
-    thread = _threading.Thread(target=reader, daemon=True)
-    try:
-        os.dup2(write_fd, 1)
-        os.dup2(write_fd, 2)
-        os.close(write_fd)
-        thread.start()
-        yield
-    finally:
-        os.dup2(saved_stdout, 1)
-        os.dup2(saved_stderr, 2)
-        os.close(saved_stdout)
-        os.close(saved_stderr)
-        stop.set()
-        thread.join(timeout=1)
+            os.dup2(write_fd, 1)
+            os.dup2(write_fd, 2)
+            os.close(write_fd)
+            thread.start()
+            yield
+        finally:
+            os.dup2(saved_stdout, 1)
+            os.dup2(saved_stderr, 2)
+            os.close(saved_stdout)
+            os.close(saved_stderr)
+            stop.set()
+            thread.join(timeout=1)
 
 
 def _emit_aria2_progress(progress_cb: ProgressCallback | None, file_name: str, raw_line: str) -> None:
@@ -474,7 +481,7 @@ def _download_direct_media_file(
         if not should_reconnect:
             break
         reconnect_count += 1
-        if reconnect_count >= max_reconnects:
+        if reconnect_count > max_reconnects:
             raise DownloadError('重连次数已达上限')
         _emit(progress_cb, f'重连中... (第{reconnect_count}次)')
     _emit(progress_cb, f'网页 OK -> {output_path.name}')
@@ -1123,7 +1130,7 @@ def _collect_web_media_candidates(source_url: str) -> tuple[list[str], str]:
     ytdlp_candidates: list[str] = []
     try:
         ytdlp_candidates = _extract_ytdlp_entry_candidates(source_url)
-    except (DownloadError, OSError, ValueError):
+    except Exception:
         ytdlp_candidates = []
     if ytdlp_candidates:
         return ytdlp_candidates, 'yt-dlp'
@@ -1245,20 +1252,31 @@ def _download_url_with_ytdlp(
         ydl_opts['cookiesfrombrowser'] = ('chrome',)
     max_reconnects = 3
     reconnect_count = 0
-    for reconnect_attempt in range(max_reconnects + 1):
+    capture_aria2_progress = bool(aria2c and progress_cb and options.max_concurrent_downloads <= 1)
+    while True:
         try:
-            with _capture_aria2_console_progress(progress_cb, unique_stem):
+            # aria2 console capture redirects process-level stdout/stderr; in
+            # concurrent mode that would serialize all active downloads.
+            capture_context = (
+                _capture_aria2_console_progress(progress_cb, unique_stem)
+                if capture_aria2_progress
+                else nullcontext()
+            )
+            with capture_context:
                 def _download_once(run_opts: dict[str, object]):
                     with YoutubeDL(run_opts) as ydl:
                         return ydl.extract_info(source_url, download=True)
 
                 _run_ytdlp_with_cookie_retry(source_url, ydl_opts, progress_cb, _download_once)
+        except _PausedDownload:
+            _wait_if_paused(_current_token(), progress_cb)
+            continue
         except CancelledError:
             token = _current_token()
             if token and token.reconnect.is_set():
                 token.reconnect.clear()
                 reconnect_count += 1
-                if reconnect_count >= max_reconnects:
+                if reconnect_count > max_reconnects:
                     raise DownloadError('重连次数已达上限')
                 _emit(progress_cb, f'重连中... (第{reconnect_count}次)')
                 continue
@@ -1279,13 +1297,11 @@ def _download_url_with_ytdlp(
         if token and token.reconnect.is_set():
             token.reconnect.clear()
             reconnect_count += 1
-            if reconnect_count >= max_reconnects:
+            if reconnect_count > max_reconnects:
                 raise DownloadError('重连次数已达上限')
             _emit(progress_cb, f'重连中... (第{reconnect_count}次)')
             continue
         break
-    else:
-        raise DownloadError('重连次数已达上限')
     created = sorted(_s._find_completed_downloads(output_root, unique_stem))
     if not created:
         raise DownloadError('网页视频下载完成，但未找到输出文件')
@@ -1680,7 +1696,7 @@ def _download_m3u8_with_ffmpeg(
                 raise DownloadError(stderr or 'ffmpeg 下载失败')
             break
         reconnect_count += 1
-        if reconnect_count >= max_reconnects:
+        if reconnect_count > max_reconnects:
             raise DownloadError('重连次数已达上限')
         _emit(progress_cb, f'重新下载中... (第{reconnect_count}次)')
     _emit(progress_cb, f'网页 OK -> {output_path.name}')
@@ -1726,7 +1742,7 @@ def _make_web_progress_hook(progress_cb: ProgressCallback | None, token: Token |
             raise CancelledError('手动重连')
         # Use non-blocking pause check to avoid blocking yt-dlp's download thread
         if _check_paused_non_blocking(token):
-            raise CancelledError('下载已暂停')
+            raise _PausedDownload('下载已暂停')
         state = str(status.get('status') or '')
         if state == 'downloading':
             filename = Path(str(status.get('filename') or '')).name

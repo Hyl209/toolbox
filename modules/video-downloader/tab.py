@@ -830,7 +830,12 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                 return
             self.save_form_settings()
             try:
-                result = self.module.complete_telegram_login(self.build_config(), self.code_edit.text().strip(), self.phone_code_hash)
+                result = self.module.complete_telegram_login(
+                    self.build_config(),
+                    self.code_edit.text().strip(),
+                    self.phone_code_hash,
+                    password_callback=self._request_telegram_password,
+                )
                 self.login_status_label.setText(str(result.get('message', 'Telegram 登录成功')))
                 self.append_log(str(result.get('message', 'Telegram 登录成功')))
                 self.phone_code_hash = ''
@@ -840,6 +845,19 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             except Exception as exc:
                 self.append_log(f'错误：{exc}')
                 show_themed_error(self, '登录失败', str(exc))
+
+        def _request_telegram_password(self) -> str:
+            try:
+                from PySide6.QtWidgets import QInputDialog
+            except Exception:
+                return ''
+            password, accepted = QInputDialog.getText(
+                self,
+                'Telegram 两步验证',
+                '请输入两步验证密码',
+                QLineEdit.Password,
+            )
+            return password if accepted else ''
 
         def check_login_status(self):
             if self.source_mode != 'telegram':
