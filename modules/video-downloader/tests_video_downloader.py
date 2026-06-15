@@ -126,6 +126,94 @@ def test_build_download_tasks_treats_douyin_share_url_as_web():
     assert tasks[0].source_kind == 'web'
 
 
+def test_normalize_proxy_url_adds_default_http_scheme():
+    module = load_module()
+
+    assert module.normalize_proxy_url('127.0.0.1:7890') == 'http://127.0.0.1:7890'
+    assert module.normalize_proxy_url('socks5://127.0.0.1:7891') == 'socks5://127.0.0.1:7891'
+    assert module.normalize_proxy_url('   ') == ''
+    assert module.build_proxy_url('127.0.0.1', '7890') == 'http://127.0.0.1:7890'
+    assert module.build_proxy_url('http://127.0.0.1:7890', '') == 'http://127.0.0.1:7890'
+    assert module.build_proxy_url('socks5://user:pass@127.0.0.1', '7891') == 'socks5://user:pass@127.0.0.1:7891'
+    assert module.build_proxy_url('', '') == ''
+    assert module.split_proxy_url('http://127.0.0.1:7890') == ('127.0.0.1', '7890')
+    assert module.split_proxy_url('socks5://user:pass@127.0.0.1:7891') == ('socks5://user:pass@127.0.0.1', '7891')
+
+
+def test_inspect_web_media_batch_passes_same_proxy_to_scan_sources():
+    module = load_module()
+    wb = load_web_backend()
+    calls: list[tuple[str, str]] = []
+    original_douyin = wb._extract_douyin_share_candidates
+    original_ytdlp = wb._extract_ytdlp_entry_candidates
+    original_fetch = wb._fetch_webpage_html
+    original_supports = wb._supports_ytdlp_direct_media
+    try:
+        def fake_douyin(url, options=None):
+            calls.append(('douyin', options.proxy_url))
+            return []
+
+        def fake_ytdlp(url, options=None):
+            calls.append(('yt-dlp', options.proxy_url))
+            return []
+
+        def fake_fetch(url, proxy_url=''):
+            calls.append(('html', proxy_url))
+            return ''
+
+        def fake_supports(url, options=None):
+            calls.append(('page', options.proxy_url))
+            return False
+
+        wb._extract_douyin_share_candidates = fake_douyin
+        wb._extract_ytdlp_entry_candidates = fake_ytdlp
+        wb._fetch_webpage_html = fake_fetch
+        wb._supports_ytdlp_direct_media = fake_supports
+
+        wb.inspect_web_media_batch(
+            ['https://example.com/page'],
+            options=module.DownloadOptions(proxy_url='127.0.0.1:7890'),
+        )
+
+        assert calls == [
+            ('douyin', '127.0.0.1:7890'),
+            ('yt-dlp', '127.0.0.1:7890'),
+            ('html', 'http://127.0.0.1:7890'),
+            ('page', '127.0.0.1:7890'),
+        ]
+    finally:
+        wb._extract_douyin_share_candidates = original_douyin
+        wb._extract_ytdlp_entry_candidates = original_ytdlp
+        wb._fetch_webpage_html = original_fetch
+        wb._supports_ytdlp_direct_media = original_supports
+
+
+def test_apply_output_subdirs_by_title_keeps_each_custom_name():
+    tab_module = load_tab_module()
+    module = load_module()
+    tasks = [
+        module.DownloadTask('https://example.com/a', 'web', '片头'),
+        module.DownloadTask('https://example.com/b', 'web', '正片'),
+    ]
+
+    updated = tab_module.apply_output_subdirs_by_title(tasks, True)
+
+    assert [task.output_subdir for task in updated] == ['片头', '正片']
+    assert tab_module.apply_output_subdirs_by_title(tasks, False) is tasks
+
+
+def test_output_subdir_by_title_only_applies_to_web_mode():
+    tab_module = load_tab_module()
+
+    checked = types.SimpleNamespace(isChecked=lambda: True)
+    assert tab_module.output_subdir_by_title_enabled(
+        types.SimpleNamespace(source_mode='web', output_subdir_checkbox=checked)
+    ) is True
+    assert tab_module.output_subdir_by_title_enabled(
+        types.SimpleNamespace(source_mode='telegram', output_subdir_checkbox=checked)
+    ) is False
+
+
 def test_parse_task_lines_deduplicates_plain_url_and_douyin_share_text():
     module = load_module()
     text = '\nhttps://v.douyin.com/ABC123/\n7.53 复制打开抖音，看看【示例】 https://v.douyin.com/ABC123/ 09/01 F@x \n'
@@ -332,7 +420,7 @@ def test_download_web_task_falls_back_to_page_media_candidates_when_ytdlp_reject
             return {'success': True, 'files': [path]}
 
         wb._download_url_with_ytdlp = fake_runner
-        wb._fetch_webpage_html = lambda url: '<video src="/media/demo.mp4"></video>'
+        wb._fetch_webpage_html = lambda url, *args, **kwargs: '<video src="/media/demo.mp4"></video>'
         with tempfile.TemporaryDirectory() as tmp:
             task = module.DownloadTask('https://example.com/post/1', 'web', 'demo')
             result = wb._download_web_task(task, pathlib.Path(tmp), module.DownloadOptions(), None)
@@ -341,6 +429,99 @@ def test_download_web_task_falls_back_to_page_media_candidates_when_ytdlp_reject
     finally:
         wb._download_url_with_ytdlp = original_runner
         wb._fetch_webpage_html = original_fetch
+
+
+def test_download_web_task_uses_task_output_subdir():
+    module = load_module()
+    wb = load_web_backend()
+    original_runner = wb._download_url_with_ytdlp
+    original_extract = wb._extract_ytdlp_entry_candidates
+    try:
+        captured: list[pathlib.Path] = []
+
+        def fake_runner(source_url, output_root, options, progress_cb, title_hint='', referer_url=''):
+            captured.append(output_root)
+            path = output_root / 'demo.mp4'
+            path.write_text('ok', encoding='utf-8')
+            return {'success': True, 'files': [path]}
+
+        wb._download_url_with_ytdlp = fake_runner
+        wb._extract_ytdlp_entry_candidates = lambda url, *args, **kwargs: []
+        with tempfile.TemporaryDirectory() as tmp:
+            task = module.DownloadTask('https://example.com/post/1', 'web', 'demo', output_subdir='课程 一')
+            result = wb._download_web_task(task, pathlib.Path(tmp), module.DownloadOptions(), None)
+            assert pathlib.Path(tmp, '课程 一').is_dir()
+        assert result['success'] is True
+        assert captured and captured[0].name == '课程 一'
+        assert pathlib.Path(result['files'][0]).parent.name == '课程 一'
+    finally:
+        wb._download_url_with_ytdlp = original_runner
+        wb._extract_ytdlp_entry_candidates = original_extract
+
+
+def test_expand_web_all_candidates_preserves_task_output_subdir():
+    module = load_module()
+    wb = load_web_backend()
+    original_extract = wb._extract_ytdlp_entry_candidates
+    try:
+        wb._extract_ytdlp_entry_candidates = lambda url, *args, **kwargs: [
+            'https://cdn.example.com/a.mp4',
+            'https://cdn.example.com/b.mp4',
+        ]
+
+        expanded = wb._expand_web_all_candidates(
+            [module.DownloadTask('https://example.com/course', 'web', '课程', output_subdir='课程')],
+            None,
+            module.DownloadOptions(web_download_all_candidates=True),
+        )
+
+        assert [task.output_subdir for task in expanded] == ['课程', '课程']
+        assert [task.source_url for task in expanded] == [
+            'https://cdn.example.com/a.mp4',
+            'https://cdn.example.com/b.mp4',
+        ]
+    finally:
+        wb._extract_ytdlp_entry_candidates = original_extract
+
+
+def test_fetch_webpage_html_uses_proxy_opener():
+    wb = load_web_backend()
+    captured: dict[str, object] = {}
+
+    class FakeResponse:
+        headers = types.SimpleNamespace(get_content_charset=lambda: 'utf-8')
+
+        def read(self):
+            return b'<video></video>'
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class FakeOpener:
+        def open(self, request, timeout=20):
+            captured['url'] = request.full_url
+            captured['timeout'] = timeout
+            return FakeResponse()
+
+    original_build_opener = wb.build_opener
+    original_proxy_handler = wb.ProxyHandler
+    try:
+        wb.ProxyHandler = lambda proxies: captured.setdefault('proxies', proxies)
+        wb.build_opener = lambda handler: FakeOpener()
+
+        assert wb._fetch_webpage_html('https://example.com/page', '127.0.0.1:7890') == '<video></video>'
+        assert captured['proxies'] == {
+            'http': 'http://127.0.0.1:7890',
+            'https': 'http://127.0.0.1:7890',
+        }
+        assert captured['url'] == 'https://example.com/page'
+        assert captured['timeout'] == 20
+    finally:
+        wb.build_opener = original_build_opener
+        wb.ProxyHandler = original_proxy_handler
 
 
 def test_download_web_task_can_download_all_page_media_candidates():
@@ -362,11 +543,11 @@ def test_download_web_task_can_download_all_page_media_candidates():
             return {'success': True, 'files': [path]}
 
         wb._download_url_with_ytdlp = fake_runner
-        wb._fetch_webpage_html = lambda url: '''
+        wb._fetch_webpage_html = lambda url, *args, **kwargs: '''
         <video src="/media/a.mp4"></video>
         <video src="/media/b.mp4"></video>
         '''
-        wb._extract_ytdlp_entry_candidates = lambda url: []
+        wb._extract_ytdlp_entry_candidates = lambda url, *args, **kwargs: []
         with tempfile.TemporaryDirectory() as tmp:
             task = module.DownloadTask('https://example.com/post/1', 'web', 'demo')
             options = module.DownloadOptions(web_download_all_candidates=True)
@@ -403,7 +584,7 @@ def test_download_web_task_uses_ytdlp_multi_entry_candidates_instead_of_collapsi
             return {'success': True, 'files': [path]}
 
         wb._download_url_with_ytdlp = fake_runner
-        wb._extract_ytdlp_entry_candidates = lambda url: [
+        wb._extract_ytdlp_entry_candidates = lambda url, *args, **kwargs: [
             'https://cdn.example.com/media/a.mp4',
             'https://cdn.example.com/media/b.mp4',
         ]
@@ -584,193 +765,10 @@ def test_validate_video_downloader_form_accepts_preloaded_module():
     assert errors == []
 
 
-def test_validate_video_downloader_form_uses_explicit_candidate_mode():
-    tab_module = load_tab_module()
-    module = load_module()
-    with tempfile.TemporaryDirectory() as tmp:
-        errors = tab_module.validate_video_downloader_form(
-            'https://example.com/video',
-            tmp,
-            '',
-            '',
-            '',
-            '500',
-            web_candidate_index='3,5',
-            web_candidate_mode='before',
-            source_mode='web',
-            module=module,
-        )
-    assert any('before/after' in item for item in errors)
-
-
-def test_validate_video_downloader_form_requires_index_for_candidate_modes():
-    tab_module = load_tab_module()
-    module = load_module()
-    with tempfile.TemporaryDirectory() as tmp:
-        errors = tab_module.validate_video_downloader_form(
-            'https://example.com/video',
-            tmp,
-            '',
-            '',
-            '',
-            '500',
-            web_candidate_index='',
-            web_candidate_mode='specified',
-            source_mode='web',
-            module=module,
-        )
-    assert '请选择网页候选序号' in errors
-
-
-def test_run_download_ignores_stale_web_candidate_text_when_all_candidates_checked():
+def test_run_download_assigns_web_tasks_to_named_subfolders():
     tab_module = load_tab_module()
     module = load_module()
     captured = {}
-    original_download_batch = module.download_batch
-    original_expand = module._expand_web_all_candidates
-    try:
-        def fake_download_batch(tasks, output_dir, telegram_config, options, progress_cb=None, token=None):
-            captured['options'] = options
-            return []
-
-        module.download_batch = fake_download_batch
-        module._expand_web_all_candidates = lambda tasks, append_log: tasks
-        tab_class = tab_module.build_video_downloader_tab_class({
-            'QWidget': object,
-            'QVBoxLayout': object,
-            'QHBoxLayout': object,
-            'QScrollArea': object,
-            'QFrame': object,
-            'QLabel': object,
-            'QLineEdit': object,
-            'QPlainTextEdit': object,
-            'QPushButton': object,
-            'QProgressBar': object,
-            'QFileDialog': object,
-            'QApplication': object,
-            'QCheckBox': object,
-            'QComboBox': object,
-            'QObject': None,
-            'QThread': None,
-            'Signal': None,
-            'load_setting': lambda *args, **kwargs: '',
-            'save_setting': lambda *args, **kwargs: None,
-            'make_card': lambda *args, **kwargs: object(),
-            'make_transparent_row': lambda *args, **kwargs: object(),
-            'build_global_scrollbar_style': lambda: '',
-            'show_themed_warning': lambda *args, **kwargs: None,
-            'show_themed_error': lambda *args, **kwargs: None,
-            'show_themed_success': lambda *args, **kwargs: None,
-            'style_combo_popup': lambda *args, **kwargs: None,
-            'get_video_downloader_module': lambda: module,
-            'ROOT': ROOT,
-            'VIDEO_DOWNLOADER_DIR': ROOT,
-        })
-
-        class DummyField:
-            def __init__(self, value=''):
-                self._value = value
-
-            def toPlainText(self):
-                return self._value
-
-            def text(self):
-                return self._value
-
-            def clear(self):
-                self._value = ''
-
-            def isChecked(self):
-                return bool(self._value)
-
-        class DummyTab:
-            def __init__(self):
-                self.module = module
-                self.source_mode = 'web'
-                self.task_edit = DummyField('https://example.com/post/1')
-                self.output_edit = DummyField('C:/tmp')
-                self.api_id_edit = DummyField('')
-                self.api_hash_edit = DummyField('')
-                self.phone_edit = DummyField('')
-                self.recent_count_edit = DummyField('500')
-                self.all_messages_checkbox = DummyField('')
-                self.date_from_edit = DummyField('')
-                self.date_to_edit = DummyField('')
-                self.include_video_checkbox = DummyField('')
-                self.include_photo_checkbox = DummyField('')
-                self.web_candidate_index_edit = DummyField('before1')
-                self.web_candidate_mode_combo = None
-                self.overwrite_checkbox = DummyField('')
-                self.concurrent_combo = None
-                self.log = types.SimpleNamespace(clear=lambda: None)
-                self.worker = None
-                self.worker_thread = None
-                self._downloaded_urls = set()
-                self._current_options = None
-
-            def save_form_settings(self):
-                pass
-
-            def _is_checked(self, widget):
-                return widget.isChecked()
-
-            def _widget_text(self, widget):
-                if widget is self.web_candidate_index_edit:
-                    raise AssertionError('stale web candidate text was read')
-                return widget.text()
-
-            def _web_candidate_mode_value(self):
-                return 'all'
-
-            def _concurrent_value(self):
-                return '1'
-
-            def build_config(self):
-                return None
-
-            def set_busy(self, value):
-                pass
-
-            def append_log(self, message):
-                pass
-
-            def reset_progress_ui(self, total_tasks):
-                pass
-
-            def handle_worker_progress(self, *args):
-                pass
-
-            def finalize_download(self, *args):
-                pass
-
-            def handle_worker_error(self, *args):
-                pass
-
-            def handle_download_cancelled(self, *args):
-                pass
-
-            def cleanup_worker(self):
-                pass
-
-            def _resolve_candidate_mode(self):
-                return 'pick'
-
-            def _start_worker(self, tasks, options=None):
-                self.module.download_batch(tasks, self.output_edit.text(), self.build_config(), options)
-
-        tab = DummyTab()
-        tab_class.run_download(tab)
-        assert captured['options'].web_candidate_indices is None
-        assert captured['options'].web_download_all_candidates is True
-    finally:
-        module.download_batch = original_download_batch
-        module._expand_web_all_candidates = original_expand
-
-
-def test_run_download_blocks_specified_mode_without_index():
-    tab_module = load_tab_module()
-    module = load_module()
-    warnings = []
     tab_class = tab_module.build_video_downloader_tab_class({
         'QWidget': object,
         'QVBoxLayout': object,
@@ -794,7 +792,7 @@ def test_run_download_blocks_specified_mode_without_index():
         'make_card': lambda *args, **kwargs: object(),
         'make_transparent_row': lambda *args, **kwargs: object(),
         'build_global_scrollbar_style': lambda: '',
-        'show_themed_warning': lambda *args: warnings.append(args[2]),
+        'show_themed_warning': lambda *args, **kwargs: None,
         'show_themed_error': lambda *args, **kwargs: None,
         'show_themed_success': lambda *args, **kwargs: None,
         'style_combo_popup': lambda *args, **kwargs: None,
@@ -823,7 +821,10 @@ def test_run_download_blocks_specified_mode_without_index():
         def __init__(self):
             self.module = module
             self.source_mode = 'web'
-            self.task_edit = DummyField('https://example.com/post/1')
+            self.task_edit = DummyField('\n'.join([
+                '1.片头：https://cdn.example.com/a.mp4',
+                '2.正片：https://cdn.example.com/b.mp4',
+            ]))
             self.output_edit = DummyField('C:/tmp')
             self.api_id_edit = DummyField('')
             self.api_hash_edit = DummyField('')
@@ -834,46 +835,54 @@ def test_run_download_blocks_specified_mode_without_index():
             self.date_to_edit = DummyField('')
             self.include_video_checkbox = DummyField('')
             self.include_photo_checkbox = DummyField('')
-            self.web_candidate_index_edit = DummyField('')
-            self.web_candidate_mode_combo = None
             self.overwrite_checkbox = DummyField('')
+            self.output_subdir_checkbox = DummyField('1')
+            self.proxy_host_edit = DummyField('127.0.0.1')
+            self.proxy_port_edit = DummyField('7890')
             self.concurrent_combo = None
             self.log = types.SimpleNamespace(clear=lambda: None)
             self.worker = None
             self.worker_thread = None
             self._downloaded_urls = set()
             self._current_options = None
+            self.web_candidate_sources = {}
 
         def save_form_settings(self):
             pass
 
+        def cleanup_worker(self):
+            pass
+
         def _is_checked(self, widget):
-            return widget.isChecked()
+            return bool(widget is not None and widget.isChecked())
 
         def _widget_text(self, widget):
-            return widget.text()
+            return widget.text() if widget is not None else ''
 
         def _concurrent_value(self):
             return '1'
 
-        def _web_candidate_mode_value(self):
-            return 'specified'
-
-        def _web_candidate_index_text_for_request(self):
-            return ''
-
-        def _resolve_candidate_mode(self):
-            return 'specified'
+        def build_config(self):
+            return None
 
         def set_busy(self, value):
-            raise AssertionError('should not start download when specified mode has no index')
-
-        def cleanup_worker(self):
             pass
 
-    tab = DummyTab()
-    tab_class.run_download(tab)
-    assert any('网页候选序号' in item for item in warnings)
+        def append_log(self, message):
+            pass
+
+        def reset_progress_ui(self, total_tasks):
+            pass
+
+        def _start_worker(self, tasks, options=None):
+            captured['tasks'] = tasks
+            captured['options'] = options
+
+    tab_class.run_download(DummyTab())
+
+    assert [task.output_subdir for task in captured['tasks']] == ['片头', '正片']
+    assert captured['options'].output_subdir_by_title is True
+    assert captured['options'].proxy_url == 'http://127.0.0.1:7890'
 
 
 def test_validate_video_downloader_form_rejects_web_link_on_telegram_page():
@@ -929,12 +938,12 @@ def test_inspect_web_media_candidates_prefers_detected_candidates():
     original_fetch = wb._fetch_webpage_html
     original_support = wb._supports_ytdlp_direct_media
     try:
-        wb._extract_ytdlp_entry_candidates = lambda url: [
+        wb._extract_ytdlp_entry_candidates = lambda url, *args, **kwargs: [
             'https://cdn.example.com/a.mp4',
             'https://cdn.example.com/b.mp4',
         ]
-        wb._fetch_webpage_html = lambda url: ''
-        wb._supports_ytdlp_direct_media = lambda url: False
+        wb._fetch_webpage_html = lambda url, *args, **kwargs: ''
+        wb._supports_ytdlp_direct_media = lambda url, *args, **kwargs: False
         result = wb.inspect_web_media_candidates('https://example.com/post/1')
     finally:
         wb._extract_ytdlp_entry_candidates = original_extract
@@ -951,9 +960,9 @@ def test_collect_web_media_candidates_falls_back_to_html_when_ytdlp_errors():
     original_extract = wb._extract_ytdlp_entry_candidates
     original_fetch = wb._fetch_webpage_html
     try:
-        wb._extract_douyin_share_candidates = lambda url: []
-        wb._extract_ytdlp_entry_candidates = lambda url: (_ for _ in ()).throw(RuntimeError('yt-dlp failed'))
-        wb._fetch_webpage_html = lambda url: '<video src="https://cdn.example.com/a.mp4"></video>'
+        wb._extract_douyin_share_candidates = lambda url, *args, **kwargs: []
+        wb._extract_ytdlp_entry_candidates = lambda url, *args, **kwargs: (_ for _ in ()).throw(RuntimeError('yt-dlp failed'))
+        wb._fetch_webpage_html = lambda url, *args, **kwargs: '<video src="https://cdn.example.com/a.mp4"></video>'
         candidates, source = wb._collect_web_media_candidates('https://example.com/page')
     finally:
         wb._extract_douyin_share_candidates = original_douyin
@@ -1050,6 +1059,62 @@ def test_download_url_with_ytdlp_uses_aria2_and_stability_options():
         wb.shutil.which = original_ffmpeg
 
 
+def test_download_url_with_ytdlp_applies_proxy_to_ytdlp_and_aria2():
+    module = load_module()
+    wb = load_web_backend()
+    sh = load_shared()
+    fake_ytdlp = types.ModuleType('yt_dlp')
+    captured_opts: list[dict[str, object]] = []
+
+    class FakeYoutubeDL:
+        def __init__(self, opts):
+            self.opts = opts
+            captured_opts.append(dict(opts))
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def extract_info(self, url, download=False):
+            if not download:
+                return {'title': 'Demo', 'id': 'abc'}
+            pathlib.Path(str(self.opts['outtmpl']).replace('%(ext)s', 'mp4')).write_text('ok', encoding='utf-8')
+            return {'ok': True}
+
+    fake_ytdlp.YoutubeDL = FakeYoutubeDL
+    original_module = sys.modules.get('yt_dlp')
+    original_require = wb._require_web_backend
+    original_resolve_aria2 = sh._resolve_aria2c_path
+    original_ffmpeg = wb.shutil.which
+    try:
+        sys.modules['yt_dlp'] = fake_ytdlp
+        wb._require_web_backend = lambda: None
+        sh._resolve_aria2c_path = lambda: 'C:/tools/aria2c.exe'
+        wb.shutil.which = lambda name: ''
+        with tempfile.TemporaryDirectory() as tmp:
+            result = wb._download_url_with_ytdlp(
+                'https://example.com/video',
+                pathlib.Path(tmp),
+                module.DownloadOptions(proxy_url='127.0.0.1:7890'),
+                None,
+            )
+        assert result['success'] is True
+        assert captured_opts[0]['proxy'] == 'http://127.0.0.1:7890'
+        download_opts = next(opts for opts in captured_opts if 'external_downloader_args' in opts)
+        assert download_opts['proxy'] == 'http://127.0.0.1:7890'
+        assert '--all-proxy=http://127.0.0.1:7890' in download_opts['external_downloader_args']
+    finally:
+        if original_module is None:
+            sys.modules.pop('yt_dlp', None)
+        else:
+            sys.modules['yt_dlp'] = original_module
+        wb._require_web_backend = original_require
+        sh._resolve_aria2c_path = original_resolve_aria2
+        wb.shutil.which = original_ffmpeg
+
+
 def test_download_url_with_ytdlp_auto_fills_missing_cover_after_aria2_download():
     module = load_module()
     wb = load_web_backend()
@@ -1074,7 +1139,7 @@ def test_download_url_with_ytdlp_auto_fills_missing_cover_after_aria2_download()
             pathlib.Path(str(self.opts['outtmpl']).replace('%(ext)s', 'mp4')).write_text('ok', encoding='utf-8')
             return {'ok': True}
 
-    def fake_embed_thumbnail(video_path, source_url, progress_cb=None, candidate_index=None):
+    def fake_embed_thumbnail(video_path, source_url, progress_cb=None, candidate_index=None, **kwargs):
         fill_calls.append((pathlib.Path(video_path).name, source_url))
         if progress_cb:
             progress_cb('mock fill')
@@ -1227,7 +1292,7 @@ def test_embed_thumbnail_prefers_page_thumbnail_for_selected_candidate():
         sys.modules['yt_dlp'] = fake_ytdlp
         fake_ytdlp.YoutubeDL = FakeYoutubeDL
         wb._require_web_backend = lambda: None
-        wb._collect_web_media_candidates = lambda url: (
+        wb._collect_web_media_candidates = lambda url, *args, **kwargs: (
             ['https://cdn.example.com/a/index.m3u8', 'https://cdn.example.com/b/index.m3u8'],
             'yt-dlp',
         )
@@ -1298,8 +1363,8 @@ def test_embed_thumbnail_falls_back_to_video_frame_when_external_cover_missing()
         sys.modules['yt_dlp'] = fake_ytdlp
         fake_ytdlp.YoutubeDL = FakeYoutubeDL
         wb._require_web_backend = lambda: None
-        wb._collect_web_media_candidates = lambda url: (['https://cdn.example.com/a/index.m3u8'], 'yt-dlp')
-        wb._extract_thumbnail_urls = lambda source_url, resolved_url, candidate_index: []
+        wb._collect_web_media_candidates = lambda url, *args, **kwargs: (['https://cdn.example.com/a/index.m3u8'], 'yt-dlp')
+        wb._extract_thumbnail_urls = lambda source_url, resolved_url, candidate_index, *args, **kwargs: []
         wb.subprocess.run = fake_run
         wb.shutil.which = lambda name: 'C:/tools/ffmpeg.exe' if name == 'ffmpeg' else ''
         with tempfile.TemporaryDirectory() as tmp:
@@ -1451,11 +1516,15 @@ def test_cover_button_defaults_to_frame_mode_without_source_url():
         def parse_task_lines(self, text):
             return []
 
-        def embed_thumbnail(self, fpath, source_url, progress_cb=None, candidate_index=None, thumbnail_mode='web_then_frame'):
+        def build_proxy_url(self, host, port):
+            return f'http://{host}:{port}' if port else ''
+
+        def embed_thumbnail(self, fpath, source_url, progress_cb=None, candidate_index=None, thumbnail_mode='web_then_frame', proxy_url=''):
             calls.append({
                 'fpath': fpath,
                 'source_url': source_url,
                 'thumbnail_mode': thumbnail_mode,
+                'proxy_url': proxy_url,
             })
             return {'success': True}
 
@@ -1503,7 +1572,8 @@ def test_cover_button_defaults_to_frame_mode_without_source_url():
         settings = object()
         task_edit = DummyText()
         output_edit = DummyText()
-        web_candidate_index_edit = DummyText()
+        proxy_host_edit = types.SimpleNamespace(text=lambda: '127.0.0.1')
+        proxy_port_edit = types.SimpleNamespace(text=lambda: '7890')
         _last_cover_dir = ''
         log = types.SimpleNamespace(clear=lambda: None)
         thumbnail_worker = None
@@ -1540,8 +1610,16 @@ def test_cover_button_defaults_to_frame_mode_without_source_url():
         def cleanup_thumbnail_worker(self):
             pass
 
+        def build_web_options(self):
+            return types.SimpleNamespace(proxy_url='http://127.0.0.1:7890')
+
     tab_class.embed_thumbnail_clicked(DummyTab())
-    assert calls == [{'fpath': 'C:/tmp/demo.mp4', 'source_url': '', 'thumbnail_mode': 'frame'}]
+    assert calls == [{
+        'fpath': 'C:/tmp/demo.mp4',
+        'source_url': '',
+        'thumbnail_mode': 'frame',
+        'proxy_url': 'http://127.0.0.1:7890',
+    }]
 
 
 def test_download_url_with_ytdlp_keeps_completed_file_when_aria2_finish_trips_error():
@@ -1870,7 +1948,7 @@ def test_extract_douyin_share_candidates_uses_mobile_share_page_play_url():
     wb = load_web_backend()
     original_fetch = wb._fetch_douyin_share_html
     try:
-        wb._fetch_douyin_share_html = lambda url: '''
+        wb._fetch_douyin_share_html = lambda url, *args, **kwargs: '''
         <script>
         window._ROUTER_DATA = {"loaderData":{"page":{"videoInfoRes":{"item_list":[{"video":{"play_addr":{"url_list":["https://aweme.snssdk.com/aweme/v1/playwm/?video_id=v0200fg10000d8bbapfog65tcjqvkp40&ratio=720p&line=0"]}}}]}}}};
         </script>
@@ -1950,8 +2028,8 @@ def test_download_web_task_prefers_douyin_share_candidates_before_ytdlp():
     original_extract_ytdlp = wb._extract_ytdlp_entry_candidates
     original_download_candidates = wb._download_web_candidates
     try:
-        wb._extract_douyin_share_candidates = lambda url: ['https://aweme.snssdk.com/aweme/v1/play/?video_id=abc&ratio=720p&line=0']
-        wb._extract_ytdlp_entry_candidates = lambda url: (_ for _ in ()).throw(AssertionError('should not call yt-dlp'))
+        wb._extract_douyin_share_candidates = lambda url, *args, **kwargs: ['https://aweme.snssdk.com/aweme/v1/play/?video_id=abc&ratio=720p&line=0']
+        wb._extract_ytdlp_entry_candidates = lambda url, *args, **kwargs: (_ for _ in ()).throw(AssertionError('should not call yt-dlp'))
 
         def fake_download(candidates, task, output_root, options, progress_cb, ffmpeg_path='', *, download_all=False):
             assert candidates == ['https://aweme.snssdk.com/aweme/v1/play/?video_id=abc&ratio=720p&line=0']
@@ -2010,13 +2088,13 @@ def test_download_web_task_surfaces_cookie_lock_guidance_without_html_fallback()
     original_fetch = wb._fetch_webpage_html
     original_share = wb._extract_douyin_share_candidates
     try:
-        wb._extract_douyin_share_candidates = lambda url: []
+        wb._extract_douyin_share_candidates = lambda url, *args, **kwargs: []
         wb._download_url_with_ytdlp = lambda *args, **kwargs: (_ for _ in ()).throw(
             module.DownloadError(
                 'ERROR: Could not copy Chrome cookie database. See https://github.com/yt-dlp/yt-dlp/issues/7271 for more info'
             )
         )
-        wb._fetch_webpage_html = lambda url: (_ for _ in ()).throw(AssertionError('should not reach html fallback'))
+        wb._fetch_webpage_html = lambda url, *args, **kwargs: (_ for _ in ()).throw(AssertionError('should not reach html fallback'))
         with tempfile.TemporaryDirectory() as tmp:
             task = module.DownloadTask('https://v.douyin.com/jz83Ii3BD-4/', 'web', 'douyin')
             try:
@@ -2133,7 +2211,7 @@ def test_ffmpeg_m3u8_command_enables_reconnect_options():
             return FakeProcess()
 
         wb.subprocess.Popen = fake_popen
-        wb._probe_stream_duration = lambda url, ffmpeg_path='': None
+        wb._probe_stream_duration = lambda url, ffmpeg_path='', **kwargs: None
         with tempfile.TemporaryDirectory() as tmp:
             task = module.DownloadTask('https://example.com/post/1', 'web', 'demo')
             wb._download_m3u8_with_ffmpeg(
@@ -2156,6 +2234,49 @@ def test_ffmpeg_m3u8_command_enables_reconnect_options():
     finally:
         wb.subprocess.Popen = original_popen
         wb._probe_stream_duration = original_probe
+
+
+def test_ffmpeg_m3u8_command_uses_proxy_for_probe_and_download():
+    module = load_module()
+    wb = load_web_backend()
+    captured: dict[str, object] = {}
+    original_popen = wb.subprocess.Popen
+    original_run = wb.subprocess.run
+    try:
+        class FakeProcess:
+            stdout = []
+            returncode = 0
+
+            def wait(self, timeout=None):
+                return 0
+
+        def fake_run(command, **kwargs):
+            captured['probe_command'] = list(command)
+            return types.SimpleNamespace(returncode=0, stdout='12.5\n')
+
+        def fake_popen(command, **kwargs):
+            captured['download_command'] = list(command)
+            return FakeProcess()
+
+        wb.subprocess.run = fake_run
+        wb.subprocess.Popen = fake_popen
+        with tempfile.TemporaryDirectory() as tmp:
+            task = module.DownloadTask('https://example.com/post/1', 'web', 'demo')
+            wb._download_m3u8_with_ffmpeg(
+                'https://cdn.example.com/live.m3u8',
+                task,
+                pathlib.Path(tmp),
+                module.DownloadOptions(proxy_url='127.0.0.1:7890'),
+                None,
+                ffmpeg_path='ffmpeg',
+            )
+        assert '-http_proxy' in captured['probe_command']
+        assert 'http://127.0.0.1:7890' in captured['probe_command']
+        assert '-http_proxy' in captured['download_command']
+        assert 'http://127.0.0.1:7890' in captured['download_command']
+    finally:
+        wb.subprocess.Popen = original_popen
+        wb.subprocess.run = original_run
 
 
 def test_ffmpeg_m3u8_reconnect_overwrites_partial_output():
@@ -2188,7 +2309,7 @@ def test_ffmpeg_m3u8_reconnect_overwrites_partial_output():
             return FakeProcess(stdout)
 
         wb.subprocess.Popen = fake_popen
-        wb._probe_stream_duration = lambda url, ffmpeg_path='': None
+        wb._probe_stream_duration = lambda url, ffmpeg_path='', **kwargs: None
         wb._set_current_token(token)
         with tempfile.TemporaryDirectory() as tmp:
             task = module.DownloadTask('https://example.com/post/1', 'web', 'demo')
@@ -2243,7 +2364,7 @@ def test_ffmpeg_m3u8_allows_three_reconnects_before_success():
             return FakeProcess()
 
         wb.subprocess.Popen = fake_popen
-        wb._probe_stream_duration = lambda url, ffmpeg_path='': None
+        wb._probe_stream_duration = lambda url, ffmpeg_path='', **kwargs: None
         wb._set_current_token(token)
         with tempfile.TemporaryDirectory() as tmp:
             task = module.DownloadTask('https://example.com/post/1', 'web', 'demo')
@@ -2328,6 +2449,7 @@ class _FakeWidget:
         self._style = ''
         self._width = 600
         self._height = 0
+        self._text = str(args[0]) if args else ''
         self.textChanged = _FakeSignal()
 
     def setStyleSheet(self, style):
@@ -2341,6 +2463,9 @@ class _FakeWidget:
 
     def setWordWrap(self, *args):
         pass
+
+    def text(self):
+        return self._text
 
     def setMinimumWidth(self, width):
         self._width = max(self._width, width)
@@ -2563,6 +2688,11 @@ class _FakeListWidget(_FakeWidget):
 
 
 def _make_web_task_list():
+    tab = _make_web_task_tab()
+    return tab.task_edit
+
+
+def _make_web_task_tab():
     tab_panels = _ensure_package() or sys.modules[f'{_PKG_NAME}.tab_panels']
     deps = {
         'QLabel': _FakeWidget,
@@ -2601,6 +2731,7 @@ def _make_web_task_list():
         pause_button=None,
         cancel_button=None,
         reconnect_button=None,
+        module=types.SimpleNamespace(split_proxy_url=lambda value: ('127.0.0.1', '')),
         handle_web_source_text_changed=lambda: None,
         handle_task_text_changed=lambda: None,
         _mode_setting_key=lambda name: name,
@@ -2614,7 +2745,7 @@ def _make_web_task_list():
         reconnect_download=lambda: None,
     )
     tab_panels.build_task_section(tab, _FakeLayout(), None, '', 110, deps)
-    return tab.task_edit
+    return tab
 
 
 def test_build_source_mode_summary_for_web_hides_telegram_counts():
@@ -2629,6 +2760,19 @@ def test_guess_source_kind_uses_host_instead_of_path_fragment():
     tab_module = load_tab_module()
     assert tab_module._guess_source_kind('https://example.com/path/t.me/demo/1') == 'web'
     assert tab_module._guess_source_kind('https://t.me/demo/1') == 'telegram_message'
+
+
+def test_web_task_tab_uses_task_list_instead_of_candidate_options():
+    tab = _make_web_task_tab()
+
+    assert tab.scan_button is not None
+    assert tab.task_edit is not None
+    assert tab.output_subdir_checkbox is not None
+    assert tab.proxy_host_edit is not None
+    assert tab.proxy_port_edit is not None
+    assert tab.proxy_host_edit.text() == '127.0.0.1'
+    assert getattr(tab, 'web_candidate_mode_combo', None) is None
+    assert getattr(tab, 'web_candidate_index_edit', None) is None
 
 
 def test_format_web_task_summary_can_show_scan_results():
@@ -2708,6 +2852,24 @@ def test_web_queue_title_edit_has_polished_editing_surface():
     assert 'QLineEdit[readOnly="true"]:hover' in style
 
 
+def test_web_queue_entry_shows_macos_style_metadata():
+    widget = _make_web_task_list()
+    line = load_tab_module().format_web_queue_line(1, 'course_001', 'https://cdn.example.com/a/b/c.mp4')
+    widget.setPlainText(line)
+
+    entry_widget = widget.itemWidget(widget.item(0))
+
+    assert entry_widget.index_badge.text() == '01'
+    assert entry_widget.host_label.text() == 'cdn.example.com'
+    assert entry_widget.scheme_badge.text() == 'HTTPS'
+    assert entry_widget.path_label.text() == 'b/c.mp4'
+    assert entry_widget.url_label.text() == 'https://cdn.example.com/a/b/c.mp4'
+    assert entry_widget.sizeHint().height() >= 82
+    assert 'rgba(255, 255, 255, 0.035)' in entry_widget.index_badge.styleSheet()
+    assert 'font-size:16px' in entry_widget.del_btn.styleSheet()
+    assert 'rgba(255, 95, 86, 0.18)' in entry_widget.del_btn.styleSheet()
+
+
 def test_web_queue_rename_rejects_blank_title():
     widget = _make_web_task_list()
     line = load_tab_module().format_web_queue_line(1, 'course_001', 'https://cdn.example.com/a.mp4')
@@ -2726,12 +2888,13 @@ def test_web_queue_apply_theme_refreshes_existing_entry_widgets():
     widget.setPlainText(line)
     entry_widget = widget.itemWidget(widget.item(0))
 
-    assert 'rgba(60, 68, 80, 0.55)' in entry_widget.styleSheet()
+    assert 'rgba(63, 70, 82, 0.58)' in entry_widget.styleSheet()
     widget.applyTheme('light')
 
     assert 'rgba(255, 255, 255, 0.76)' in widget.styleSheet()
-    assert 'rgba(230, 236, 245, 0.7)' in entry_widget.styleSheet()
-    assert '#d32f2f' in entry_widget.del_btn.styleSheet()
+    assert 'rgba(255, 255, 255, 0.72)' in entry_widget.styleSheet()
+    assert 'rgba(255, 95, 86, 0.14)' in entry_widget.del_btn.styleSheet()
+    assert 'rgba(255, 255, 255, 0.76)' in widget.viewport().styleSheet()
 
 
 def test_web_queue_completed_url_matches_colon_separated_line():

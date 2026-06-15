@@ -21,7 +21,7 @@ from time import monotonic, sleep
 from collections.abc import Iterable
 from typing import Any
 from urllib.parse import urljoin, urlparse
-from urllib.request import Request, urlopen
+from urllib.request import Request, build_opener, urlopen, ProxyHandler
 
 from .models import (
     CancelledError, DownloadError, DownloadOptions, DownloadTask,
@@ -39,7 +39,7 @@ from .progress import (
 from .source_parser import (
     _check_cancel, _current_token, _set_current_token, _require_token,
     _coerce_tasks, validate_download_request, normalize_recent_limit,
-    normalize_date_range, parse_task_lines, build_download_tasks,
+    normalize_date_range, normalize_proxy_url, parse_task_lines, build_download_tasks,
     classify_source, _resolve_candidate_indices,
 )
 
@@ -188,6 +188,18 @@ def _require_web_backend() -> None:
         raise DownloadError('未安装 yt-dlp，无法解析网页视频')
 
 
+def _options_proxy_url(options: DownloadOptions | None) -> str:
+    return normalize_proxy_url(getattr(options, 'proxy_url', '') if options is not None else '')
+
+
+def _urlopen_with_proxy(request: Request, timeout: int, proxy_url: str = ''):
+    proxy = normalize_proxy_url(proxy_url)
+    if not proxy:
+        return urlopen(request, timeout=timeout)
+    opener = build_opener(ProxyHandler({'http': proxy, 'https': proxy}))
+    return opener.open(request, timeout=timeout)
+
+
 # ---------------------------------------------------------------------------
 # Speed tracking
 # ---------------------------------------------------------------------------
@@ -314,7 +326,7 @@ def _is_douyin_direct_play_url(url: str) -> bool:
     return parsed.scheme in {'http', 'https'} and '/aweme/v1/play/' in parsed.path
 
 
-def _fetch_douyin_share_html(url: str) -> str:
+def _fetch_douyin_share_html(url: str, proxy_url: str = '') -> str:
     request = Request(
         url,
         headers={
@@ -323,7 +335,7 @@ def _fetch_douyin_share_html(url: str) -> str:
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         },
     )
-    with urlopen(request, timeout=20) as response:
+    with _urlopen_with_proxy(request, 20, proxy_url) as response:
         charset = response.headers.get_content_charset() or 'utf-8'
         return response.read().decode(charset, errors='ignore')
 
@@ -375,11 +387,11 @@ def _find_douyin_item_list(data: object) -> list[dict[str, object]]:
     return []
 
 
-def _extract_douyin_share_candidates(source_url: str) -> list[str]:
+def _extract_douyin_share_candidates(source_url: str, options: DownloadOptions | None = None) -> list[str]:
     if not _is_douyin_url(source_url):
         return []
     try:
-        html = _fetch_douyin_share_html(source_url)
+        html = _fetch_douyin_share_html(source_url, _options_proxy_url(options))
     except (OSError, ValueError, TimeoutError):
         return []
     page_data = _extract_douyin_page_json(html)
@@ -414,6 +426,7 @@ def _download_direct_media_file(
     *,
     referer_url: str = '',
 ) -> dict[str, object]:
+    proxy_url = _options_proxy_url(options)
     suffix = Path(urlparse(str(media_url or '')).path).suffix.lower() or '.mp4'
     if suffix not in {'.mp4', '.mov', '.m4v', '.webm'}:
         suffix = '.mp4'
@@ -433,7 +446,7 @@ def _download_direct_media_file(
         token = _current_token()
         should_reconnect = False
         try:
-            with urlopen(request, timeout=60) as response:
+            with _urlopen_with_proxy(request, 60, proxy_url) as response:
                 # Verify server actually supports range requests
                 if downloaded_total > 0 and getattr(response, 'status', 200) != 206:
                     downloaded_total = 0
@@ -744,7 +757,11 @@ def _download_web_auto(
 # ---------------------------------------------------------------------------
 # Candidate expansion
 # ---------------------------------------------------------------------------
-def _expand_web_all_candidates(tasks: list[DownloadTask], progress_cb: ProgressCallback | None) -> list[DownloadTask]:
+def _expand_web_all_candidates(
+    tasks: list[DownloadTask],
+    progress_cb: ProgressCallback | None,
+    options: DownloadOptions | None = None,
+) -> list[DownloadTask]:
     """Expand web tasks into individual candidate tasks when download_all_candidates is set.
 
     Each web URL that resolves to multiple yt-dlp entries is replaced by one task per
@@ -756,7 +773,7 @@ def _expand_web_all_candidates(tasks: list[DownloadTask], progress_cb: ProgressC
             expanded.append(task)
             continue
         try:
-            candidates = _extract_ytdlp_entry_candidates(task.source_url)
+            candidates = _extract_ytdlp_entry_candidates(task.source_url, options)
         except Exception:
             candidates = []
         if len(candidates) <= 1:
@@ -768,8 +785,16 @@ def _expand_web_all_candidates(tasks: list[DownloadTask], progress_cb: ProgressC
                 source_url=candidate_url,
                 source_kind='web',
                 target_title=_s.guess_task_title(candidate_url),
+                output_subdir=task.output_subdir,
             ))
     return expanded
+
+
+def _resolve_web_task_output_dir(output_root: Path, task: DownloadTask) -> Path:
+    subdir = _s.sanitize_filename_component(task.output_subdir, fallback='').strip()
+    if not subdir:
+        return output_root
+    return output_root / subdir
 
 
 # ---------------------------------------------------------------------------
@@ -929,7 +954,11 @@ def _download_web_candidates(
     return downloaded_files, last_error
 
 
-def inspect_web_media_batch(urls: Iterable[str] | str, progress_cb: ProgressCallback | None = None) -> list[dict[str, object]]:
+def inspect_web_media_batch(
+    urls: Iterable[str] | str,
+    progress_cb: ProgressCallback | None = None,
+    options: DownloadOptions | None = None,
+) -> list[dict[str, object]]:
     items = parse_task_lines(urls) if isinstance(urls, str) else [_s._normalize_url_text(item) for item in urls]
     web_urls = [url for url in items if url and classify_source(url) == 'web']
     results: list[dict[str, object]] = []
@@ -937,7 +966,7 @@ def inspect_web_media_batch(urls: Iterable[str] | str, progress_cb: ProgressCall
     for index, url in enumerate(web_urls, start=1):
         _emit(progress_cb, f'__HYL_PROGRESS__|web_scan_start|index={index}|total={total}|url={url}')
         try:
-            result = inspect_web_media_candidates(url)
+            result = inspect_web_media_candidates(url, options)
             _emit(progress_cb, f'__HYL_PROGRESS__|web_scan_done|count={result["candidate_count"]}|index={index}|total={total}|url={url}')
         except Exception as exc:
             result = {
@@ -953,8 +982,8 @@ def inspect_web_media_batch(urls: Iterable[str] | str, progress_cb: ProgressCall
     return results
 
 
-def inspect_web_media_candidates(source_url: str) -> dict[str, object]:
-    candidates, source = _collect_web_media_candidates(source_url)
+def inspect_web_media_candidates(source_url: str, options: DownloadOptions | None = None) -> dict[str, object]:
+    candidates, source = _collect_web_media_candidates(source_url, options)
     return {
         'source_url': source_url,
         'success': True,
@@ -966,8 +995,10 @@ def inspect_web_media_candidates(source_url: str) -> dict[str, object]:
 
 
 def _download_web_task(task: DownloadTask, output_root: Path, options: DownloadOptions, progress_cb: ProgressCallback | None) -> dict[str, object]:
+    output_root = _resolve_web_task_output_dir(output_root, task)
+    output_root.mkdir(parents=True, exist_ok=True)
     first_error = None
-    douyin_candidates = _extract_douyin_share_candidates(task.source_url)
+    douyin_candidates = _extract_douyin_share_candidates(task.source_url, options)
     if douyin_candidates:
         downloaded_files, last_error = _download_web_candidates(
             douyin_candidates,
@@ -983,7 +1014,7 @@ def _download_web_task(task: DownloadTask, output_root: Path, options: DownloadO
         first_error = last_error
     ytdlp_candidates: list[str] = []
     try:
-        ytdlp_candidates = _extract_ytdlp_entry_candidates(task.source_url)
+        ytdlp_candidates = _extract_ytdlp_entry_candidates(task.source_url, options)
     except Exception:
         ytdlp_candidates = []
     if len(ytdlp_candidates) > 1:
@@ -1045,7 +1076,7 @@ def _download_web_task(task: DownloadTask, output_root: Path, options: DownloadO
         if _is_cookie_access_blocked_error(exc):
             raise DownloadError(_build_cookie_retry_failure_message(task.source_url, exc)) from exc
     try:
-        candidates = _extract_media_candidates(_fetch_webpage_html(task.source_url), task.source_url)
+        candidates = _extract_media_candidates(_fetch_webpage_html(task.source_url, _options_proxy_url(options)), task.source_url)
     except Exception as exc:
         raise DownloadError(f'{first_error}; 网页兜底解析失败: {exc}') from exc
     if not candidates:
@@ -1123,24 +1154,24 @@ def _inverse_indices(total: int, exclude: list[int]) -> list[int]:
     return [i for i in range(1, total + 1) if i not in exclude_set]
 
 
-def _collect_web_media_candidates(source_url: str) -> tuple[list[str], str]:
-    douyin_candidates = _extract_douyin_share_candidates(source_url)
+def _collect_web_media_candidates(source_url: str, options: DownloadOptions | None = None) -> tuple[list[str], str]:
+    douyin_candidates = _extract_douyin_share_candidates(source_url, options)
     if douyin_candidates:
         return douyin_candidates, 'douyin-share'
     ytdlp_candidates: list[str] = []
     try:
-        ytdlp_candidates = _extract_ytdlp_entry_candidates(source_url)
+        ytdlp_candidates = _extract_ytdlp_entry_candidates(source_url, options)
     except Exception:
         ytdlp_candidates = []
     if ytdlp_candidates:
         return ytdlp_candidates, 'yt-dlp'
     try:
-        html_candidates = _extract_media_candidates(_fetch_webpage_html(source_url), source_url)
+        html_candidates = _extract_media_candidates(_fetch_webpage_html(source_url, _options_proxy_url(options)), source_url)
     except (OSError, ValueError, TimeoutError):
         html_candidates = []
     if html_candidates:
         return html_candidates, 'html'
-    if _supports_ytdlp_direct_media(source_url):
+    if _supports_ytdlp_direct_media(source_url, options):
         return [source_url], 'page'
     return [], ''
 
@@ -1160,12 +1191,15 @@ def _download_url_with_ytdlp(
     from yt_dlp import YoutubeDL
 
     http_headers = _s._build_web_headers(referer_url)
+    proxy_url = _options_proxy_url(options)
     probe_opts = {
         'quiet': True,
         'skip_download': True,
         'noplaylist': True,
         'http_headers': http_headers,
     }
+    if proxy_url:
+        probe_opts['proxy'] = proxy_url
     if options.web_use_browser_cookies:
         probe_opts['cookiesfrombrowser'] = ('chrome',)
     info = _run_ytdlp_with_cookie_retry(
@@ -1209,6 +1243,8 @@ def _download_url_with_ytdlp(
         'buffersize': 1024 * 1024,
         'http_no_compression': False,
     }
+    if proxy_url:
+        ydl_opts['proxy'] = proxy_url
     ffmpeg = _ffmpeg_path() or None
     if ffmpeg:
         ydl_opts['ffmpeg_location'] = ffmpeg
@@ -1241,6 +1277,8 @@ def _download_url_with_ytdlp(
             '--auto-file-renaming=false',
             '--allow-overwrite=true',
         ]
+        if proxy_url:
+            ydl_opts['external_downloader_args'].extend([f'--all-proxy={proxy_url}'])
         if referer_url:
             safe_referer = referer_url.replace('"', '%22').replace('\\', '%5C').replace('\n', '').replace('\r', '')
             ydl_opts['external_downloader_args'].extend([
@@ -1284,7 +1322,7 @@ def _download_url_with_ytdlp(
         except Exception:
             created = sorted(_s._find_completed_downloads(output_root, unique_stem))
             if created:
-                _maybe_fill_missing_embedded_thumbnails(created, source_url, progress_cb, ffmpeg or '')
+                _maybe_fill_missing_embedded_thumbnails(created, source_url, progress_cb, ffmpeg or '', proxy_url)
                 _emit(progress_cb, f'网页 OK -> {created[0].name}')
                 return {
                     'success': True,
@@ -1305,7 +1343,7 @@ def _download_url_with_ytdlp(
     created = sorted(_s._find_completed_downloads(output_root, unique_stem))
     if not created:
         raise DownloadError('网页视频下载完成，但未找到输出文件')
-    _maybe_fill_missing_embedded_thumbnails(created, source_url, progress_cb, ffmpeg or '')
+    _maybe_fill_missing_embedded_thumbnails(created, source_url, progress_cb, ffmpeg or '', proxy_url)
     _emit(progress_cb, f'网页 OK -> {created[0].name}')
     return {
         'success': True,
@@ -1313,7 +1351,7 @@ def _download_url_with_ytdlp(
     }
 
 
-def _fetch_webpage_html(url: str) -> str:
+def _fetch_webpage_html(url: str, proxy_url: str = '') -> str:
     request = Request(
         url,
         headers={
@@ -1323,7 +1361,7 @@ def _fetch_webpage_html(url: str) -> str:
             'Referer': url,
         },
     )
-    with urlopen(request, timeout=20) as response:
+    with _urlopen_with_proxy(request, 20, proxy_url) as response:
         charset = response.headers.get_content_charset() or 'utf-8'
         return response.read().decode(charset, errors='ignore')
 
@@ -1345,13 +1383,17 @@ def _extract_media_candidates(html_text: str, page_url: str) -> list[str]:
     return list(unique.keys())
 
 
-def _extract_ytdlp_entry_candidates(page_url: str) -> list[str]:
+def _extract_ytdlp_entry_candidates(page_url: str, options: DownloadOptions | None = None) -> list[str]:
     _require_web_backend()
     from yt_dlp import YoutubeDL
+    ydl_opts: dict[str, object] = {'quiet': True, 'skip_download': True}
+    proxy_url = _options_proxy_url(options)
+    if proxy_url:
+        ydl_opts['proxy'] = proxy_url
 
     info = _run_ytdlp_with_cookie_retry(
         page_url,
-        {'quiet': True, 'skip_download': True},
+        ydl_opts,
         None,
         lambda opts: YoutubeDL(opts).extract_info(page_url, download=False),
     )
@@ -1453,13 +1495,18 @@ def _extract_thumbnail_urls(
     source_url: str,
     resolved_url: str,
     candidate_index: int | None,
+    proxy_url: str = '',
 ) -> list[str]:
     _require_web_backend()
     from yt_dlp import YoutubeDL
+    ydl_opts: dict[str, object] = {'quiet': True, 'skip_download': True, 'noplaylist': True}
+    proxy = normalize_proxy_url(proxy_url)
+    if proxy:
+        ydl_opts['proxy'] = proxy
 
     info = _run_ytdlp_with_cookie_retry(
         source_url,
-        {'quiet': True, 'skip_download': True, 'noplaylist': True},
+        ydl_opts,
         None,
         lambda opts: YoutubeDL(opts).extract_info(source_url, download=False),
     )
@@ -1486,7 +1533,7 @@ def _guess_thumbnail_suffix(url: str, content_type: str = '') -> str:
     return suffix if suffix in {'.jpg', '.jpeg', '.png', '.webp'} else '.jpg'
 
 
-def _download_thumbnail_file(url: str, thumb_dir: Path, stem: str, referer_url: str) -> Path:
+def _download_thumbnail_file(url: str, thumb_dir: Path, stem: str, referer_url: str, proxy_url: str = '') -> Path:
     request = Request(
         url,
         headers={
@@ -1494,7 +1541,7 @@ def _download_thumbnail_file(url: str, thumb_dir: Path, stem: str, referer_url: 
             'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
         },
     )
-    with urlopen(request, timeout=20) as response:
+    with _urlopen_with_proxy(request, 20, proxy_url) as response:
         suffix = _guess_thumbnail_suffix(url, response.headers.get('Content-Type', ''))
         thumb_path = thumb_dir / f'{stem}{suffix}'
         thumb_path.write_bytes(response.read())
@@ -1558,6 +1605,7 @@ def _maybe_fill_missing_embedded_thumbnails(
     source_url: str,
     progress_cb: ProgressCallback | None,
     ffmpeg_path: str,
+    proxy_url: str = '',
 ) -> None:
     video_exts = {'.mp4', '.mkv', '.webm', '.mov', '.m4v'}
     if not ffmpeg_path:
@@ -1568,20 +1616,24 @@ def _maybe_fill_missing_embedded_thumbnails(
         if _video_has_embedded_thumbnail(video_path, ffmpeg_path):
             continue
         _emit(progress_cb, f'封面缺失，自动补封面: {video_path.name}')
-        result = embed_thumbnail(video_path, source_url, progress_cb=progress_cb)
+        result = embed_thumbnail(video_path, source_url, progress_cb=progress_cb, proxy_url=proxy_url)
         if result.get('success'):
             _emit(progress_cb, f'封面补全成功: {video_path.name}')
         else:
             _emit(progress_cb, f'封面补全失败，保留原视频: {video_path.name} -> {result.get("error", "")}')
 
 
-def _supports_ytdlp_direct_media(source_url: str) -> bool:
+def _supports_ytdlp_direct_media(source_url: str, options: DownloadOptions | None = None) -> bool:
     _require_web_backend()
     from yt_dlp import YoutubeDL
 
+    ydl_opts: dict[str, object] = {'quiet': True, 'skip_download': True, 'noplaylist': True}
+    proxy_url = _options_proxy_url(options)
+    if proxy_url:
+        ydl_opts['proxy'] = proxy_url
     info = _run_ytdlp_with_cookie_retry(
         source_url,
-        {'quiet': True, 'skip_download': True, 'noplaylist': True},
+        ydl_opts,
         None,
         lambda opts: YoutubeDL(opts).extract_info(source_url, download=False),
     )
@@ -1619,9 +1671,10 @@ def _download_m3u8_with_ffmpeg(
     ffmpeg = ffmpeg_path or _ffmpeg_path()
     if not ffmpeg:
         raise DownloadError('未检测到 ffmpeg，无法直接下载 m3u8')
+    proxy_url = _options_proxy_url(options)
     base_stem = _s.ensure_unique_stem(output_root, _s.sanitize_filename_component(task.target_title or 'video'))
     output_path = _s.ensure_unique_path(output_root / f'{base_stem}.mp4')
-    total_duration = _probe_stream_duration(media_url, ffmpeg)
+    total_duration = _probe_stream_duration(media_url, ffmpeg, proxy_url=proxy_url)
     max_reconnects = 3
     reconnect_count = 0
     for reconnect_attempt in range(max_reconnects + 1):
@@ -1645,6 +1698,8 @@ def _download_m3u8_with_ffmpeg(
             '-loglevel', 'error',
             str(output_path),
         ]
+        if proxy_url:
+            command[2:2] = ['-http_proxy', proxy_url]
         proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         if proc.stdout is None:
             raise RuntimeError('ffmpeg Popen 没有 stdout')
@@ -1714,14 +1769,19 @@ def _terminate_ffmpeg(proc: subprocess.Popen) -> None:
         proc.kill()
 
 
-def _probe_stream_duration(url: str, ffmpeg_path: str = '') -> float | None:
+def _probe_stream_duration(url: str, ffmpeg_path: str = '', proxy_url: str = '') -> float | None:
     """Get stream duration via ffprobe. Returns seconds or None."""
     ffprobe = Path(ffmpeg_path).with_name('ffprobe') if ffmpeg_path else 'ffprobe'
     if ffmpeg_path:
         ffprobe = str(ffprobe)
     try:
+        command = [ffprobe, '-v', 'quiet']
+        proxy = normalize_proxy_url(proxy_url)
+        if proxy:
+            command.extend(['-http_proxy', proxy])
+        command.extend(['-show_entries', 'format=duration', '-of', 'csv=p=0', url])
         result = subprocess.run(
-            [ffprobe, '-v', 'quiet', '-show_entries', 'format=duration', '-of', 'csv=p=0', url],
+            command,
             capture_output=True, text=True, timeout=10,
         )
         if result.returncode == 0 and result.stdout.strip():
@@ -1772,6 +1832,7 @@ def embed_thumbnail(
     progress_cb: ProgressCallback | None = None,
     candidate_index: int | None = None,
     thumbnail_mode: str = 'web_then_frame',
+    proxy_url: str = '',
 ) -> dict[str, object]:
     """Download thumbnail via yt-dlp and embed it into an existing mp4.
 
@@ -1812,7 +1873,7 @@ def embed_thumbnail(
             # Step 0: resolve page URL → actual video candidate URL
             _emit(progress_cb, f'正在解析链接: {source_url}')
             try:
-                candidates, _source = _collect_web_media_candidates(source_url)
+                candidates, _source = _collect_web_media_candidates(source_url, DownloadOptions(proxy_url=proxy_url))
                 if candidates:
                     if candidate_index is not None and 1 <= candidate_index <= len(candidates):
                         resolved_url = candidates[candidate_index - 1]
@@ -1833,9 +1894,9 @@ def embed_thumbnail(
 
             _emit(progress_cb, f'正在抓取封面: {source_url}')
             try:
-                for thumb_url in _extract_thumbnail_urls(source_url, resolved_url, candidate_index):
+                for thumb_url in _extract_thumbnail_urls(source_url, resolved_url, candidate_index, proxy_url):
                     try:
-                        thumb_file = _download_thumbnail_file(thumb_url, thumb_dir, stem, source_url)
+                        thumb_file = _download_thumbnail_file(thumb_url, thumb_dir, stem, source_url, proxy_url)
                         break
                     except Exception:
                         continue
@@ -1852,6 +1913,9 @@ def embed_thumbnail(
                     'noplaylist': True,
                     'http_headers': _s._build_web_headers(source_url),
                 }
+                proxy = normalize_proxy_url(proxy_url)
+                if proxy:
+                    ydl_opts['proxy'] = proxy
                 with YoutubeDL(ydl_opts) as ydl:
                     ydl.extract_info(resolved_url, download=True)
                 for f in thumb_dir.iterdir():

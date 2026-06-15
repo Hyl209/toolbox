@@ -6,6 +6,7 @@ from collections.abc import Iterable
 from datetime import date, datetime
 from pathlib import Path
 from typing import Callable
+from urllib.parse import urlparse
 
 from .models import (
     CancelledError, DownloadError, DownloadOptions, DownloadTask,
@@ -170,6 +171,60 @@ def normalize_date_range(date_from: str | date | None, date_to: str | date | Non
     if parsed_from and parsed_to and parsed_from > parsed_to:
         raise ValueError('开始日期不能晚于结束日期')
     return parsed_from, parsed_to
+
+
+def normalize_proxy_url(value: str | None) -> str:
+    cleaned = str(value or '').strip()
+    if not cleaned:
+        return ''
+    if '://' not in cleaned:
+        cleaned = f'http://{cleaned}'
+    return cleaned
+
+
+def build_proxy_url(host: str | None, port: str | int | None) -> str:
+    clean_port = str(port or '').strip()
+    clean_host = str(host or '').strip() or '127.0.0.1'
+    if not clean_port:
+        if '://' in clean_host and urlparse(clean_host).port:
+            return normalize_proxy_url(clean_host)
+        if ':' in clean_host.rsplit('@', 1)[-1]:
+            return normalize_proxy_url(clean_host)
+        return ''
+    if '://' in clean_host:
+        parsed = urlparse(clean_host)
+        scheme = parsed.scheme
+        credentials = ''
+        if parsed.username:
+            credentials = parsed.username
+            if parsed.password:
+                credentials += f':{parsed.password}'
+            credentials += '@'
+        clean_host = parsed.hostname or '127.0.0.1'
+        return normalize_proxy_url(f'{scheme}://{credentials}{clean_host}:{clean_port}')
+    clean_host = clean_host.rsplit('@', 1)[-1].split(':', 1)[0].strip() or '127.0.0.1'
+    return normalize_proxy_url(f'{clean_host}:{clean_port}')
+
+
+def split_proxy_url(value: str | None) -> tuple[str, str]:
+    cleaned = normalize_proxy_url(value)
+    if not cleaned:
+        return '127.0.0.1', ''
+    parsed = urlparse(cleaned)
+    if parsed.hostname:
+        host = parsed.hostname
+        if parsed.scheme and (parsed.scheme != 'http' or parsed.username or parsed.password):
+            credentials = ''
+            if parsed.username:
+                credentials = parsed.username
+                if parsed.password:
+                    credentials += f':{parsed.password}'
+                credentials += '@'
+            host = f'{parsed.scheme}://{credentials}{host}'
+        return host, str(parsed.port or '')
+    without_scheme = cleaned.split('://', 1)[-1]
+    host, _, port = without_scheme.partition(':')
+    return host or '127.0.0.1', port
 
 
 def validate_download_request(

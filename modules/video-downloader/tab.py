@@ -22,12 +22,9 @@ def validate_video_downloader_form(
     date_to: str = '',
     telegram_include_videos: bool = True,
     telegram_include_photos: bool = False,
-    web_candidate_index: str = '',
-    web_download_all_candidates: bool = False,
     source_mode: str = 'mixed',
     get_video_downloader_module=None,
     module=None,
-    web_candidate_mode: str = '',
 ) -> list[str]:
     if module is None and get_video_downloader_module is None:
         errors: list[str] = []
@@ -41,24 +38,10 @@ def validate_video_downloader_form(
     errors: list[str] = []
     mode_errors = validate_source_mode_urls(module.parse_task_lines(task_text), source_mode)
     errors.extend(mode_errors)
-    try:
-        indices = module.normalize_positive_indices(web_candidate_index, '网页候选序号')
-        selected_mode = web_candidate_mode or module._parse_candidate_mode(web_candidate_index)[0]
-        mode = selected_mode
-        if mode == 'specified':
-            mode = 'pick'
-        if selected_mode in ('specified', 'exclude', 'before', 'after') and not indices:
-            errors.append('请选择网页候选序号')
-        if mode in ('before', 'after') and indices and len(indices) != 1:
-            errors.append('before/after 只需填写一个序号，如 before3 或 after5')
-    except ValueError as exc:
-        errors.append(str(exc))
     if mode_errors:
         if not (output_dir or '').strip():
             errors.append('请选择输出目录')
         return errors
-    if web_download_all_candidates and str(web_candidate_index).strip():
-        errors.append('勾选"网页全部候选"时，不需要再填写候选序号')
     session_file = Path(__file__).resolve().with_name(module.SESSION_FILE_NAME)
     config = module.TelegramConfig(
         api_id=api_id,
@@ -78,6 +61,22 @@ def validate_video_downloader_form(
         telegram_include_photos=telegram_include_photos,
     ))
     return errors
+
+
+def apply_output_subdirs_by_title(tasks: list, enabled: bool) -> list:
+    if not enabled:
+        return tasks
+    return [
+        replace(task, output_subdir=task.target_title or task.output_subdir)
+        for task in tasks
+    ]
+
+
+def output_subdir_by_title_enabled(owner) -> bool:
+    if getattr(owner, 'source_mode', '') != 'web':
+        return False
+    widget = getattr(owner, 'output_subdir_checkbox', None)
+    return bool(widget is not None and widget.isChecked())
 
 
 def build_video_downloader_tab_class(deps: dict[str, object]):
@@ -144,16 +143,12 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
 
             if self.source_mode == 'telegram':
                 self._build_telegram_options_section(center_row)
-            elif self.source_mode == 'web':
-                self._build_web_options_section(layout)
 
             self._build_log_section(layout, center_row, textedit_style, log_min_height)
 
             card_root.addWidget(card, 1)
             if self.recent_count_edit is not None:
                 self.handle_all_messages_changed()
-            if self.web_candidate_index_edit is not None:
-                self.handle_web_all_candidates_changed()
             self.refresh_backend_status()
             self.refresh_summary()
 
@@ -180,9 +175,10 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             self.date_to_edit = None
             self.include_video_checkbox = None
             self.include_photo_checkbox = None
-            self.web_candidate_index_edit = None
-            self.web_candidate_mode_combo = None
             self.concurrent_combo = None
+            self.output_subdir_checkbox = None
+            self.proxy_host_edit = None
+            self.proxy_port_edit = None
             self.scan_button = None
             self.pause_button = None
             self.cancel_button = None
@@ -215,9 +211,6 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
 
         def _build_telegram_options_section(self, center_row):
             tab_panels.build_telegram_options_section(self, center_row, deps)
-
-        def _build_web_options_section(self, layout):
-            tab_panels.build_web_options_section(self, layout, deps)
 
         def _build_log_section(self, layout, center_row, textedit_style, log_min_height):
             tab_panels.build_log_section(self, layout, center_row, textedit_style, log_min_height, deps)
@@ -252,6 +245,8 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             if self.phone_edit is not None:
                 save_setting(self.settings, self._shared_setting_key('phone'), self._widget_text(self.phone_edit))
             save_setting(self.settings, self._mode_setting_key('output_dir'), self._widget_text(self.output_edit))
+            save_setting(self.settings, self._mode_setting_key('proxy_host'), self._widget_text(getattr(self, 'proxy_host_edit', None)) or '127.0.0.1')
+            save_setting(self.settings, self._mode_setting_key('proxy_port'), self._widget_text(getattr(self, 'proxy_port_edit', None)))
             if self.recent_count_edit is not None:
                 save_setting(self.settings, self._mode_setting_key('recent_limit'), self._widget_text(self.recent_count_edit) or DEFAULT_RECENT_LIMIT)
                 save_setting(self.settings, self._mode_setting_key('all_messages'), '1' if self._is_checked(self.all_messages_checkbox) else '0')
@@ -259,10 +254,8 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                 save_setting(self.settings, self._mode_setting_key('date_to'), self._widget_text(self.date_to_edit))
                 save_setting(self.settings, self._mode_setting_key('include_videos'), '1' if self._is_checked(self.include_video_checkbox) else '0')
                 save_setting(self.settings, self._mode_setting_key('include_photos'), '1' if self._is_checked(self.include_photo_checkbox) else '0')
-            if self.web_candidate_index_edit is not None:
-                save_setting(self.settings, self._mode_setting_key('web_candidate_index'), self._widget_text(self.web_candidate_index_edit))
-                save_setting(self.settings, self._mode_setting_key('web_candidate_mode'), self._web_candidate_mode_value())
             save_setting(self.settings, self._mode_setting_key('overwrite'), '1' if self._is_checked(self.overwrite_checkbox) else '0')
+            save_setting(self.settings, self._mode_setting_key('output_subdir_by_title'), '1' if output_subdir_by_title_enabled(self) else '0')
             save_setting(self.settings, self._mode_setting_key('concurrent'), self._concurrent_value() if self.concurrent_combo is not None else '1')
             save_setting(self.settings, self._shared_setting_key('phone_code_hash'), self.phone_code_hash)
 
@@ -295,10 +288,11 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                 self.date_to_edit,
                 self.include_video_checkbox,
                 self.include_photo_checkbox,
-                self.web_candidate_index_edit,
-                self.web_candidate_mode_combo,
                 self.output_edit,
+                getattr(self, 'proxy_host_edit', None),
+                getattr(self, 'proxy_port_edit', None),
                 self.overwrite_checkbox,
+                getattr(self, 'output_subdir_checkbox', None),
                 self.concurrent_combo,
                 self.choose_button,
                 self.cover_button,
@@ -333,8 +327,6 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                 self.cancel_button.setVisible(busy)
             if self.reconnect_button is not None:
                 self.reconnect_button.setVisible(busy)
-            if not busy and self.web_candidate_index_edit is not None:
-                self.handle_web_all_candidates_changed()
 
         def handle_all_messages_changed(self):
             if self.recent_count_edit is None or self.all_messages_checkbox is None:
@@ -369,34 +361,6 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             self._downloaded_urls.clear()
             self.cleanup_worker()
             self.set_busy(False)
-
-        def _resolve_candidate_mode(self) -> str:
-            selected = self._web_candidate_mode_value()
-            if selected in {'auto', 'specified', 'all', 'exclude', 'before', 'after'}:
-                return selected
-            return self.module._parse_candidate_mode(self._widget_text(self.web_candidate_index_edit))[0]
-
-        def _web_candidate_mode_value(self) -> str:
-            if self.web_candidate_mode_combo is None:
-                return ''
-            return str(self.web_candidate_mode_combo.currentData() or '')
-
-        def _web_candidate_index_text_for_request(self) -> str:
-            selected = self._web_candidate_mode_value()
-            if selected in {'auto', 'all'}:
-                return ''
-            return self._widget_text(self.web_candidate_index_edit)
-
-        def handle_web_candidate_mode_changed(self):
-            self.handle_web_all_candidates_changed()
-
-        def handle_web_all_candidates_changed(self):
-            if self.web_candidate_index_edit is None:
-                return
-            mode = self._web_candidate_mode_value()
-            index_enabled = mode in {'specified', 'exclude', 'before', 'after'}
-            self.web_candidate_index_edit.setEnabled(index_enabled)
-            self.save_form_settings()
 
         def reset_progress_ui(self, total_tasks: int):
             self.total_tasks = max(0, total_tasks)
@@ -608,8 +572,6 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             apply_video_textedit_surface(self.log, style, self.current_theme)
             if self.concurrent_combo is not None:
                 style_combo_popup(self.concurrent_combo, self.current_theme)
-            if self.web_candidate_mode_combo is not None:
-                style_combo_popup(self.web_candidate_mode_combo, self.current_theme)
 
         def handle_web_source_text_changed(self):
             self.web_scan_results = {}
@@ -633,6 +595,14 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
 
         def _web_queue_text(self) -> str:
             return self.task_edit.toPlainText()
+
+        def build_web_options(self):
+            return self.module.DownloadOptions(
+                proxy_url=self.module.build_proxy_url(
+                    self._widget_text(getattr(self, 'proxy_host_edit', None)),
+                    self._widget_text(getattr(self, 'proxy_port_edit', None)),
+                ),
+            )
 
         def refresh_summary(self):
             if self.source_mode == 'web':
@@ -660,7 +630,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             self._scan_started_while_running = self.is_running
             if not self._scan_started_while_running:
                 self.set_busy(True)
-            self.scan_worker = ScanWorker(self.module, web_urls)
+            self.scan_worker = ScanWorker(self.module, web_urls, self.build_web_options())
             self.scan_worker.progress.connect(self.handle_scan_progress)
             self.scan_worker.finished.connect(self.finalize_scan)
             self.scan_worker.failed.connect(self.handle_scan_error)
@@ -784,13 +754,16 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                 ]
                 if self._active_web_queue_lines and hasattr(self.task_edit, 'setPlainText'):
                     self.task_edit.setPlainText('\n'.join(self._active_web_queue_lines))
-                return [module.DownloadTask(item['url'], 'web', item['title']) for item in new_items]
+                return apply_output_subdirs_by_title([
+                    module.DownloadTask(item['url'], 'web', item['title'])
+                    for item in new_items
+                ], output_subdir_by_title_enabled(self))
             all_tasks = filter_tasks_for_source_mode(
                 module.build_download_tasks(module.parse_task_lines(task_text)),
                 self.source_mode,
             )
             new_tasks = [t for t in all_tasks if t.source_url not in self._downloaded_urls]
-            return new_tasks
+            return apply_output_subdirs_by_title(new_tasks, output_subdir_by_title_enabled(self))
 
         def choose_output_dir(self):
             path = QFileDialog.getExistingDirectory(self, '选择视频输出目录', self.output_edit.text() or str(ROOT))
@@ -881,14 +854,6 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             if thumbnail_mode is None:
                 return
             source_url = urls[0] if urls else ''
-            # Ask for candidate index if user typed one in web_candidate_index_edit
-            raw_idx = self._widget_text(self.web_candidate_index_edit) if self.web_candidate_index_edit else ''
-            candidate_index = None
-            if raw_idx.strip():
-                try:
-                    candidate_index = int(raw_idx.strip())
-                except ValueError:
-                    pass
             # Select video files - remember last used directory
             start_dir = self._last_cover_dir or self._widget_text(self.output_edit) or ''
             files, _ = QFileDialog.getOpenFileNames(self, '选择要补封面的视频', start_dir, '视频文件 (*.mp4 *.mkv *.webm *.mov)')
@@ -904,8 +869,8 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             self.reset_progress_ui(len(files))
             self.thumbnail_worker = ThumbnailWorker(
                 module, files, source_url,
-                candidate_index=candidate_index,
                 thumbnail_mode=thumbnail_mode,
+                proxy_url=self.build_web_options().proxy_url,
             )
             self.thumbnail_worker.progress.connect(self.handle_thumbnail_progress)
             self.thumbnail_worker.finished.connect(self.finalize_thumbnail)
@@ -966,9 +931,6 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
             self._downloaded_urls.clear()
             self.save_form_settings()
             module = self.module
-            web_all_candidates = self._web_candidate_mode_value() == 'all'
-            web_candidate_text = '' if web_all_candidates else self._web_candidate_index_text_for_request()
-            web_candidate_mode = self._resolve_candidate_mode()
             errors = validate_video_downloader_form(
                 self.task_edit.toPlainText(),
                 self.output_edit.text().strip(),
@@ -981,9 +943,6 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                 date_to=self._widget_text(self.date_to_edit),
                 telegram_include_videos=self._is_checked(self.include_video_checkbox) or self.source_mode != 'telegram',
                 telegram_include_photos=self._is_checked(self.include_photo_checkbox),
-                web_candidate_index=web_candidate_text,
-                web_download_all_candidates=web_all_candidates,
-                web_candidate_mode=web_candidate_mode,
                 source_mode=self.source_mode,
                 module=module,
             )
@@ -1011,8 +970,14 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                     module.build_download_tasks(module.parse_task_lines(self.task_edit.toPlainText())),
                     self.source_mode,
                 )
+            tasks = apply_output_subdirs_by_title(tasks, output_subdir_by_title_enabled(self))
             options = module.DownloadOptions(
                 overwrite=self.overwrite_checkbox.isChecked(),
+                output_subdir_by_title=output_subdir_by_title_enabled(self),
+                proxy_url=module.build_proxy_url(
+                    getattr(getattr(self, 'proxy_host_edit', None), 'text', lambda: '')(),
+                    getattr(getattr(self, 'proxy_port_edit', None), 'text', lambda: '')(),
+                ),
                 max_concurrent_downloads=int(self._concurrent_value()) if self.concurrent_combo is not None else 1,
                 telegram_recent_limit=module.normalize_recent_limit(
                     self._widget_text(self.recent_count_edit),
@@ -1023,18 +988,11 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                 telegram_date_to=module.parse_iso_date(self._widget_text(self.date_to_edit), '结束日期'),
                 telegram_include_videos=self._is_checked(self.include_video_checkbox) or self.source_mode != 'telegram',
                 telegram_include_photos=self._is_checked(self.include_photo_checkbox),
-                web_candidate_indices=module.normalize_positive_indices(web_candidate_text, '网页候选序号'),
-                web_candidate_mode='pick' if web_candidate_mode in {'auto', 'specified', 'all'} else web_candidate_mode,
-                web_download_all_candidates=web_all_candidates,
             )
-            if web_all_candidates:
-                options = replace(options, web_candidate_indices=None)
             self._current_options = options
             self.set_busy(True)
             self.log.clear()
             self._last_log_is_progress = False
-            if options.web_download_all_candidates:
-                tasks = module._expand_web_all_candidates(tasks, self.append_log)
             self.reset_progress_ui(len(tasks))
             self._start_worker(tasks, options)
 

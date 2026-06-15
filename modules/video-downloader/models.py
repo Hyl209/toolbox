@@ -33,6 +33,8 @@ class DownloadTask:
 class DownloadOptions:
     web_use_browser_cookies: bool = False
     overwrite: bool = False
+    output_subdir_by_title: bool = False
+    proxy_url: str = ''
     filename_template: str = DEFAULT_FILENAME_TEMPLATE
     web_candidate_indices: list[int] | None = None
     web_candidate_mode: str = 'pick'

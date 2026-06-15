@@ -41,14 +41,15 @@ def build_worker_classes(QObject, QThread, Signal, _FallbackSignal):
             finished = Signal(list)
             failed = Signal(str)
 
-            def __init__(self, module, urls):
+            def __init__(self, module, urls, options=None):
                 super().__init__()
                 self.module = module
                 self.urls = urls
+                self.options = options
 
             def run(self):
                 try:
-                    results = self.module.inspect_web_media_batch(self.urls, progress_cb=self.progress.emit)
+                    results = self.module.inspect_web_media_batch(self.urls, progress_cb=self.progress.emit, options=self.options)
                     self.finished.emit(results)
                 except Exception as exc:
                     self.failed.emit(str(exc))
@@ -58,13 +59,14 @@ def build_worker_classes(QObject, QThread, Signal, _FallbackSignal):
             finished = Signal(list)
             failed = Signal(str)
 
-            def __init__(self, module, files, source_url, candidate_index=None, thumbnail_mode='web_then_frame'):
+            def __init__(self, module, files, source_url, candidate_index=None, thumbnail_mode='web_then_frame', proxy_url=''):
                 super().__init__()
                 self.module = module
                 self.files = files
                 self.source_url = source_url
                 self.candidate_index = candidate_index
                 self.thumbnail_mode = thumbnail_mode
+                self.proxy_url = proxy_url
 
             def run(self):
                 try:
@@ -76,6 +78,7 @@ def build_worker_classes(QObject, QThread, Signal, _FallbackSignal):
                             progress_cb=self.progress.emit,
                             candidate_index=self.candidate_index,
                             thumbnail_mode=self.thumbnail_mode,
+                            proxy_url=self.proxy_url,
                         )
                         result['_index'] = i
                         result['_path'] = str(fpath)
@@ -114,27 +117,29 @@ def build_worker_classes(QObject, QThread, Signal, _FallbackSignal):
                     self.failed.emit(str(exc))
 
         class ScanWorker:
-            def __init__(self, module, urls):
+            def __init__(self, module, urls, options=None):
                 self.module = module
                 self.urls = urls
+                self.options = options
                 self.progress = _FallbackSignal()
                 self.finished = _FallbackSignal()
                 self.failed = _FallbackSignal()
 
             def run(self):
                 try:
-                    results = self.module.inspect_web_media_batch(self.urls, progress_cb=self.progress.emit)
+                    results = self.module.inspect_web_media_batch(self.urls, progress_cb=self.progress.emit, options=self.options)
                     self.finished.emit(results)
                 except Exception as exc:
                     self.failed.emit(str(exc))
 
         class ThumbnailWorker:
-            def __init__(self, module, files, source_url, candidate_index=None, thumbnail_mode='web_then_frame'):
+            def __init__(self, module, files, source_url, candidate_index=None, thumbnail_mode='web_then_frame', proxy_url=''):
                 self.module = module
                 self.files = files
                 self.source_url = source_url
                 self.candidate_index = candidate_index
                 self.thumbnail_mode = thumbnail_mode
+                self.proxy_url = proxy_url
                 self.progress = _FallbackSignal()
                 self.finished = _FallbackSignal()
                 self.failed = _FallbackSignal()
@@ -149,6 +154,7 @@ def build_worker_classes(QObject, QThread, Signal, _FallbackSignal):
                             progress_cb=self.progress.emit,
                             candidate_index=self.candidate_index,
                             thumbnail_mode=self.thumbnail_mode,
+                            proxy_url=self.proxy_url,
                         )
                         result['_index'] = i
                         result['_path'] = str(fpath)
