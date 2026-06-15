@@ -63,11 +63,12 @@ def validate_video_downloader_form(
     return errors
 
 
-def apply_output_subdirs_by_title(tasks: list, enabled: bool) -> list:
+def apply_output_subdirs_by_title(tasks: list, enabled: bool, title_to_subdir=None) -> list:
     if not enabled:
         return tasks
+    title_to_subdir = title_to_subdir or (lambda title: title)
     return [
-        replace(task, output_subdir=task.target_title or task.output_subdir)
+        replace(task, output_subdir=title_to_subdir(task.target_title) or task.output_subdir)
         for task in tasks
     ]
 
@@ -757,7 +758,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                 return apply_output_subdirs_by_title([
                     module.DownloadTask(item['url'], 'web', item['title'])
                     for item in new_items
-                ], output_subdir_by_title_enabled(self))
+                ], output_subdir_by_title_enabled(self), web_queue_output_subdir_title)
             all_tasks = filter_tasks_for_source_mode(
                 module.build_download_tasks(module.parse_task_lines(task_text)),
                 self.source_mode,
@@ -970,7 +971,11 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                     module.build_download_tasks(module.parse_task_lines(self.task_edit.toPlainText())),
                     self.source_mode,
                 )
-            tasks = apply_output_subdirs_by_title(tasks, output_subdir_by_title_enabled(self))
+            tasks = apply_output_subdirs_by_title(
+                tasks,
+                output_subdir_by_title_enabled(self),
+                web_queue_output_subdir_title if self.source_mode == 'web' else None,
+            )
             options = module.DownloadOptions(
                 overwrite=self.overwrite_checkbox.isChecked(),
                 output_subdir_by_title=output_subdir_by_title_enabled(self),

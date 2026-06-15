@@ -202,6 +202,23 @@ def test_apply_output_subdirs_by_title_keeps_each_custom_name():
     assert tab_module.apply_output_subdirs_by_title(tasks, False) is tasks
 
 
+def test_apply_output_subdirs_by_title_strips_web_queue_suffix_for_subdir():
+    tab_module = load_tab_module()
+    module = load_module()
+    tasks = [
+        module.DownloadTask('https://cdn.example.com/a.mp4', 'web', 'course_001'),
+        module.DownloadTask('https://cdn.example.com/b.mp4', 'web', 'course_002'),
+    ]
+
+    updated = tab_module.apply_output_subdirs_by_title(
+        tasks,
+        True,
+        tab_module.web_queue_output_subdir_title,
+    )
+
+    assert [task.output_subdir for task in updated] == ['course', 'course']
+
+
 def test_output_subdir_by_title_only_applies_to_web_mode():
     tab_module = load_tab_module()
 
@@ -2882,6 +2899,26 @@ def test_web_queue_rename_rejects_blank_title():
     assert entry_widget.title_edit.text() == 'course_001'
 
 
+def test_web_queue_rename_syncs_same_source_items():
+    tab = _make_web_task_tab()
+    widget = tab.task_edit
+    tab.web_candidate_sources = {
+        'https://cdn.example.com/a.mp4': 'https://example.com/course',
+        'https://cdn.example.com/b.mp4': 'https://example.com/course',
+    }
+    widget.setPlainText('\n'.join([
+        load_tab_module().format_web_queue_line(1, 'course_002', 'https://cdn.example.com/a.mp4'),
+        load_tab_module().format_web_queue_line(2, 'course_003', 'https://cdn.example.com/b.mp4'),
+    ]))
+    entry_widget = widget.itemWidget(widget.item(0))
+
+    widget._renameByWidget(entry_widget, '哈哈')
+
+    tab_module = load_tab_module()
+    titles = [tab_module.parse_web_queue_entry(widget.item(i).data(256))['title'] for i in range(widget.count())]
+    assert titles == ['哈哈_001', '哈哈_002']
+
+
 def test_web_queue_apply_theme_refreshes_existing_entry_widgets():
     widget = _make_web_task_list()
     line = load_tab_module().format_web_queue_line(1, 'course_001', 'https://cdn.example.com/a.mp4')
@@ -2924,6 +2961,39 @@ def test_build_web_queue_tasks_applies_one_custom_name_to_same_source():
     ]
 
 
+def _broken_manual_queue_text_inherits_custom_name_after_first_item_removed():
+    tab_module = load_tab_module()
+    tasks = tab_module.build_web_queue_tasks(
+        [
+            '1.哈哈锛歨ttps://cdn.example.com/b.mp4',
+            '2.course_003锛歨ttps://cdn.example.com/c.mp4',
+        ],
+        {
+            'https://cdn.example.com/b.mp4': 'https://example.com/course',
+            'https://cdn.example.com/c.mp4': 'https://example.com/course',
+        },
+    )
+    assert tasks == [
+        {'title': '哈哈_001', 'url': 'https://cdn.example.com/b.mp4'},
+        {'title': '哈哈_002', 'url': 'https://cdn.example.com/c.mp4'},
+    ]
+
+
+def test_build_web_queue_tasks_inherits_custom_name_after_leading_item_removed():
+    tab_module = load_tab_module()
+    tasks = tab_module.build_web_queue_tasks([
+        tab_module.format_web_queue_line(1, 'custom', 'https://cdn.example.com/b.mp4'),
+        tab_module.format_web_queue_line(2, 'course_003', 'https://cdn.example.com/c.mp4'),
+    ], {
+        'https://cdn.example.com/b.mp4': 'https://example.com/course',
+        'https://cdn.example.com/c.mp4': 'https://example.com/course',
+    })
+    assert tasks == [
+        {'title': 'custom_001', 'url': 'https://cdn.example.com/b.mp4'},
+        {'title': 'custom_002', 'url': 'https://cdn.example.com/c.mp4'},
+    ]
+
+
 def test_build_web_queue_tasks_keeps_two_custom_names_for_same_source():
     tab_module = load_tab_module()
     tasks = tab_module.build_web_queue_tasks(
@@ -2940,6 +3010,12 @@ def test_build_web_queue_tasks_keeps_two_custom_names_for_same_source():
         {'title': '片头', 'url': 'https://cdn.example.com/a.mp4'},
         {'title': '正片', 'url': 'https://cdn.example.com/b.mp4'},
     ]
+
+
+def test_web_queue_output_subdir_title_drops_number_suffix():
+    tab_module = load_tab_module()
+    assert tab_module.web_queue_output_subdir_title('course_001') == 'course'
+    assert tab_module.web_queue_output_subdir_title('course_002') == 'course'
 
 
 def test_summarize_download_results_includes_counts():

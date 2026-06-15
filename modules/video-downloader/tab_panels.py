@@ -9,7 +9,7 @@ from .tab_constants import (
     RUN_BUTTON_TEXT, SEND_CODE_BUTTON_TEXT, LOGIN_BUTTON_TEXT, STATUS_BUTTON_TEXT,
     apply_video_textedit_surface, compact_card_layout,
 )
-from .tab_formatters import parse_web_queue_entry, format_web_queue_line
+from .tab_formatters import build_web_queue_tasks, parse_web_queue_entry, format_web_queue_line
 
 
 def _compact_task_path(url):
@@ -385,6 +385,8 @@ def build_task_section(self, layout, center_row, textedit_style, task_min_height
                     sh.setWidth(min_w)
                 return sh
 
+        owner = self
+
         class WebTaskListWidget(QListWidget):
             if Signal is not None:
                 entryChanged = Signal()
@@ -476,10 +478,30 @@ def build_task_section(self, layout, center_row, textedit_style, task_min_height
                     if w:
                         self._fitItemSize(item, w)
 
+            def _role(self):
+                return deps['Qt'].UserRole if 'Qt' in deps else 256
+
+            def _lines(self):
+                role = self._role()
+                return [str(self.item(i).data(role) or '') for i in range(self.count())]
+
+            def _apply_queue_tasks(self, tasks):
+                role = self._role()
+                for i, task in enumerate(tasks[:self.count()]):
+                    item = self.item(i)
+                    title = str(task.get('title') or '')
+                    url = str(task.get('url') or '')
+                    item.setData(role, format_web_queue_line(i + 1, title, url))
+                    widget = self.itemWidget(item)
+                    if hasattr(widget, 'title_edit'):
+                        widget.title_edit.setText(title)
+                    if hasattr(widget, 'index_badge') and hasattr(widget.index_badge, 'setText'):
+                        widget.index_badge.setText(f'{i + 1:02d}')
+
             def _renameByWidget(self, widget, new_title):
                 for i in range(self.count()):
                     if self.itemWidget(self.item(i)) is widget:
-                        role = deps['Qt'].UserRole if 'Qt' in deps else 256
+                        role = self._role()
                         old = str(self.item(i).data(role) or '')
                         entry = parse_web_queue_entry(old)
                         url = entry.get('url') or old
@@ -488,7 +510,10 @@ def build_task_section(self, layout, center_row, textedit_style, task_min_height
                             if hasattr(widget, 'title_edit'):
                                 widget.title_edit.setText(entry.get('title') or url)
                             return
-                        self.item(i).setData(role, format_web_queue_line(i + 1, new_title, url))
+                        lines = self._lines()
+                        lines[i] = format_web_queue_line(i + 1, new_title, url)
+                        tasks = build_web_queue_tasks(lines, getattr(owner, 'web_candidate_sources', {}))
+                        self._apply_queue_tasks(tasks)
                         self._emitChanged()
                         break
 
@@ -514,7 +539,7 @@ def build_task_section(self, layout, center_row, textedit_style, task_min_height
                 self._emitChanged()
 
             def _renumber(self):
-                role = deps['Qt'].UserRole if 'Qt' in deps else 256
+                role = self._role()
                 for i in range(self.count()):
                     item = self.item(i)
                     old = str(item.data(role) or '')

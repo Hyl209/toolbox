@@ -133,6 +133,10 @@ def _web_title_base(title: str) -> str:
     return cleaned
 
 
+def web_queue_output_subdir_title(title: str) -> str:
+    return _web_title_base(title)
+
+
 def parse_web_queue_entry(line: str) -> dict[str, str]:
     url = _web_line_url(line)
     if not url:
@@ -209,8 +213,7 @@ def build_web_queue_tasks(
         total = len(items)
         for index, item in enumerate(items, start=1):
             item_base = _web_title_base(item['title'])
-            default_title = web_queue_numbered_title(default_base, index, total)
-            base_by_entry[id(item)] = item_base if item['title'] != default_title else fallback_base
+            base_by_entry[id(item)] = item_base if item_base != default_base else fallback_base
 
     base_counts: dict[str, int] = {}
     for entry in entries:
