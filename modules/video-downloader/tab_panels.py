@@ -180,7 +180,6 @@ def build_task_section(self, layout, center_row, textedit_style, task_min_height
         _current_theme = self.current_theme
         _entry_bg = 'rgba(60, 68, 80, 0.55)' if _current_theme == 'dark' else 'rgba(230, 236, 245, 0.7)'
         _entry_hover_bg = 'rgba(80, 90, 108, 0.7)' if _current_theme == 'dark' else 'rgba(210, 222, 240, 0.9)'
-        _del_hover_bg = '#e74c3c' if _current_theme == 'dark' else '#d32f2f'
         _entry_divider = 'rgba(128,128,128,0.08)' if _current_theme == 'dark' else 'rgba(128,128,128,0.1)'
 
         class _TaskEntryWidget(QFrame):
@@ -191,9 +190,6 @@ def build_task_section(self, layout, center_row, textedit_style, task_min_height
                 self._entry_bg = _entry_bg
                 self._entry_hover_bg = _entry_hover_bg
                 self._entry_divider = _entry_divider
-                self.setStyleSheet(
-                    f'QFrame {{ background: {_entry_bg}; border: none; border-bottom: 1px solid {_entry_divider}; }}'
-                )
                 self.setAttribute(deps['Qt'].WA_Hover) if 'Qt' in deps else None
                 lay = deps['QHBoxLayout'](self)
                 lay.setContentsMargins(12, 8, 6, 8)
@@ -202,32 +198,74 @@ def build_task_section(self, layout, center_row, textedit_style, task_min_height
                 info.setSpacing(2)
                 self.title_edit = QLineEdit(title)
                 self.title_edit.setReadOnly(True)
-                self.title_edit.setStyleSheet(
-                    'QLineEdit { background:transparent; border:none; font-weight:bold; color:inherit; padding:0; }'
-                    'QLineEdit:focus { border:1px solid #7ea6d9; border-radius:4px; padding:1px 4px; background:rgba(255,255,255,0.08); }'
-                    'QLineEdit[readOnly="true"] { cursor:pointer; }'
-                )
+                self.title_edit.setMinimumHeight(24)
+                self.title_edit.setMinimumWidth(56)
                 self.title_edit.installEventFilter(self)
+                self.title_edit.textChanged.connect(self._syncTitleEditWidth)
                 u = QLabel(url)
                 u.setProperty('cardSub', True)
                 u.setStyleSheet('background:transparent; border:none;')
                 u.setWordWrap(True)
-                info.addWidget(self.title_edit)
+                title_row = deps['QHBoxLayout']()
+                title_row.setContentsMargins(0, 0, 0, 0)
+                title_row.setSpacing(0)
+                title_row.addWidget(self.title_edit)
+                title_row.addStretch(1)
+                info.addLayout(title_row)
                 info.addWidget(u)
                 lay.addLayout(info, 1)
-                del_btn = QPushButton('\u00d7')
-                del_btn.setToolTip('删除任务')
-                del_btn.setAccessibleName('删除任务')
-                del_btn.setFixedSize(self._btn_w, self._btn_w)
-                del_btn.setCursor(deps['Qt'].PointingHandCursor) if 'Qt' in deps else None
-                del_btn.setStyleSheet(
+                self.del_btn = QPushButton('\u00d7')
+                self.del_btn.setToolTip('删除任务')
+                self.del_btn.setAccessibleName('删除任务')
+                self.del_btn.setFixedSize(self._btn_w, self._btn_w)
+                self.del_btn.setCursor(deps['Qt'].PointingHandCursor) if 'Qt' in deps else None
+                self.del_btn.clicked.connect(on_delete)
+                lay.addWidget(self.del_btn, 0, deps['Qt'].AlignVCenter) if 'Qt' in deps else lay.addWidget(self.del_btn)
+                self.applyTheme(_current_theme)
+                self._syncTitleEditWidth()
+
+            def applyTheme(self, theme):
+                self._entry_bg = 'rgba(60, 68, 80, 0.55)' if theme == 'dark' else 'rgba(230, 236, 245, 0.7)'
+                self._entry_hover_bg = 'rgba(80, 90, 108, 0.7)' if theme == 'dark' else 'rgba(210, 222, 240, 0.9)'
+                self._entry_divider = 'rgba(128,128,128,0.08)' if theme == 'dark' else 'rgba(128,128,128,0.1)'
+                del_hover_bg = '#e74c3c' if theme == 'dark' else '#d32f2f'
+                title_hint_bg = 'rgba(255, 255, 255, 0.05)' if theme == 'dark' else 'rgba(255, 255, 255, 0.32)'
+                title_focus_bg = 'rgba(255, 255, 255, 0.08)' if theme == 'dark' else 'rgba(255, 255, 255, 0.48)'
+                title_border = 'rgba(126, 166, 217, 0.28)' if theme == 'dark' else 'rgba(86, 132, 190, 0.24)'
+                title_focus_border = 'rgba(126, 166, 217, 0.72)' if theme == 'dark' else 'rgba(77, 134, 217, 0.58)'
+                title_selection = 'rgba(116, 165, 230, 0.45)' if theme == 'dark' else 'rgba(77, 134, 217, 0.18)'
+                self.setStyleSheet(
+                    f'QFrame {{ background: {self._entry_bg}; border: none; border-bottom: 1px solid {self._entry_divider}; }}'
+                )
+                self.title_edit.setStyleSheet(
+                    'QLineEdit {'
+                    ' background:transparent; border:1px solid transparent; border-radius:5px;'
+                    f' color:inherit; font-weight:bold; padding:1px 4px;'
+                    f' selection-background-color:{title_selection};'
+                    '}'
+                    f'QLineEdit:hover {{ background:{title_hint_bg}; border-color:{title_border}; }}'
+                    f'QLineEdit:focus {{ background:{title_focus_bg}; border-color:{title_focus_border}; }}'
+                    'QLineEdit[readOnly="true"] { background:transparent; border-color:transparent; }'
+                    f'QLineEdit[readOnly="true"]:hover {{ background:{title_hint_bg}; border-color:{title_border}; }}'
+                )
+                self.del_btn.setStyleSheet(
                     'QPushButton { background:transparent; border:none;'
                     f'border-radius:{self._btn_w // 2}px; font-size:18px; font-weight:bold; color:rgba(160,160,160,0.6);'
                     " font-family:'Segoe UI','Arial',sans-serif; padding:0px 0px 3px 0px; }}"
-                    f'QPushButton:hover {{ background:{_del_hover_bg}; color:white; }}'
+                    f'QPushButton:hover {{ background:{del_hover_bg}; color:white; }}'
                 )
-                del_btn.clicked.connect(on_delete)
-                lay.addWidget(del_btn, 0, deps['Qt'].AlignVCenter) if 'Qt' in deps else lay.addWidget(del_btn)
+
+            def _syncTitleEditWidth(self):
+                metrics = self.title_edit.fontMetrics()
+                text = self.title_edit.text() or ' '
+                try:
+                    text_w = metrics.horizontalAdvance(text)
+                except AttributeError:
+                    text_w = metrics.width(text)
+                max_w = self.width() - self._btn_w - 48
+                if max_w < 120:
+                    max_w = 420
+                self.title_edit.setFixedWidth(max(56, min(text_w + 18, max_w, 420)))
 
             def eventFilter(self, obj, ev):
                 QEvent = deps.get('QEvent')
@@ -262,6 +300,10 @@ def build_task_section(self, layout, center_row, textedit_style, task_min_height
                     f'QFrame {{ background: {self._entry_bg}; border: none; border-bottom: 1px solid {self._entry_divider}; }}'
                 )
                 super().leaveEvent(ev)
+
+            def resizeEvent(self, ev):
+                super().resizeEvent(ev)
+                self._syncTitleEditWidth()
 
             def sizeHint(self):
                 sh = super().sizeHint()
@@ -335,7 +377,7 @@ def build_task_section(self, layout, center_row, textedit_style, task_min_height
                 item = QListWidgetItem()
                 w = _TaskEntryWidget(
                     display_title, entry['url'],
-                    lambda item=item: self._deleteItem(item),
+                    lambda _checked=False, item=item: self._deleteItem(item),
                     lambda new_title: self._renameByWidget(w, new_title),
                 )
                 w.setMinimumHeight(56)
@@ -371,6 +413,11 @@ def build_task_section(self, layout, center_row, textedit_style, task_min_height
                         old = str(self.item(i).data(role) or '')
                         entry = parse_web_queue_entry(old)
                         url = entry.get('url') or old
+                        new_title = str(new_title or '').strip()
+                        if not new_title:
+                            if hasattr(widget, 'title_edit'):
+                                widget.title_edit.setText(entry.get('title') or url)
+                            return
                         self.item(i).setData(role, format_web_queue_line(i + 1, new_title, url))
                         self._emitChanged()
                         break
@@ -427,6 +474,10 @@ def build_task_section(self, layout, center_row, textedit_style, task_min_height
                 )
                 if self.viewport():
                     self.viewport().setStyleSheet(f'background: transparent;')
+                for i in range(self.count()):
+                    w = self.itemWidget(self.item(i))
+                    if hasattr(w, 'applyTheme'):
+                        w.applyTheme(theme)
 
         self.task_edit = WebTaskListWidget(self.current_theme, self.mode_meta['task_placeholder'])
         self.task_edit.entryChanged.connect(self.handle_task_text_changed)

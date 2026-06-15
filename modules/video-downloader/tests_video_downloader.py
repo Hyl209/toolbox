@@ -2277,6 +2277,346 @@ def test_telegram_login_wires_password_callback_for_2fa():
     assert 'QLineEdit.Password' in source
 
 
+class _FakeSignal:
+    def __init__(self):
+        self._slots = []
+
+    def connect(self, slot):
+        self._slots.append(slot)
+
+    def emit(self, *args):
+        for slot in list(self._slots):
+            try:
+                slot(*args)
+            except TypeError:
+                slot()
+
+
+class _FakeQt:
+    UserRole = 256
+    WA_Hover = 1
+    PointingHandCursor = 2
+    AlignVCenter = 4
+    Key_Return = 16777220
+
+
+class _FakeSize:
+    def __init__(self, width=0, height=0):
+        self._width = width
+        self._height = height
+
+    def width(self):
+        return self._width
+
+    def height(self):
+        return self._height
+
+    def setWidth(self, width):
+        self._width = width
+
+    def setHeight(self, height):
+        self._height = height
+
+
+class _FakeMetrics:
+    def horizontalAdvance(self, text):
+        return len(str(text)) * 8
+
+
+class _FakeWidget:
+    def __init__(self, *args, **kwargs):
+        self._style = ''
+        self._width = 600
+        self._height = 0
+        self.textChanged = _FakeSignal()
+
+    def setStyleSheet(self, style):
+        self._style = style
+
+    def styleSheet(self):
+        return self._style
+
+    def setProperty(self, *args):
+        pass
+
+    def setWordWrap(self, *args):
+        pass
+
+    def setMinimumWidth(self, width):
+        self._width = max(self._width, width)
+
+    def setMaximumWidth(self, width):
+        self._width = min(self._width, width)
+
+    def setMinimumHeight(self, height):
+        self._height = height
+
+    def setMaximumHeight(self, height):
+        self._height = height
+
+    def setPlaceholderText(self, *args):
+        pass
+
+    def setContentsMargins(self, *args):
+        pass
+
+    def setFixedSize(self, width, height):
+        self._width = width
+        self._height = height
+
+    def setFixedWidth(self, width):
+        self._width = width
+
+    def width(self):
+        return self._width
+
+    def fontMetrics(self):
+        return _FakeMetrics()
+
+    def setAttribute(self, *args):
+        pass
+
+    def setCursor(self, *args):
+        pass
+
+    def setAutoFillBackground(self, *args):
+        pass
+
+    def viewport(self):
+        return self
+
+    def sizeHint(self):
+        return _FakeSize(self._width, self._height)
+
+    def enterEvent(self, *args):
+        pass
+
+    def leaveEvent(self, *args):
+        pass
+
+    def resizeEvent(self, *args):
+        pass
+
+
+class _FakeLineEdit(_FakeWidget):
+    def __init__(self, text=''):
+        super().__init__()
+        self._text = text
+        self._read_only = False
+        self.textChanged = _FakeSignal()
+        self.editingFinished = _FakeSignal()
+
+    def text(self):
+        return self._text
+
+    def setText(self, text):
+        self._text = text
+        self.textChanged.emit(text)
+
+    def setReadOnly(self, value):
+        self._read_only = bool(value)
+
+    def isReadOnly(self):
+        return self._read_only
+
+    def installEventFilter(self, *args):
+        pass
+
+    def setPlaceholderText(self, *args):
+        pass
+
+    def selectAll(self):
+        pass
+
+    def setFocus(self):
+        pass
+
+
+class _FakeButton(_FakeWidget):
+    def __init__(self, text=''):
+        super().__init__()
+        self.text = text
+        self._checked = False
+        self.clicked = _FakeSignal()
+
+    def setChecked(self, value):
+        self._checked = bool(value)
+
+    def isChecked(self):
+        return self._checked
+
+    def setToolTip(self, *args):
+        pass
+
+    def setAccessibleName(self, *args):
+        pass
+
+    def setVisible(self, *args):
+        pass
+
+
+class _FakeCombo(_FakeWidget):
+    def __init__(self, *args):
+        super().__init__()
+        self.currentIndexChanged = _FakeSignal()
+        self._index = 0
+
+    def addItems(self, *args):
+        pass
+
+    def setCurrentIndex(self, index):
+        self._index = index
+
+    def currentIndex(self):
+        return self._index
+
+
+class _FakeLayout:
+    def __init__(self, *args):
+        self.children = []
+
+    def setContentsMargins(self, *args):
+        pass
+
+    def setSpacing(self, *args):
+        pass
+
+    def addWidget(self, widget, *args):
+        self.children.append(widget)
+
+    def addLayout(self, layout, *args):
+        self.children.append(layout)
+
+    def addStretch(self, *args):
+        pass
+
+
+class _FakeListItem:
+    def __init__(self):
+        self._data = {}
+        self._size = None
+
+    def setData(self, role, value):
+        self._data[role] = value
+
+    def data(self, role):
+        return self._data.get(role)
+
+    def setSizeHint(self, size):
+        self._size = size
+
+
+class _FakeListWidget(_FakeWidget):
+    NoSelection = 0
+    ScrollPerPixel = 1
+
+    def __init__(self):
+        super().__init__()
+        self._items = []
+        self._widgets = {}
+        self._viewport = _FakeWidget()
+
+    def viewport(self):
+        return self._viewport
+
+    def addItem(self, item):
+        self._items.append(item)
+
+    def setItemWidget(self, item, widget):
+        self._widgets[item] = widget
+
+    def itemWidget(self, item):
+        return self._widgets.get(item)
+
+    def item(self, index):
+        return self._items[index]
+
+    def count(self):
+        return len(self._items)
+
+    def row(self, item):
+        try:
+            return self._items.index(item)
+        except ValueError:
+            return -1
+
+    def takeItem(self, index):
+        item = self._items.pop(index)
+        self._widgets.pop(item, None)
+        return item
+
+    def clear(self):
+        self._items.clear()
+        self._widgets.clear()
+
+    def setSelectionMode(self, *args):
+        pass
+
+    def setHorizontalScrollMode(self, *args):
+        pass
+
+    def setVerticalScrollMode(self, *args):
+        pass
+
+    def setContentsMargins(self, *args):
+        pass
+
+
+def _make_web_task_list():
+    tab_panels = _ensure_package() or sys.modules[f'{_PKG_NAME}.tab_panels']
+    deps = {
+        'QLabel': _FakeWidget,
+        'QPlainTextEdit': _FakeWidget,
+        'QLineEdit': _FakeLineEdit,
+        'QPushButton': _FakeButton,
+        'QHBoxLayout': _FakeLayout,
+        'QVBoxLayout': _FakeLayout,
+        'QCheckBox': _FakeButton,
+        'QComboBox': _FakeCombo,
+        'QListWidget': _FakeListWidget,
+        'QListWidgetItem': _FakeListItem,
+        'QFrame': _FakeWidget,
+        'Signal': _FakeSignal,
+        'Qt': _FakeQt,
+        'QSize': _FakeSize,
+        'load_setting': lambda *args, **kwargs: '',
+        'make_card': lambda *args: (_FakeWidget(), _FakeLayout()),
+        'make_transparent_row': lambda: (_FakeWidget(), _FakeLayout()),
+        'style_combo_popup': lambda *args, **kwargs: None,
+    }
+    tab = types.SimpleNamespace(
+        settings={},
+        source_mode='web',
+        current_theme='dark',
+        mode_meta={'task_placeholder': ''},
+        task_edit=None,
+        source_edit=None,
+        summary_label=None,
+        output_edit=None,
+        overwrite_checkbox=None,
+        concurrent_combo=None,
+        scan_button=None,
+        cover_button=None,
+        run_button=None,
+        pause_button=None,
+        cancel_button=None,
+        reconnect_button=None,
+        handle_web_source_text_changed=lambda: None,
+        handle_task_text_changed=lambda: None,
+        _mode_setting_key=lambda name: name,
+        save_form_settings=lambda: None,
+        choose_output_dir=lambda: None,
+        scan_web_candidates=lambda: None,
+        embed_thumbnail_clicked=lambda: None,
+        run_download=lambda: None,
+        toggle_pause=lambda: None,
+        cancel_download=lambda: None,
+        reconnect_download=lambda: None,
+    )
+    tab_panels.build_task_section(tab, _FakeLayout(), None, '', 110, deps)
+    return tab.task_edit
+
+
 def test_build_source_mode_summary_for_web_hides_telegram_counts():
     tab_module = load_tab_module()
     summary = tab_module.build_source_mode_summary(['https://example.com/a', 'https://example.com/b'], 'web')
@@ -2340,6 +2680,58 @@ def test_web_queue_delete_button_uses_text_symbol_not_emoji():
     assert "QPushButton('\\u00d7')" in source
     assert "QPushButton('❌')" not in source
     assert "font-family:'Segoe UI','Arial',sans-serif" in source
+
+
+def test_web_queue_delete_button_ignores_clicked_checked_arg():
+    widget = _make_web_task_list()
+    line = load_tab_module().format_web_queue_line(1, 'course_001', 'https://cdn.example.com/a.mp4')
+    widget.setPlainText(line)
+
+    entry_widget = widget.itemWidget(widget.item(0))
+    entry_widget.del_btn.clicked.emit(True)
+
+    assert widget.count() == 0
+
+
+def test_web_queue_title_edit_has_polished_editing_surface():
+    widget = _make_web_task_list()
+    line = load_tab_module().format_web_queue_line(1, 'course_001', 'https://cdn.example.com/a.mp4')
+    widget.setPlainText(line)
+
+    title_edit = widget.itemWidget(widget.item(0)).title_edit
+    style = title_edit.styleSheet()
+
+    assert title_edit.width() >= 56
+    assert 'border:1px solid transparent' in style
+    assert 'border-radius:5px' in style
+    assert 'selection-background-color' in style
+    assert 'QLineEdit[readOnly="true"]:hover' in style
+
+
+def test_web_queue_rename_rejects_blank_title():
+    widget = _make_web_task_list()
+    line = load_tab_module().format_web_queue_line(1, 'course_001', 'https://cdn.example.com/a.mp4')
+    widget.setPlainText(line)
+    entry_widget = widget.itemWidget(widget.item(0))
+
+    widget._renameByWidget(entry_widget, '   ')
+
+    assert widget.toPlainText() == line
+    assert entry_widget.title_edit.text() == 'course_001'
+
+
+def test_web_queue_apply_theme_refreshes_existing_entry_widgets():
+    widget = _make_web_task_list()
+    line = load_tab_module().format_web_queue_line(1, 'course_001', 'https://cdn.example.com/a.mp4')
+    widget.setPlainText(line)
+    entry_widget = widget.itemWidget(widget.item(0))
+
+    assert 'rgba(60, 68, 80, 0.55)' in entry_widget.styleSheet()
+    widget.applyTheme('light')
+
+    assert 'rgba(255, 255, 255, 0.76)' in widget.styleSheet()
+    assert 'rgba(230, 236, 245, 0.7)' in entry_widget.styleSheet()
+    assert '#d32f2f' in entry_widget.del_btn.styleSheet()
 
 
 def test_web_queue_completed_url_matches_colon_separated_line():
