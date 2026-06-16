@@ -5,12 +5,11 @@ import re
 from collections.abc import Iterable
 from datetime import date, datetime
 from pathlib import Path
-from typing import Callable
 from urllib.parse import urlparse
 
 from .models import (
-    CancelledError, DownloadError, DownloadOptions, DownloadTask,
-    ProgressCallback, TelegramConfig, Token,
+    CancelledError, DownloadTask,
+    TelegramConfig, Token,
 )
 from . import _shared as _s
 
@@ -28,8 +27,8 @@ import threading as _threading
 _state = _threading.local()
 
 
-def _check_cancel(token: Token) -> None:
-    if token.cancel.is_set():
+def _check_cancel(token: Token | None) -> None:
+    if token is not None and token.cancel.is_set():
         raise CancelledError('下载已取消')
 
 
@@ -295,7 +294,7 @@ def probe_download_backends() -> dict[str, dict[str, object]]:
         'aria2c': {
             'available': bool(aria2c),
             'label': '网页多连接加速',
-            'message': f'已检测到 aria2c' if aria2c else '未检测到 aria2c，网页视频将使用 yt-dlp 内置下载',
+            'message': '已检测到 aria2c' if aria2c else '未检测到 aria2c，网页视频将使用 yt-dlp 内置下载',
             'path': aria2c,
         },
         'ffmpeg': {

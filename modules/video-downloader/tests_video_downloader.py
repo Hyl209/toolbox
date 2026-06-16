@@ -24,7 +24,7 @@ def _ensure_package():
     pkg.__package__ = _PKG_NAME
     sys.modules[_PKG_NAME] = pkg
     # Load sub-modules in dependency order
-    sub_modules = ['_shared', 'models', 'source_parser', 'progress', 'telegram_backend', 'web_backend', 'tab_constants', 'tab_formatters', 'tab_workers', 'tab_panels']
+    sub_modules = ['_shared', 'models', 'source_parser', 'progress', 'telegram_backend', 'web_backend', 'tab_constants', 'tab_formatters', 'tab_task_list', 'tab_workers', 'tab_panels']
     for name in sub_modules:
         fpath = ROOT / f'{name}.py'
         if fpath.exists():
@@ -96,6 +96,20 @@ def load_progress():
     if fqn in sys.modules:
         return sys.modules[fqn]
     path = ROOT / 'progress.py'
+    spec = importlib.util.spec_from_file_location(fqn, path, submodule_search_locations=[])
+    mod = importlib.util.module_from_spec(spec)
+    mod.__package__ = _PKG_NAME
+    sys.modules[fqn] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def load_source_parser():
+    _ensure_package()
+    fqn = f'{_PKG_NAME}.source_parser'
+    if fqn in sys.modules:
+        return sys.modules[fqn]
+    path = ROOT / 'source_parser.py'
     spec = importlib.util.spec_from_file_location(fqn, path, submodule_search_locations=[])
     mod = importlib.util.module_from_spec(spec)
     mod.__package__ = _PKG_NAME
@@ -283,7 +297,7 @@ def test_download_batch_continues_when_web_task_fails():
     try:
         wb._require_web_backend = lambda: None
 
-        def fake_download(task, output_root, options, progress_cb):
+        def fake_download(task, output_root, options, progress_cb, **kwargs):
             if 'bad' in task.source_url:
                 raise module.DownloadError('boom')
             path = output_root / 'ok.mp4'
@@ -361,12 +375,13 @@ def test_download_batch_returns_failure_result_for_failed_web_task():
     try:
         wb._require_web_backend = lambda: None
 
-        def fake_download(task, output_root, options, progress_cb):
+        def fake_download(task, output_root, options, progress_cb, **kwargs):
             if 'bad' in task.source_url:
                 raise module.DownloadError('boom')
             path = output_root / 'ok.mp4'
             path.write_text('ok', encoding='utf-8')
-            return module._make_result(task, True, [path], '')
+            pr = load_progress()
+            return pr._make_result(task, True, [path], '')
 
         wb._download_web_task = fake_download
         tasks = [
@@ -392,7 +407,7 @@ def test_download_batch_reraises_cancelled_error():
     try:
         wb._require_web_backend = lambda: None
 
-        def fake_download(task, output_root, options, progress_cb):
+        def fake_download(task, output_root, options, progress_cb, **kwargs):
             raise module.CancelledError('cancelled')
 
         wb._download_web_task = fake_download
@@ -411,11 +426,12 @@ def test_download_batch_reraises_cancelled_error():
 
 def test_extract_media_candidates_finds_absolute_and_relative_urls():
     module = load_module()
+    wb = load_web_backend()
     html = '''
     <video src="/media/demo.mp4"></video>
     <script>var player={"file":"https://cdn.example.com/live/test.m3u8"};</script>
     '''
-    result = module._extract_media_candidates(html, 'https://example.com/post/1')
+    result = wb._extract_media_candidates(html, 'https://example.com/post/1')
     assert 'https://example.com/media/demo.mp4' in result
     assert 'https://cdn.example.com/live/test.m3u8' in result
 
@@ -428,7 +444,7 @@ def test_download_web_task_falls_back_to_page_media_candidates_when_ytdlp_reject
     try:
         seen: list[str] = []
 
-        def fake_runner(source_url, output_root, options, progress_cb, title_hint='', referer_url=''):
+        def fake_runner(source_url, output_root, options, progress_cb, title_hint='', referer_url='', **kwargs):
             seen.append(source_url)
             if source_url == 'https://example.com/post/1':
                 raise module.DownloadError('ERROR: Unsupported URL: https://example.com/post/1')
@@ -456,7 +472,7 @@ def test_download_web_task_uses_task_output_subdir():
     try:
         captured: list[pathlib.Path] = []
 
-        def fake_runner(source_url, output_root, options, progress_cb, title_hint='', referer_url=''):
+        def fake_runner(source_url, output_root, options, progress_cb, title_hint='', referer_url='', **kwargs):
             captured.append(output_root)
             path = output_root / 'demo.mp4'
             path.write_text('ok', encoding='utf-8')
@@ -550,7 +566,7 @@ def test_download_web_task_can_download_all_page_media_candidates():
     try:
         seen: list[str] = []
 
-        def fake_runner(source_url, output_root, options, progress_cb, title_hint='', referer_url=''):
+        def fake_runner(source_url, output_root, options, progress_cb, title_hint='', referer_url='', **kwargs):
             seen.append(source_url)
             if source_url == 'https://example.com/post/1':
                 raise module.DownloadError('ERROR: Unsupported URL: https://example.com/post/1')
@@ -590,7 +606,7 @@ def test_download_web_task_uses_ytdlp_multi_entry_candidates_instead_of_collapsi
     try:
         seen: list[str] = []
 
-        def fake_runner(source_url, output_root, options, progress_cb, title_hint='', referer_url=''):
+        def fake_runner(source_url, output_root, options, progress_cb, title_hint='', referer_url='', **kwargs):
             seen.append(source_url)
             if source_url == 'https://example.com/post/1':
                 path = output_root / 'first-only.mp4'
@@ -622,15 +638,17 @@ def test_download_web_task_uses_ytdlp_multi_entry_candidates_instead_of_collapsi
 
 def test_emit_scan_progress_uses_structured_marker():
     module = load_module()
+    pr = load_progress()
     captured: list[str] = []
-    module._emit_scan_progress(captured.append, 25, 3)
+    pr._emit_scan_progress(captured.append, 25, 3)
     assert captured == ['__HYL_PROGRESS__|tg_scan|matched=3|scanned=25']
 
 
 def test_make_web_progress_hook_emits_speed_and_eta():
     module = load_module()
+    wb = load_web_backend()
     captured: list[str] = []
-    hook = module._make_web_progress_hook(captured.append)
+    hook = wb._make_web_progress_hook(captured.append)
     hook({
         'status': 'downloading',
         'filename': 'demo.mp4',
@@ -645,8 +663,9 @@ def test_make_web_progress_hook_emits_speed_and_eta():
 
 def test_make_web_progress_hook_can_compute_percent_from_bytes():
     module = load_module()
+    wb = load_web_backend()
     captured: list[str] = []
-    hook = module._make_web_progress_hook(captured.append)
+    hook = wb._make_web_progress_hook(captured.append)
     hook({
         'status': 'downloading',
         'filename': 'demo.mp4',
@@ -698,31 +717,30 @@ def test_download_web_concurrent_reraises_cancelled_error():
 def test_download_web_concurrent_passes_current_token_to_workers():
     module = load_module()
     wb = load_web_backend()
+    pr = load_progress()
     original_run = wb._run_web_task
     token = module.Token()
     seen = []
     try:
-        module._set_current_token(token)
-
         def fake_run(task, output_root, options, progress_cb, passed_token):
             seen.append(passed_token)
-            return module._make_result(task, True, [], '')
+            return pr._make_result(task, True, [], '')
 
         wb._run_web_task = fake_run
         tasks = [(0, module.DownloadTask('https://example.com/a', 'web', 'a'))]
         with tempfile.TemporaryDirectory() as tmp:
-            wb._download_web_concurrent(tasks, pathlib.Path(tmp), module.DownloadOptions(), None, 1, 0, 1)
+            wb._download_web_concurrent(tasks, pathlib.Path(tmp), module.DownloadOptions(), None, 1, 0, 1, token=token)
         assert seen == [token]
     finally:
-        module._set_current_token(None)
         wb._run_web_task = original_run
 
 
 def test_select_candidates_rejects_multiple_before_after_indices():
     module = load_module()
+    wb = load_web_backend()
     for mode in ('before', 'after'):
         try:
-            module._select_candidates(['a', 'b', 'c'], mode, [1, 2])
+            wb._select_candidates(['a', 'b', 'c'], mode, [1, 2])
         except module.DownloadError as exc:
             assert 'before/after' in str(exc)
         else:
@@ -1729,15 +1747,13 @@ def test_download_url_with_ytdlp_waits_for_pause_then_resumes():
         sh._resolve_aria2c_path = lambda: ''
         wb.shutil.which = lambda name: ''
         wb._ffmpeg_path.cache_clear()
-        wb._set_current_token(token)
         with tempfile.TemporaryDirectory() as tmp:
-            result = wb._download_url_with_ytdlp('https://example.com/video', pathlib.Path(tmp), module.DownloadOptions(), None)
+            result = wb._download_url_with_ytdlp('https://example.com/video', pathlib.Path(tmp), module.DownloadOptions(), None, token=token)
         assert result['success'] is True
         assert len(download_calls) == 2
     finally:
         for thread in clear_threads:
             thread.join(timeout=1)
-        wb._set_current_token(None)
         if original_module is None:
             sys.modules.pop('yt_dlp', None)
         else:
@@ -1791,7 +1807,6 @@ def test_concurrent_ytdlp_downloads_are_not_serialized_by_aria2_progress_capture
         sh._resolve_aria2c_path = lambda: 'aria2c'
         wb.shutil.which = lambda name: ''
         wb._ffmpeg_path.cache_clear()
-        wb._set_current_token(token)
         with tempfile.TemporaryDirectory() as tmp:
             tasks = [
                 (0, module.DownloadTask('https://example.com/a', 'web', 'a')),
@@ -1804,11 +1819,11 @@ def test_concurrent_ytdlp_downloads_are_not_serialized_by_aria2_progress_capture
                 lambda message: None,
                 2,
                 0,
+                token=token,
             )
         assert len(entered) == 2
         assert all(item['success'] for item in results.values())
     finally:
-        wb._set_current_token(None)
         if original_module is None:
             sys.modules.pop('yt_dlp', None)
         else:
@@ -2048,7 +2063,7 @@ def test_download_web_task_prefers_douyin_share_candidates_before_ytdlp():
         wb._extract_douyin_share_candidates = lambda url, *args, **kwargs: ['https://aweme.snssdk.com/aweme/v1/play/?video_id=abc&ratio=720p&line=0']
         wb._extract_ytdlp_entry_candidates = lambda url, *args, **kwargs: (_ for _ in ()).throw(AssertionError('should not call yt-dlp'))
 
-        def fake_download(candidates, task, output_root, options, progress_cb, ffmpeg_path='', *, download_all=False):
+        def fake_download(candidates, task, output_root, options, progress_cb, ffmpeg_path='', *, download_all=False, **kwargs):
             assert candidates == ['https://aweme.snssdk.com/aweme/v1/play/?video_id=abc&ratio=720p&line=0']
             path = output_root / 'douyin.mp4'
             path.write_text('ok', encoding='utf-8')
@@ -2074,7 +2089,7 @@ def test_download_web_candidate_uses_direct_http_for_douyin_play_url():
     try:
         called: list[str] = []
 
-        def fake_direct(media_url, task, output_root, options, progress_cb, *, referer_url=''):
+        def fake_direct(media_url, task, output_root, options, progress_cb, *, referer_url='', **kwargs):
             called.append('direct')
             assert media_url == 'https://aweme.snssdk.com/aweme/v1/play/?video_id=abc&ratio=720p&line=0'
             assert referer_url == 'https://v.douyin.com/jz83Ii3BD-4/'
@@ -2136,12 +2151,12 @@ def test_m3u8_candidate_tries_ytdlp_before_ffmpeg_fallback():
     original_ytdlp = wb._download_url_with_ytdlp
     original_ffmpeg = wb._download_m3u8_with_ffmpeg
     try:
-        def fake_ytdlp(source_url, output_root, options, progress_cb, title_hint='', referer_url=''):
+        def fake_ytdlp(source_url, output_root, options, progress_cb, title_hint='', referer_url='', **kwargs):
             calls.append('yt-dlp')
             assert referer_url == 'https://example.com/post/1'
             raise module.DownloadError('slow')
 
-        def fake_ffmpeg(media_url, task, output_root, options, progress_cb, ffmpeg_path='', referer_url=''):
+        def fake_ffmpeg(media_url, task, output_root, options, progress_cb, ffmpeg_path='', referer_url='', **kwargs):
             calls.append('ffmpeg')
             assert referer_url == 'https://example.com/post/1'
             return {'success': True, 'files': [output_root / 'ok.mp4']}
@@ -2160,8 +2175,9 @@ def test_m3u8_candidate_tries_ytdlp_before_ffmpeg_fallback():
 
 def test_emit_aria2_progress_reports_speed_without_overall_percent():
     module = load_module()
+    wb = load_web_backend()
     captured: list[str] = []
-    module._emit_aria2_progress(
+    wb._emit_aria2_progress(
         captured.append,
         'demo.mp4',
         '[#abc 12MiB/100MiB(12%) CN:12 DL:4.5MiB ETA:19s]',
@@ -2327,7 +2343,6 @@ def test_ffmpeg_m3u8_reconnect_overwrites_partial_output():
 
         wb.subprocess.Popen = fake_popen
         wb._probe_stream_duration = lambda url, ffmpeg_path='', **kwargs: None
-        wb._set_current_token(token)
         with tempfile.TemporaryDirectory() as tmp:
             task = module.DownloadTask('https://example.com/post/1', 'web', 'demo')
             wb._download_m3u8_with_ffmpeg(
@@ -2337,12 +2352,12 @@ def test_ffmpeg_m3u8_reconnect_overwrites_partial_output():
                 module.DownloadOptions(overwrite=False),
                 None,
                 ffmpeg_path='ffmpeg',
+                token=token,
             )
         assert len(commands) == 2
         assert commands[0][1] == '-n'
         assert commands[1][1] == '-y'
     finally:
-        wb._set_current_token(None)
         wb.subprocess.Popen = original_popen
         wb._probe_stream_duration = original_probe
 
@@ -2382,7 +2397,6 @@ def test_ffmpeg_m3u8_allows_three_reconnects_before_success():
 
         wb.subprocess.Popen = fake_popen
         wb._probe_stream_duration = lambda url, ffmpeg_path='', **kwargs: None
-        wb._set_current_token(token)
         with tempfile.TemporaryDirectory() as tmp:
             task = module.DownloadTask('https://example.com/post/1', 'web', 'demo')
             result = wb._download_m3u8_with_ffmpeg(
@@ -2392,12 +2406,12 @@ def test_ffmpeg_m3u8_allows_three_reconnects_before_success():
                 module.DownloadOptions(overwrite=False),
                 None,
                 ffmpeg_path='ffmpeg',
+                token=token,
             )
         assert result['success'] is True
         assert len(commands) == 4
         assert [command[1] for command in commands] == ['-n', '-y', '-y', '-y']
     finally:
-        wb._set_current_token(None)
         wb.subprocess.Popen = original_popen
         wb._probe_stream_duration = original_probe
 
@@ -2837,7 +2851,7 @@ def test_append_web_queue_text_deduplicates_and_renumbers():
 
 
 def test_web_queue_delete_button_uses_text_symbol_not_emoji():
-    source = (ROOT / 'tab_panels.py').read_text(encoding='utf-8')
+    source = (ROOT / 'tab_task_list.py').read_text(encoding='utf-8')
     assert "QPushButton('\\u00d7')" in source
     assert "QPushButton('❌')" not in source
     assert "font-family:'Segoe UI','Arial',sans-serif" in source
@@ -2935,8 +2949,8 @@ def test_web_queue_apply_theme_refreshes_existing_entry_widgets():
 
 
 def test_web_queue_completed_url_matches_colon_separated_line():
-    tab_panels = (ROOT / 'tab_panels.py').read_text(encoding='utf-8')
-    assert 'parse_web_queue_entry(line)' in tab_panels
+    tab_task_list = (ROOT / 'tab_task_list.py').read_text(encoding='utf-8')
+    assert 'parse_web_queue_entry(line)' in tab_task_list
     line = '1.course_001：https://cdn.example.com/a.mp4'
     assert [u for u in line.split() if u.startswith('http')] == []
     entry = load_tab_module().parse_web_queue_entry(line)
@@ -3031,3 +3045,84 @@ def test_summarize_download_results_includes_counts():
         '失败任务: 1',
         '下载文件: 5',
     ]
+
+
+# ---------------------------------------------------------------------------
+# web_backend helper functions
+# ---------------------------------------------------------------------------
+
+def test_speed_to_concurrency():
+    wb = load_web_backend()
+    assert wb._speed_to_concurrency(0) == 3
+    assert wb._speed_to_concurrency(-1) == 3
+    assert wb._speed_to_concurrency(0.3 * 1024 * 1024) == 2
+    assert wb._speed_to_concurrency(1 * 1024 * 1024) == 3
+    assert wb._speed_to_concurrency(3 * 1024 * 1024) == 4
+    assert wb._speed_to_concurrency(6 * 1024 * 1024) == 6
+    assert wb._speed_to_concurrency(15 * 1024 * 1024) == 8
+
+
+def test_parse_speed_bytes():
+    wb = load_web_backend()
+    assert wb._parse_speed_bytes('2.5 MiB/s') == 2.5 * 1024 * 1024
+    assert wb._parse_speed_bytes('500 KiB/s') == 500 * 1024
+    assert wb._parse_speed_bytes('') == 0.0
+    assert wb._parse_speed_bytes('100') == 100
+
+
+def test_normalize_aria2_speed():
+    wb = load_web_backend()
+    assert wb._normalize_aria2_speed('4.5MiB') == '4.5MiB/s'
+    assert wb._normalize_aria2_speed('4.5MiB/s') == '4.5MiB/s'
+    assert wb._normalize_aria2_speed('') == ''
+
+
+def test_normalize_aria2_eta():
+    wb = load_web_backend()
+    assert wb._normalize_aria2_eta('1m30s') == '01:30'
+    assert wb._normalize_aria2_eta('2h5m') == '2:05:00'
+    assert wb._normalize_aria2_eta('45s') == '00:45'
+    assert wb._normalize_aria2_eta('') == ''
+
+
+def test_inverse_indices():
+    wb = load_web_backend()
+    assert wb._inverse_indices(5, [2, 4]) == [1, 3, 5]
+    assert wb._inverse_indices(3, []) == [1, 2, 3]
+    assert wb._inverse_indices(3, [1, 2, 3]) == []
+
+
+def test_cookie_browser_name():
+    wb = load_web_backend()
+    assert wb._cookie_browser_name(('chrome',)) == 'chrome'
+    assert wb._cookie_browser_name('Firefox') == 'firefox'
+    assert wb._cookie_browser_name('') == ''
+    assert wb._cookie_browser_name(None) == ''
+
+
+def test_normalize_douyin_play_url():
+    wb = load_web_backend()
+    assert wb._normalize_douyin_play_url('https://x.com/playwm/123') == 'https://x.com/play/123'
+    assert wb._normalize_douyin_play_url('') == ''
+
+
+def test_is_douyin_url():
+    wb = load_web_backend()
+    assert wb._is_douyin_url('https://www.douyin.com/video/123') is True
+    assert wb._is_douyin_url('https://example.com') is False
+
+
+def test_is_m3u8_url():
+    wb = load_web_backend()
+    assert wb._is_m3u8_url('https://cdn.example.com/live.m3u8') is True
+    assert wb._is_m3u8_url('https://cdn.example.com/live.m3u8?token=abc') is True
+    assert wb._is_m3u8_url('https://example.com/video.mp4') is False
+
+
+def test_normalize_web_candidate_url():
+    wb = load_web_backend()
+    assert wb._normalize_web_candidate_url('//cdn.example.com/a.mp4', 'https://example.com') == 'https://cdn.example.com/a.mp4'
+    assert wb._normalize_web_candidate_url('/media/a.mp4', 'https://example.com') == 'https://example.com/media/a.mp4'
+    assert wb._normalize_web_candidate_url('https://other.com/a.mp4', 'https://example.com') == 'https://other.com/a.mp4'
+    assert wb._normalize_web_candidate_url('javascript:void(0)', 'https://example.com') == ''
+    assert wb._normalize_web_candidate_url('', 'https://example.com') == ''

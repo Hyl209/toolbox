@@ -15,7 +15,7 @@ from .progress import (
     _emit, _emit_scan_progress, _emit_task_done, _emit_task_start,
     _make_telegram_progress_callback, _make_result,
 )
-from .source_parser import _check_cancel, _coerce_tasks, _current_token
+from .source_parser import _check_cancel, _current_token
 
 
 def _require_telegram_backend() -> None:

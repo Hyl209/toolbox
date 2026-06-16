@@ -25,21 +25,21 @@ from urllib.request import Request, build_opener, urlopen, ProxyHandler
 
 from .models import (
     CancelledError, DownloadError, DownloadOptions, DownloadTask,
-    ProgressCallback, TelegramConfig, Token, DEFAULT_FILENAME_TEMPLATE,
+    ProgressCallback, TelegramConfig, Token,
 )
 from . import _shared as _s
 from .progress import (
     _emit, _emit_task_start, _emit_task_done, _emit_file_select,
     _emit_web_transfer_progress, _make_result,
     _build_download_log_message, _format_byte_rate, _format_eta_seconds,
-    _format_progress_percent, _parse_ffmpeg_time, _format_duration,
-    _estimate_download_rate, _normalize_progress_text, _coerce_float,
+    _format_progress_percent, _parse_ffmpeg_time,
+    _estimate_download_rate, _normalize_progress_text,
     _resolve_web_percent_text, _resolve_web_speed_text,
 )
 from .source_parser import (
-    _check_cancel, _current_token, _set_current_token, _require_token,
-    _coerce_tasks, validate_download_request, normalize_recent_limit,
-    normalize_date_range, normalize_proxy_url, parse_task_lines, build_download_tasks,
+    _check_cancel,
+    _coerce_tasks, validate_download_request,
+    normalize_proxy_url, parse_task_lines,
     classify_source, _resolve_candidate_indices,
 )
 
@@ -425,6 +425,7 @@ def _download_direct_media_file(
     progress_cb: ProgressCallback | None,
     *,
     referer_url: str = '',
+    token: Token | None = None,
 ) -> dict[str, object]:
     proxy_url = _options_proxy_url(options)
     suffix = Path(urlparse(str(media_url or '')).path).suffix.lower() or '.mp4'
@@ -443,7 +444,6 @@ def _download_direct_media_file(
         downloaded = 0
         started_at = monotonic()
         last_emit_at = started_at
-        token = _current_token()
         should_reconnect = False
         try:
             with _urlopen_with_proxy(request, 60, proxy_url) as response:
@@ -587,9 +587,8 @@ def _speed_to_concurrency(bytes_per_sec: float) -> int:
 # Web orchestration
 # ---------------------------------------------------------------------------
 def _run_web_task(task, output_root, options, progress_cb, token):
-    _set_current_token(token)
     _wait_if_paused(token, progress_cb)
-    return _download_web_task(task, output_root, options, progress_cb)
+    return _download_web_task(task, output_root, options, progress_cb, token=token)
 
 
 def _wait_if_paused(token: Token | None, progress_cb: ProgressCallback | None = None) -> None:
@@ -615,14 +614,15 @@ def _download_web_entries(
     progress_cb: ProgressCallback | None,
     total_tasks: int,
     completed_count: int,
+    token: Token | None = None,
 ) -> dict[int, dict[str, object]]:
     """Download web entries. Uses sequential loop for concurrency=1, thread pool otherwise."""
     if not web_entries:
         return {}
     max_workers = max(1, min(options.max_concurrent_downloads, len(web_entries)))
     if max_workers <= 1:
-        return _download_web_sequential(web_entries, output_root, options, progress_cb, total_tasks, completed_count)
-    return _download_web_concurrent(web_entries, output_root, options, progress_cb, total_tasks, completed_count, max_workers)
+        return _download_web_sequential(web_entries, output_root, options, progress_cb, total_tasks, completed_count, token=token)
+    return _download_web_concurrent(web_entries, output_root, options, progress_cb, total_tasks, completed_count, max_workers, token=token)
 
 
 def _download_web_sequential(
@@ -632,16 +632,16 @@ def _download_web_sequential(
     progress_cb: ProgressCallback | None,
     total_tasks: int,
     completed_count: int,
+    token: Token | None = None,
 ) -> dict[int, dict[str, object]]:
     results: dict[int, dict[str, object]] = {}
     remaining = len(web_entries)
     for index, task in web_entries:
-        _check_cancel(_require_token())
-        _wait_if_paused(_current_token(), progress_cb)
+        _check_cancel(token)
+        _wait_if_paused(token, progress_cb)
         _emit_task_start(progress_cb, index, total_tasks, task)
-        _set_current_token(_require_token())
         try:
-            results[index] = _download_web_task(task, output_root, options, progress_cb)
+            results[index] = _download_web_task(task, output_root, options, progress_cb, token=token)
         except CancelledError:
             results[index] = _make_result(task, False, [], '下载已取消')
             completed_count += 1
@@ -666,12 +666,12 @@ def _download_web_concurrent(
     total_tasks: int,
     completed_count: int,
     max_workers: int,
+    token: Token | None = None,
 ) -> dict[int, dict[str, object]]:
     results: dict[int, dict[str, object]] = {}
     task_by_index = {index: task for index, task in web_entries}
     for index, task in web_entries:
         _emit_task_start(progress_cb, index, total_tasks, task)
-    token = _require_token()
     executor = ThreadPoolExecutor(max_workers=max_workers)
     cancelled = False
     future_map: dict[object, int] = {}
@@ -717,6 +717,7 @@ def _download_web_auto(
     progress_cb: ProgressCallback | None,
     total_tasks: int,
     initial_completed: int,
+    token: Token | None = None,
 ) -> dict[int, dict[str, object]]:
     if not web_entries:
         return {}
@@ -727,11 +728,10 @@ def _download_web_auto(
     for i in range(sample_count):
         tracker = _SpeedTracker(progress_cb)
         index, task = web_entries[i]
-        _wait_if_paused(_require_token(), progress_cb)
+        _wait_if_paused(token, progress_cb)
         _emit_task_start(progress_cb, index, total_tasks, task)
-        _set_current_token(_require_token())
         try:
-            results[index] = _download_web_task(task, output_root, options, tracker.emit)
+            results[index] = _download_web_task(task, output_root, options, tracker.emit, token=token)
         except CancelledError:
             results[index] = _make_result(task, False, [], '下载已取消')
             raise
@@ -749,7 +749,7 @@ def _download_web_auto(
     _emit(progress_cb, f'自动模式: 采样 {sample_count} 个任务, 峰值速度 {_format_byte_rate(best_speed)}, 并发数设为 {concurrency}')
     concurrent_opts = replace(options, max_concurrent_downloads=concurrency)
     results.update(_download_web_entries(
-        remaining, output_root, concurrent_opts, progress_cb, total_tasks, completed,
+        remaining, output_root, concurrent_opts, progress_cb, total_tasks, completed, token=token,
     ))
     return results
 
@@ -809,13 +809,29 @@ def download_batch(
     *,
     token: Token | None = None,
 ) -> list[dict[str, object]]:
+    """Download a batch of tasks (Telegram and/or web).
+
+    Args:
+        tasks: URLs as strings or pre-built DownloadTask objects.
+        output_dir: Root directory for downloaded files.
+        telegram_config: Telegram API credentials (required for Telegram tasks).
+        options: Download configuration (concurrency, proxy, filters, etc.).
+        progress_cb: Callback for progress messages (``__HYL_PROGRESS__|`` markers).
+        token: Control token for cancel/pause/reconnect signals.
+
+    Returns:
+        List of result dicts, one per task, each containing at least
+        ``success``, ``source_url``, ``error``, ``files``.
+
+    Raises:
+        ValueError: If validation fails (missing output dir, bad config, etc.).
+        CancelledError: If the token's cancel flag is set during execution.
+    """
     from .telegram_backend import _download_telegram_entries
 
     task_list = _coerce_tasks(tasks)
     config = telegram_config
     download_options = options or DownloadOptions()
-    if token is not None:
-        _set_current_token(token)
     errors = validate_download_request(
         task_list,
         str(output_dir),
@@ -851,9 +867,9 @@ def download_batch(
         if not web_entries:
             return [results[index] for index in range(len(task_list))]
         if download_options.max_concurrent_downloads <= 0 and len(web_entries) > 1:
-            results.update(_download_web_auto(web_entries, output_root, download_options, progress_cb, total_tasks, len(results)))
+            results.update(_download_web_auto(web_entries, output_root, download_options, progress_cb, total_tasks, len(results), token=token))
         else:
-            results.update(_download_web_entries(web_entries, output_root, download_options, progress_cb, total_tasks, len(results)))
+            results.update(_download_web_entries(web_entries, output_root, download_options, progress_cb, total_tasks, len(results), token=token))
     except CancelledError:
         for index in range(len(task_list)):
             if index not in results:
@@ -876,6 +892,7 @@ def _download_web_candidate(
     options: DownloadOptions,
     progress_cb: ProgressCallback | None,
     ffmpeg_path: str = '',
+    token: Token | None = None,
 ) -> dict[str, object]:
     if _is_douyin_direct_play_url(candidate_url):
         return _download_direct_media_file(
@@ -885,6 +902,7 @@ def _download_web_candidate(
             options,
             progress_cb,
             referer_url=task.source_url,
+            token=token,
         )
     if _is_m3u8_url(candidate_url) and ffmpeg_path:
         try:
@@ -895,6 +913,7 @@ def _download_web_candidate(
                 progress_cb,
                 title_hint=task.target_title,
                 referer_url=task.source_url,
+                token=token,
             )
         except CancelledError:
             raise
@@ -908,6 +927,7 @@ def _download_web_candidate(
                 progress_cb,
                 ffmpeg_path=ffmpeg_path,
                 referer_url=task.source_url,
+                token=token,
             )
     return _download_url_with_ytdlp(
         candidate_url,
@@ -916,6 +936,7 @@ def _download_web_candidate(
         progress_cb,
         title_hint=task.target_title,
         referer_url=task.source_url,
+        token=token,
     )
 
 
@@ -928,6 +949,7 @@ def _download_web_candidates(
     ffmpeg_path: str = '',
     *,
     download_all: bool = False,
+    token: Token | None = None,
 ) -> tuple[list[Path], Exception | None]:
     downloaded_files: list[Path] = []
     last_error: Exception | None = None
@@ -942,6 +964,7 @@ def _download_web_candidates(
                 options,
                 progress_cb,
                 ffmpeg_path=ffmpeg_path,
+                token=token,
             )
             files = [Path(item) for item in downloaded['files']]
             if not options.web_download_all_candidates and not download_all:
@@ -959,6 +982,17 @@ def inspect_web_media_batch(
     progress_cb: ProgressCallback | None = None,
     options: DownloadOptions | None = None,
 ) -> list[dict[str, object]]:
+    """Scan multiple web URLs for downloadable media candidates.
+
+    Args:
+        urls: Newline-separated string or iterable of URL strings.
+        progress_cb: Progress callback for scan status updates.
+        options: Download options (proxy, etc.).
+
+    Returns:
+        List of result dicts with keys: source_url, success,
+        candidate_count, candidates, source, error.
+    """
     items = parse_task_lines(urls) if isinstance(urls, str) else [_s._normalize_url_text(item) for item in urls]
     web_urls = [url for url in items if url and classify_source(url) == 'web']
     results: list[dict[str, object]] = []
@@ -983,6 +1017,19 @@ def inspect_web_media_batch(
 
 
 def inspect_web_media_candidates(source_url: str, options: DownloadOptions | None = None) -> dict[str, object]:
+    """Inspect a single web URL for downloadable media candidates.
+
+    Tries in order: Douyin share page, yt-dlp extraction, HTML media regex,
+    and finally yt-dlp direct media support.
+
+    Args:
+        source_url: The web page URL to inspect.
+        options: Download options (proxy, etc.).
+
+    Returns:
+        Dict with keys: source_url, success, candidate_count,
+        candidates (list of URLs), source (detection method), error.
+    """
     candidates, source = _collect_web_media_candidates(source_url, options)
     return {
         'source_url': source_url,
@@ -994,7 +1041,7 @@ def inspect_web_media_candidates(source_url: str, options: DownloadOptions | Non
     }
 
 
-def _download_web_task(task: DownloadTask, output_root: Path, options: DownloadOptions, progress_cb: ProgressCallback | None) -> dict[str, object]:
+def _download_web_task(task: DownloadTask, output_root: Path, options: DownloadOptions, progress_cb: ProgressCallback | None, token: Token | None = None) -> dict[str, object]:
     output_root = _resolve_web_task_output_dir(output_root, task)
     output_root.mkdir(parents=True, exist_ok=True)
     first_error = None
@@ -1008,6 +1055,7 @@ def _download_web_task(task: DownloadTask, output_root: Path, options: DownloadO
             progress_cb,
             ffmpeg_path=_ffmpeg_path(),
             download_all=options.web_download_all_candidates,
+            token=token,
         )
         if downloaded_files:
             return _make_result(task, True, downloaded_files, '')
@@ -1028,6 +1076,7 @@ def _download_web_task(task: DownloadTask, output_root: Path, options: DownloadO
                         options,
                         progress_cb,
                         ffmpeg_path=ffmpeg_path,
+                        token=token,
                     )
                     if downloaded_files:
                         return _make_result(task, True, downloaded_files, '')
@@ -1041,6 +1090,7 @@ def _download_web_task(task: DownloadTask, output_root: Path, options: DownloadO
                         progress_cb,
                         ffmpeg_path=ffmpeg_path,
                         download_all=True,
+                        token=token,
                     )
                     if downloaded_files:
                         return _make_result(task, True, downloaded_files, '')
@@ -1052,6 +1102,7 @@ def _download_web_task(task: DownloadTask, output_root: Path, options: DownloadO
                         options,
                         progress_cb,
                         ffmpeg_path=ffmpeg_path,
+                        token=token,
                     )
                     if downloaded_files:
                         return _make_result(task, True, downloaded_files, '')
@@ -1067,6 +1118,7 @@ def _download_web_task(task: DownloadTask, output_root: Path, options: DownloadO
             progress_cb,
             title_hint=task.target_title,
             referer_url=task.source_url,
+            token=token,
         )
         return _make_result(task, True, downloaded['files'], '')
     except CancelledError:
@@ -1090,6 +1142,7 @@ def _download_web_task(task: DownloadTask, output_root: Path, options: DownloadO
             options,
             progress_cb,
             ffmpeg_path=ffmpeg_path,
+            token=token,
         )
         if downloaded_files:
             return _make_result(task, True, downloaded_files, '')
@@ -1104,6 +1157,7 @@ def _download_web_task(task: DownloadTask, output_root: Path, options: DownloadO
             progress_cb,
             ffmpeg_path=ffmpeg_path,
             download_all=True,
+            token=token,
         )
         if downloaded_files:
             return _make_result(task, True, downloaded_files, '')
@@ -1115,6 +1169,7 @@ def _download_web_task(task: DownloadTask, output_root: Path, options: DownloadO
         options,
         progress_cb,
         ffmpeg_path=ffmpeg_path,
+        token=token,
     )
     if downloaded_files:
         return _make_result(task, True, downloaded_files, '')
@@ -1186,6 +1241,7 @@ def _download_url_with_ytdlp(
     progress_cb: ProgressCallback | None,
     title_hint: str = '',
     referer_url: str = '',
+    token: Token | None = None,
 ) -> dict[str, object]:
     _require_web_backend()
     from yt_dlp import YoutubeDL
@@ -1229,7 +1285,7 @@ def _download_url_with_ytdlp(
         'windowsfilenames': True,
         'overwrites': bool(options.overwrite),
         'outtmpl': str(output_root / f'{unique_stem}.%(ext)s'),
-        'progress_hooks': [_make_web_progress_hook(progress_cb, _current_token())],
+        'progress_hooks': [_make_web_progress_hook(progress_cb, token)],
         'concurrent_fragment_downloads': 16,
         'continuedl': True,
         'extractor_retries': 3,
@@ -1307,10 +1363,9 @@ def _download_url_with_ytdlp(
 
                 _run_ytdlp_with_cookie_retry(source_url, ydl_opts, progress_cb, _download_once)
         except _PausedDownload:
-            _wait_if_paused(_current_token(), progress_cb)
+            _wait_if_paused(token, progress_cb)
             continue
         except CancelledError:
-            token = _current_token()
             if token and token.reconnect.is_set():
                 token.reconnect.clear()
                 reconnect_count += 1
@@ -1331,7 +1386,6 @@ def _download_url_with_ytdlp(
             raise
         # extract_info returned normally — check if reconnect flag was set
         # (yt-dlp may catch CancelledError internally and return normally)
-        token = _current_token()
         if token and token.reconnect.is_set():
             token.reconnect.clear()
             reconnect_count += 1
@@ -1667,6 +1721,7 @@ def _download_m3u8_with_ffmpeg(
     progress_cb: ProgressCallback | None,
     ffmpeg_path: str = '',
     referer_url: str = '',
+    token: Token | None = None,
 ) -> dict[str, object]:
     ffmpeg = ffmpeg_path or _ffmpeg_path()
     if not ffmpeg:
@@ -1707,7 +1762,6 @@ def _download_m3u8_with_ffmpeg(
         last_emit = 0.0
         should_reconnect = False
         for line in proc.stdout:
-            token = _current_token()
             if token and token.cancel.is_set():
                 _terminate_ffmpeg(proc)
                 raise CancelledError('ffmpeg 下载已取消')
@@ -1838,6 +1892,18 @@ def embed_thumbnail(
 
     If *source_url* is a page with multiple video candidates (same as the
     download pipeline), pass ``candidate_index`` (1-based) to pick one.
+
+    Args:
+        video_path: Path to the video file to embed thumbnail into.
+        source_url: Web URL to fetch the thumbnail from.
+        progress_cb: Progress callback for status messages.
+        candidate_index: 1-based index when source_url has multiple candidates.
+        thumbnail_mode: 'web_then_frame', 'web', or 'frame'.
+        proxy_url: HTTP/SOCKS5 proxy for thumbnail download.
+
+    Returns:
+        Dict with 'success' (bool), 'files' (list of paths), and optionally
+        'error' (str), 'candidate_count' (int), 'candidates' (list).
     """
     video_path = Path(video_path)
     direct_frame = thumbnail_mode == 'frame'
