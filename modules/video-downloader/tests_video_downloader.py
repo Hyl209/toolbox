@@ -918,6 +918,7 @@ def test_run_download_assigns_web_tasks_to_named_subfolders():
     assert [task.output_subdir for task in captured['tasks']] == ['片头', '正片']
     assert captured['options'].output_subdir_by_title is True
     assert captured['options'].proxy_url == 'http://127.0.0.1:7890'
+    assert captured['options'].web_use_browser_cookies is True
 
 
 def test_validate_video_downloader_form_rejects_web_link_on_telegram_page():
@@ -2040,7 +2041,7 @@ def test_download_url_with_ytdlp_falls_back_to_cookiefile_when_browser_cookie_co
             )
         assert result['success'] is True
         assert any(opts.get('cookiesfrombrowser') == ('chrome',) for opts in captured_opts)
-        assert any(opts.get('cookiesfrombrowser') == ('firefox',) for opts in captured_opts)
+        assert not any(opts.get('cookiesfrombrowser') == ('firefox',) for opts in captured_opts)
         assert any(str(opts.get('cookiefile', '')).lower().endswith('douyin.cookies.txt') for opts in captured_opts)
     finally:
         if original_module is None:
@@ -2171,6 +2172,255 @@ def test_m3u8_candidate_tries_ytdlp_before_ffmpeg_fallback():
     finally:
         wb._download_url_with_ytdlp = original_ytdlp
         wb._download_m3u8_with_ffmpeg = original_ffmpeg
+
+
+def test_m3u8_candidate_keeps_explicit_browser_cookies_for_direct_media_url():
+    module = load_module()
+    wb = load_web_backend()
+    captured: dict[str, object] = {}
+    original_ytdlp = wb._download_url_with_ytdlp
+    original_ffmpeg = wb._download_m3u8_with_ffmpeg
+    try:
+        def fake_ytdlp(source_url, output_root, options, progress_cb, title_hint='', referer_url='', **kwargs):
+            captured['use_cookies'] = options.web_use_browser_cookies
+            return {'success': True, 'files': [output_root / 'ok.mp4']}
+
+        wb._download_url_with_ytdlp = fake_ytdlp
+        wb._download_m3u8_with_ffmpeg = lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError('should not fallback'))
+        with tempfile.TemporaryDirectory() as tmp:
+            task = module.DownloadTask('https://example.com/post/1', 'web', 'demo')
+            result = wb._download_web_candidate(
+                'https://cdn.example.com/live.m3u8',
+                task,
+                pathlib.Path(tmp),
+                module.DownloadOptions(web_use_browser_cookies=True),
+                None,
+                ffmpeg_path='ffmpeg',
+            )
+        assert result['success'] is True
+        assert captured['use_cookies'] is True
+    finally:
+        wb._download_url_with_ytdlp = original_ytdlp
+        wb._download_m3u8_with_ffmpeg = original_ffmpeg
+
+
+def test_m3u8_source_task_downloads_directly_without_browser_cookies_probe():
+    module = load_module()
+    wb = load_web_backend()
+    captured: dict[str, object] = {}
+    original_candidate = wb._download_web_candidate
+    original_extract = wb._extract_ytdlp_entry_candidates
+    original_ffmpeg_path = wb._ffmpeg_path
+    try:
+        def fake_candidate(candidate_url, task, output_root, options, progress_cb, ffmpeg_path='', **kwargs):
+            captured['candidate_url'] = candidate_url
+            captured['use_cookies'] = options.web_use_browser_cookies
+            captured['ffmpeg_path'] = ffmpeg_path
+            return {'success': True, 'files': [output_root / 'ok.mp4']}
+
+        wb._download_web_candidate = fake_candidate
+        wb._extract_ytdlp_entry_candidates = lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError('should not probe yt-dlp'))
+        wb._ffmpeg_path = lambda: 'ffmpeg'
+        with tempfile.TemporaryDirectory() as tmp:
+            task = module.DownloadTask('https://cdn.example.com/live.m3u8', 'web', 'demo')
+            result = wb._download_web_task(
+                task,
+                pathlib.Path(tmp),
+                module.DownloadOptions(web_use_browser_cookies=True),
+                None,
+            )
+        assert result['success'] is True
+        assert captured['candidate_url'] == 'https://cdn.example.com/live.m3u8'
+        assert captured['use_cookies'] is True
+        assert captured['ffmpeg_path'] == 'ffmpeg'
+    finally:
+        wb._download_web_candidate = original_candidate
+        wb._extract_ytdlp_entry_candidates = original_extract
+        wb._ffmpeg_path = original_ffmpeg_path
+
+
+def test_bilibili_cdn_candidate_uses_direct_downloader_with_bilibili_referer():
+    module = load_module()
+    wb = load_web_backend()
+    captured: dict[str, object] = {}
+    original_direct = wb._download_direct_media_file
+    original_ytdlp = wb._download_url_with_ytdlp
+    try:
+        def fake_direct(media_url, task, output_root, options, progress_cb, referer_url='', **kwargs):
+            captured['media_url'] = media_url
+            captured['referer_url'] = referer_url
+            path = output_root / 'bili.mp4'
+            path.write_text('ok', encoding='utf-8')
+            return {'success': True, 'files': [path]}
+
+        wb._download_direct_media_file = fake_direct
+        wb._download_url_with_ytdlp = lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError('should not use yt-dlp'))
+        with tempfile.TemporaryDirectory() as tmp:
+            task = module.DownloadTask('https://www.bilibili.com/video/BV1xx', 'web', 'demo')
+            result = wb._download_web_candidate(
+                'https://upos-sz-estgcos.bilivideo.com/upgcxcode/demo.mp4?deadline=1',
+                task,
+                pathlib.Path(tmp),
+                module.DownloadOptions(),
+                None,
+            )
+        assert result['success'] is True
+        assert captured['referer_url'] == 'https://www.bilibili.com/'
+        assert captured['media_url'].startswith('https://upos-sz-estgcos.bilivideo.com/')
+    finally:
+        wb._download_direct_media_file = original_direct
+        wb._download_url_with_ytdlp = original_ytdlp
+
+
+def test_bilibili_cdn_task_uses_direct_downloader_before_ytdlp_probe():
+    module = load_module()
+    wb = load_web_backend()
+    calls: list[str] = []
+    original_direct = wb._download_direct_media_file
+    original_ytdlp = wb._download_url_with_ytdlp
+    original_extract = wb._extract_ytdlp_entry_candidates
+    try:
+        def fake_direct(media_url, task, output_root, options, progress_cb, referer_url='', **kwargs):
+            calls.append(f'direct:{referer_url}')
+            path = output_root / 'bili.mp4'
+            path.write_text('ok', encoding='utf-8')
+            return {'success': True, 'files': [path]}
+
+        wb._download_direct_media_file = fake_direct
+        wb._download_url_with_ytdlp = lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError('should not use yt-dlp'))
+        wb._extract_ytdlp_entry_candidates = lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError('should not probe yt-dlp'))
+        with tempfile.TemporaryDirectory() as tmp:
+            task = module.DownloadTask(
+                'https://upos-sz-estgcos.bilivideo.com/upgcxcode/demo.mp4?deadline=1',
+                'web',
+                'demo',
+            )
+            result = wb._download_web_task(task, pathlib.Path(tmp), module.DownloadOptions(), None)
+        assert result['success'] is True
+        assert calls == ['direct:https://www.bilibili.com/']
+    finally:
+        wb._download_direct_media_file = original_direct
+        wb._download_url_with_ytdlp = original_ytdlp
+        wb._extract_ytdlp_entry_candidates = original_extract
+
+
+def test_bilibili_page_scan_keeps_page_url_for_cookie_aware_ytdlp():
+    wb = load_web_backend()
+    original_support = wb._supports_ytdlp_direct_media
+    original_fetch = wb._fetch_webpage_html
+    try:
+        wb._supports_ytdlp_direct_media = lambda url, options=None: True
+        wb._fetch_webpage_html = lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError('should not scan html preview urls'))
+
+        candidates, source = wb._collect_web_media_candidates('https://www.bilibili.com/video/BV1xx', None)
+    finally:
+        wb._supports_ytdlp_direct_media = original_support
+        wb._fetch_webpage_html = original_fetch
+
+    assert candidates == ['https://www.bilibili.com/video/BV1xx']
+    assert source == 'bilibili-page'
+
+
+def test_bilibili_page_scan_uses_html_fallback_before_page_url():
+    wb = load_web_backend()
+    original_extract = wb._extract_ytdlp_entry_candidates
+    original_support = wb._supports_ytdlp_direct_media
+    original_fetch = wb._fetch_webpage_html
+    try:
+        wb._extract_ytdlp_entry_candidates = lambda *args, **kwargs: []
+        wb._supports_ytdlp_direct_media = lambda *args, **kwargs: False
+        wb._fetch_webpage_html = lambda *args, **kwargs: '<video src="/media/demo.mp4"></video>'
+
+        candidates, source = wb._collect_web_media_candidates('https://www.bilibili.com/video/BV1xx', None)
+    finally:
+        wb._extract_ytdlp_entry_candidates = original_extract
+        wb._supports_ytdlp_direct_media = original_support
+        wb._fetch_webpage_html = original_fetch
+
+    assert candidates == ['https://www.bilibili.com/media/demo.mp4']
+    assert source == 'html'
+
+
+def test_bilibili_page_ytdlp_probe_uses_browser_cookies_by_default():
+    module = load_module()
+    wb = load_web_backend()
+    sh = load_shared()
+    fake_ytdlp = types.ModuleType('yt_dlp')
+    captured_opts: list[dict[str, object]] = []
+
+    class FakeYoutubeDL:
+        def __init__(self, opts):
+            self.opts = opts
+            captured_opts.append(dict(opts))
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def extract_info(self, url, download=False):
+            if not download:
+                return {'title': 'Bili Demo', 'id': 'BV1xx'}
+            pathlib.Path(str(self.opts['outtmpl']).replace('%(ext)s', 'mp4')).write_text('ok', encoding='utf-8')
+            return {'ok': True}
+
+    fake_ytdlp.YoutubeDL = FakeYoutubeDL
+    original_module = sys.modules.get('yt_dlp')
+    original_require = wb._require_web_backend
+    original_resolve_aria2 = sh._resolve_aria2c_path
+    original_ffmpeg = wb.shutil.which
+    try:
+        sys.modules['yt_dlp'] = fake_ytdlp
+        wb._require_web_backend = lambda: None
+        sh._resolve_aria2c_path = lambda: ''
+        wb.shutil.which = lambda name: ''
+        with tempfile.TemporaryDirectory() as tmp:
+            result = wb._download_url_with_ytdlp(
+                'https://www.bilibili.com/video/BV1xx',
+                pathlib.Path(tmp),
+                module.DownloadOptions(),
+                None,
+            )
+    finally:
+        if original_module is None:
+            sys.modules.pop('yt_dlp', None)
+        else:
+            sys.modules['yt_dlp'] = original_module
+        wb._require_web_backend = original_require
+        sh._resolve_aria2c_path = original_resolve_aria2
+        wb.shutil.which = original_ffmpeg
+
+    assert result['success'] is True
+    assert captured_opts[0].get('cookiesfrombrowser') == ('chrome',)
+    assert any(opts.get('cookiesfrombrowser') == ('chrome',) for opts in captured_opts)
+
+
+def test_collect_web_media_candidates_uses_bilibili_ytdlp_entries_before_page_fallback():
+    wb = load_web_backend()
+    original_extract = wb._extract_ytdlp_entry_candidates
+    original_support = wb._supports_ytdlp_direct_media
+    captured: dict[str, object] = {}
+    try:
+        def fake_extract(url, options=None):
+            captured['use_cookies'] = options.web_use_browser_cookies
+            captured['disable_auto'] = getattr(options, '_disable_auto_browser_cookies', False)
+            return ['https://cdn.example.com/a.mp4']
+
+        wb._extract_ytdlp_entry_candidates = fake_extract
+        wb._supports_ytdlp_direct_media = lambda *args, **kwargs: False
+        candidates, source = wb._collect_web_media_candidates(
+            'https://www.bilibili.com/video/BV1xx',
+            wb.DownloadOptions(web_use_browser_cookies=True),
+        )
+    finally:
+        wb._extract_ytdlp_entry_candidates = original_extract
+        wb._supports_ytdlp_direct_media = original_support
+
+    assert candidates == ['https://cdn.example.com/a.mp4']
+    assert source == 'yt-dlp'
+    assert captured['use_cookies'] is True
+    assert captured['disable_auto'] is True
 
 
 def test_emit_aria2_progress_reports_speed_without_overall_percent():
@@ -3098,6 +3348,39 @@ def test_cookie_browser_name():
     assert wb._cookie_browser_name('Firefox') == 'firefox'
     assert wb._cookie_browser_name('') == ''
     assert wb._cookie_browser_name(None) == ''
+
+
+def test_clean_ytdlp_error_detail_dedupes_repeated_error_prefixes():
+    wb = load_web_backend()
+    message = wb._clean_ytdlp_error_detail(RuntimeError(
+        '\x1b[0;31mERROR:\x1b[0m \x1b[0;31mERROR:\x1b[0m Could not copy Chrome cookie database.\n'
+        'ERROR: Could not copy Chrome cookie database.'
+    ))
+    assert message == 'ERROR: Could not copy Chrome cookie database.'
+
+
+def test_run_ytdlp_with_cookie_retry_falls_back_without_browser_cookies_when_cookie_db_locked():
+    wb = load_web_backend()
+    calls: list[dict[str, object]] = []
+
+    def runner(opts):
+        calls.append(dict(opts))
+        if opts.get('cookiesfrombrowser'):
+            raise RuntimeError('ERROR: ERROR: Could not copy Chrome cookie database.')
+        return {'ok': True}
+
+    result = wb._run_ytdlp_with_cookie_retry(
+        'https://www.bilibili.com/video/BV1xx',
+        {'cookiesfrombrowser': ('chrome',)},
+        None,
+        runner,
+    )
+
+    assert result == {'ok': True}
+    assert calls == [
+        {'cookiesfrombrowser': ('chrome',)},
+        {},
+    ]
 
 
 def test_normalize_douyin_play_url():

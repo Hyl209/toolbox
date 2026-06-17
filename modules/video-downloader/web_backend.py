@@ -51,6 +51,8 @@ MEDIA_URL_RE = re.compile(r"""(?P<url>(?:https?:)?//[^"'\\\s<>]+?\.(?:mp4|m3u8|w
 RELATIVE_MEDIA_RE = re.compile(r"""(?P<url>/[^"'\\\s<>]+?\.(?:mp4|m3u8|webm|mov|m4v)(?:\?[^"'\\\s<>]*)?)""", re.IGNORECASE)
 _ARIA2_ETA_RE = re.compile(r'(\d+)([hms])')
 _DOUYIN_PLAYWM_RE = re.compile(r'/playwm(?=[/?])')
+_BILIBILI_CDN_HOST_HINTS = ('bilivideo.com', 'upos-')
+_BILIBILI_PAGE_HOSTS = ('bilibili.com', 'bilibili.tv')
 ARIA2_VERSION = '1.37.0'
 ARIA2_SOURCE_URL = 'https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip'
 COOKIE_RETRY_BROWSERS = ('chrome', 'firefox', 'edge')
@@ -262,7 +264,14 @@ def _needs_browser_cookie_retry(source_url: str, exc: Exception) -> bool:
     if 'fresh cookies' in text:
         return True
     host = urlparse(str(source_url or '')).netloc.lower()
-    return ('douyin.com' in host or 'iesdouyin.com' in host) and 'cookie' in text
+    return (
+        'cookie' in text
+        and (
+            'douyin.com' in host
+            or 'iesdouyin.com' in host
+            or _is_bilibili_page_url(source_url)
+        )
+    )
 
 
 def _iter_cookie_retry_browsers(base_opts: dict[str, object]) -> list[str]:
@@ -299,7 +308,14 @@ def _can_retry_with_cookie_file(source_url: str, exc: Exception) -> bool:
     if 'could not copy' in text and 'cookie database' in text:
         return True
     host = urlparse(str(source_url or '')).netloc.lower()
-    return ('douyin.com' in host or 'iesdouyin.com' in host) and 'cookie' in text
+    return (
+        'cookie' in text
+        and (
+            'douyin.com' in host
+            or 'iesdouyin.com' in host
+            or _is_bilibili_page_url(source_url)
+        )
+    )
 
 
 def _is_cookie_access_blocked_error(exc: Exception) -> bool:
@@ -307,6 +323,21 @@ def _is_cookie_access_blocked_error(exc: Exception) -> bool:
     return 'could not copy chrome cookie database' in text or (
         'permission denied' in text and 'cookie' in text
     )
+
+
+def _clean_ytdlp_error_detail(exc: Exception) -> str:
+    lines = []
+    seen = set()
+    for raw_line in str(exc or '').strip().splitlines():
+        line = re.sub(r'\x1b\[[0-9;]*m', '', raw_line.strip())
+        line = re.sub(r'^(?:ERROR:\s*)+', 'ERROR: ', line, flags=re.IGNORECASE)
+        if not line:
+            continue
+        key = line.lower()
+        if key not in seen:
+            seen.add(key)
+            lines.append(line)
+    return '\n'.join(lines)
 
 
 def _is_douyin_url(url: str) -> bool:
@@ -324,6 +355,24 @@ def _normalize_douyin_play_url(url: str) -> str:
 def _is_douyin_direct_play_url(url: str) -> bool:
     parsed = urlparse(str(url or ''))
     return parsed.scheme in {'http', 'https'} and '/aweme/v1/play/' in parsed.path
+
+
+def _is_bilibili_cdn_url(url: str) -> bool:
+    host = urlparse(str(url or '')).netloc.lower()
+    return any(hint in host for hint in _BILIBILI_CDN_HOST_HINTS)
+
+
+def _is_bilibili_page_url(url: str) -> bool:
+    parsed = urlparse(str(url or ''))
+    host = parsed.netloc.lower()
+    return any(host == item or host.endswith(f'.{item}') for item in _BILIBILI_PAGE_HOSTS)
+
+
+def _should_use_browser_cookies(source_url: str, options: DownloadOptions | None = None) -> bool:
+    explicit = bool(getattr(options, 'web_use_browser_cookies', False))
+    if getattr(options, '_disable_auto_browser_cookies', False):
+        return explicit
+    return explicit or _is_bilibili_page_url(source_url)
 
 
 def _fetch_douyin_share_html(url: str, proxy_url: str = '') -> str:
@@ -506,7 +555,7 @@ def _download_direct_media_file(
 
 def _build_cookie_retry_failure_message(source_url: str, exc: Exception) -> str:
     host = urlparse(str(source_url or '')).netloc or '当前站点'
-    detail = str(exc or '').strip()
+    detail = _clean_ytdlp_error_detail(exc)
     return (
         f'{detail}\n'
         f'{host} 需要 fresh cookies，但当前浏览器 Cookies 无法读取。\n'
@@ -534,13 +583,27 @@ def _run_ytdlp_with_cookie_retry(
         if not _needs_browser_cookie_retry(source_url, exc):
             raise
         last_exc = exc
+    skip_browser_fallback = _is_cookie_access_blocked_error(last_exc)
     host = urlparse(str(source_url or '')).netloc or '当前站点'
-    for browser in _iter_cookie_retry_browsers(initial_opts):
-        if browser == initial_browser:
-            continue
+    if not skip_browser_fallback:
+        for browser in _iter_cookie_retry_browsers(initial_opts):
+            if browser == initial_browser:
+                continue
+            retry_opts = dict(base_opts)
+            retry_opts['cookiesfrombrowser'] = (browser,)
+            _emit(progress_cb, f'检测到 {host} 需要浏览器 Cookies，尝试使用 {browser} 重试')
+            try:
+                return runner(retry_opts)
+            except CancelledError:
+                raise
+            except Exception as exc:
+                last_exc = exc
+                if _is_cookie_access_blocked_error(exc):
+                    break
+    if _is_cookie_access_blocked_error(last_exc) and 'cookiesfrombrowser' in initial_opts:
         retry_opts = dict(base_opts)
-        retry_opts['cookiesfrombrowser'] = (browser,)
-        _emit(progress_cb, f'检测到 {host} 需要浏览器 Cookies，尝试使用 {browser} 重试')
+        retry_opts.pop('cookiesfrombrowser', None)
+        _emit(progress_cb, f'浏览器 Cookies 读取失败，尝试不使用浏览器 Cookies -> {host}')
         try:
             return runner(retry_opts)
         except CancelledError:
@@ -885,6 +948,12 @@ def _is_m3u8_url(url: str) -> bool:
     return str(url or '').lower().split('?', 1)[0].endswith('.m3u8')
 
 
+def _without_auto_browser_cookies(options: DownloadOptions | None) -> DownloadOptions:
+    clone = replace(options) if options is not None else DownloadOptions()
+    object.__setattr__(clone, '_disable_auto_browser_cookies', True)
+    return clone
+
+
 def _download_web_candidate(
     candidate_url: str,
     task: DownloadTask,
@@ -904,12 +973,23 @@ def _download_web_candidate(
             referer_url=task.source_url,
             token=token,
         )
+    if _is_bilibili_cdn_url(candidate_url):
+        return _download_direct_media_file(
+            candidate_url,
+            task,
+            output_root,
+            options,
+            progress_cb,
+            referer_url='https://www.bilibili.com/',
+            token=token,
+        )
     if _is_m3u8_url(candidate_url) and ffmpeg_path:
+        m3u8_options = _without_auto_browser_cookies(options)
         try:
             return _download_url_with_ytdlp(
                 candidate_url,
                 output_root,
-                options,
+                m3u8_options,
                 progress_cb,
                 title_hint=task.target_title,
                 referer_url=task.source_url,
@@ -923,7 +1003,7 @@ def _download_web_candidate(
                 candidate_url,
                 task,
                 output_root,
-                options,
+                m3u8_options,
                 progress_cb,
                 ffmpeg_path=ffmpeg_path,
                 referer_url=task.source_url,
@@ -1044,6 +1124,28 @@ def inspect_web_media_candidates(source_url: str, options: DownloadOptions | Non
 def _download_web_task(task: DownloadTask, output_root: Path, options: DownloadOptions, progress_cb: ProgressCallback | None, token: Token | None = None) -> dict[str, object]:
     output_root = _resolve_web_task_output_dir(output_root, task)
     output_root.mkdir(parents=True, exist_ok=True)
+    if _is_bilibili_cdn_url(task.source_url):
+        downloaded = _download_web_candidate(
+            task.source_url,
+            task,
+            output_root,
+            options,
+            progress_cb,
+            ffmpeg_path=_ffmpeg_path(),
+            token=token,
+        )
+        return _make_result(task, True, downloaded['files'], '')
+    if _is_m3u8_url(task.source_url):
+        downloaded = _download_web_candidate(
+            task.source_url,
+            task,
+            output_root,
+            options,
+            progress_cb,
+            ffmpeg_path=_ffmpeg_path(),
+            token=token,
+        )
+        return _make_result(task, True, downloaded['files'], '')
     first_error = None
     douyin_candidates = _extract_douyin_share_candidates(task.source_url, options)
     if douyin_candidates:
@@ -1213,6 +1315,29 @@ def _collect_web_media_candidates(source_url: str, options: DownloadOptions | No
     douyin_candidates = _extract_douyin_share_candidates(source_url, options)
     if douyin_candidates:
         return douyin_candidates, 'douyin-share'
+    if _is_bilibili_page_url(source_url):
+        probe_options = _without_auto_browser_cookies(options)
+        ytdlp_candidates: list[str] = []
+        try:
+            ytdlp_candidates = _extract_ytdlp_entry_candidates(source_url, probe_options)
+        except Exception:
+            ytdlp_candidates = []
+        if ytdlp_candidates:
+            return ytdlp_candidates, 'yt-dlp'
+        try:
+            if _supports_ytdlp_direct_media(source_url, probe_options):
+                return [source_url], 'bilibili-page'
+        except Exception:
+            pass
+        try:
+            html_candidates = _extract_media_candidates(
+                _fetch_webpage_html(source_url, _options_proxy_url(options)),
+                source_url,
+            )
+        except (OSError, ValueError, TimeoutError):
+            html_candidates = []
+        if html_candidates:
+            return html_candidates, 'html'
     ytdlp_candidates: list[str] = []
     try:
         ytdlp_candidates = _extract_ytdlp_entry_candidates(source_url, options)
@@ -1256,7 +1381,7 @@ def _download_url_with_ytdlp(
     }
     if proxy_url:
         probe_opts['proxy'] = proxy_url
-    if options.web_use_browser_cookies:
+    if _should_use_browser_cookies(source_url, options):
         probe_opts['cookiesfrombrowser'] = ('chrome',)
     info = _run_ytdlp_with_cookie_retry(
         source_url,
@@ -1342,7 +1467,7 @@ def _download_url_with_ytdlp(
                 f'--header=Referer: {safe_referer}',
             ])
         _emit(progress_cb, f'网页加速: 使用 aria2c -> {aria2c}')
-    if options.web_use_browser_cookies:
+    if _should_use_browser_cookies(source_url, options):
         ydl_opts['cookiesfrombrowser'] = ('chrome',)
     max_reconnects = 3
     reconnect_count = 0
@@ -1444,6 +1569,8 @@ def _extract_ytdlp_entry_candidates(page_url: str, options: DownloadOptions | No
     proxy_url = _options_proxy_url(options)
     if proxy_url:
         ydl_opts['proxy'] = proxy_url
+    if _should_use_browser_cookies(page_url, options):
+        ydl_opts['cookiesfrombrowser'] = ('chrome',)
 
     info = _run_ytdlp_with_cookie_retry(
         page_url,
@@ -1685,6 +1812,8 @@ def _supports_ytdlp_direct_media(source_url: str, options: DownloadOptions | Non
     proxy_url = _options_proxy_url(options)
     if proxy_url:
         ydl_opts['proxy'] = proxy_url
+    if _should_use_browser_cookies(source_url, options):
+        ydl_opts['cookiesfrombrowser'] = ('chrome',)
     info = _run_ytdlp_with_cookie_retry(
         source_url,
         ydl_opts,

@@ -603,6 +603,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                     self._widget_text(getattr(self, 'proxy_host_edit', None)),
                     self._widget_text(getattr(self, 'proxy_port_edit', None)),
                 ),
+                web_use_browser_cookies=True,
             )
 
         def refresh_summary(self):
@@ -983,6 +984,7 @@ def build_video_downloader_tab_class(deps: dict[str, object]):
                     getattr(getattr(self, 'proxy_host_edit', None), 'text', lambda: '')(),
                     getattr(getattr(self, 'proxy_port_edit', None), 'text', lambda: '')(),
                 ),
+                web_use_browser_cookies=self.source_mode == 'web',
                 max_concurrent_downloads=int(self._concurrent_value()) if self.concurrent_combo is not None else 1,
                 telegram_recent_limit=module.normalize_recent_limit(
                     self._widget_text(self.recent_count_edit),
