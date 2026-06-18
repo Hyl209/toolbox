@@ -104,19 +104,6 @@ def load_progress():
     return mod
 
 
-def load_source_parser():
-    _ensure_package()
-    fqn = f'{_PKG_NAME}.source_parser'
-    if fqn in sys.modules:
-        return sys.modules[fqn]
-    path = ROOT / 'source_parser.py'
-    spec = importlib.util.spec_from_file_location(fqn, path, submodule_search_locations=[])
-    mod = importlib.util.module_from_spec(spec)
-    mod.__package__ = _PKG_NAME
-    sys.modules[fqn] = mod
-    spec.loader.exec_module(mod)
-    return mod
-
 
 def test_parse_task_lines_deduplicates_and_preserves_order():
     module = load_module()
@@ -735,18 +722,6 @@ def test_download_web_concurrent_passes_current_token_to_workers():
         wb._run_web_task = original_run
 
 
-def test_select_candidates_rejects_multiple_before_after_indices():
-    module = load_module()
-    wb = load_web_backend()
-    for mode in ('before', 'after'):
-        try:
-            wb._select_candidates(['a', 'b', 'c'], mode, [1, 2])
-        except module.DownloadError as exc:
-            assert 'before/after' in str(exc)
-        else:
-            raise AssertionError(f'{mode} should reject multiple indices')
-
-
 def test_make_telegram_progress_callback_emits_speed_and_eta():
     pr = load_progress()
     captured: list[str] = []
@@ -762,25 +737,6 @@ def test_make_telegram_progress_callback_emits_speed_and_eta():
     assert any(item.startswith('__HYL_PROGRESS__|tg_media|') and 'speed=' in item for item in captured)
     assert any(item.startswith('__HYL_PROGRESS__|tg_media|') and 'eta=' in item for item in captured)
     assert any(item.startswith('正在下载 "demo.mp4" "') and '"50%"' in item for item in captured)
-
-
-def test_normalize_positive_indices_accepts_blank_and_rejects_non_positive_values():
-    module = load_module()
-    assert module.normalize_positive_indices('', '网页候选序号') is None
-    assert module.normalize_positive_indices('2', '网页候选序号') == [2]
-    assert module.normalize_positive_indices('3,4,6', '网页候选序号') == [3, 4, 6]
-    try:
-        module.normalize_positive_indices('0', '网页候选序号')
-    except ValueError as exc:
-        assert '网页候选序号 0 必须大于 0' == str(exc)
-    else:
-        raise AssertionError('expected invalid index error')
-    try:
-        module.normalize_positive_indices('3,3', '网页候选序号')
-    except ValueError as exc:
-        assert '重复' in str(exc)
-    else:
-        raise AssertionError('expected duplicate index error')
 
 
 def test_validate_video_downloader_form_accepts_preloaded_module():
@@ -3225,23 +3181,6 @@ def test_build_web_queue_tasks_applies_one_custom_name_to_same_source():
     ]
 
 
-def _broken_manual_queue_text_inherits_custom_name_after_first_item_removed():
-    tab_module = load_tab_module()
-    tasks = tab_module.build_web_queue_tasks(
-        [
-            '1.哈哈锛歨ttps://cdn.example.com/b.mp4',
-            '2.course_003锛歨ttps://cdn.example.com/c.mp4',
-        ],
-        {
-            'https://cdn.example.com/b.mp4': 'https://example.com/course',
-            'https://cdn.example.com/c.mp4': 'https://example.com/course',
-        },
-    )
-    assert tasks == [
-        {'title': '哈哈_001', 'url': 'https://cdn.example.com/b.mp4'},
-        {'title': '哈哈_002', 'url': 'https://cdn.example.com/c.mp4'},
-    ]
-
 
 def test_build_web_queue_tasks_inherits_custom_name_after_leading_item_removed():
     tab_module = load_tab_module()
@@ -3333,13 +3272,6 @@ def test_normalize_aria2_eta():
     assert wb._normalize_aria2_eta('2h5m') == '2:05:00'
     assert wb._normalize_aria2_eta('45s') == '00:45'
     assert wb._normalize_aria2_eta('') == ''
-
-
-def test_inverse_indices():
-    wb = load_web_backend()
-    assert wb._inverse_indices(5, [2, 4]) == [1, 3, 5]
-    assert wb._inverse_indices(3, []) == [1, 2, 3]
-    assert wb._inverse_indices(3, [1, 2, 3]) == []
 
 
 def test_cookie_browser_name():

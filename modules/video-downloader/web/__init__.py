@@ -56,9 +56,6 @@ from ..web_backend import (  # noqa: F401
     _download_url_with_ytdlp,
     # Candidate
     _is_m3u8_url,
-    _pick_candidates,
-    _select_candidates,
-    _inverse_indices,
     _normalize_web_candidate_url,
     _collect_ytdlp_entry_candidates,
     _collect_ytdlp_candidate_entries,

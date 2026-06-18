@@ -28,7 +28,6 @@ from .source_parser import (
     parse_task_lines,
     build_download_tasks,
     normalize_recent_limit,
-    normalize_positive_indices,
     parse_iso_date,
     normalize_proxy_url,
     build_proxy_url,

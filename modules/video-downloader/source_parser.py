@@ -101,55 +101,6 @@ def normalize_recent_limit(value: str | int | None, default: int | None = 500) -
     return limit
 
 
-def _parse_candidate_mode(value: str) -> tuple[str, str]:
-    cleaned = str(value or '').strip()
-    lower = cleaned.lower()
-    for prefix, mode in [('before', 'before'), ('after', 'after'), ('not', 'exclude'), ('no', 'exclude')]:
-        if lower.startswith(prefix) and len(cleaned) > len(prefix):
-            after = cleaned[len(prefix):]
-            if after[0].isdigit():
-                return mode, after
-    return 'pick', cleaned
-
-
-def _resolve_candidate_indices(mode: str, indices: list[int] | None, total: int) -> list[int] | None:
-    if mode == 'before' and indices and len(indices) == 1:
-        n = indices[0]
-        return list(range(1, min(n, total) + 1))
-    if mode == 'after' and indices and len(indices) == 1:
-        n = indices[0]
-        return list(range(max(1, n), total + 1))
-    return indices
-
-
-def normalize_positive_indices(value: str | int | None, field_label: str) -> list[int] | None:
-    if value is None:
-        return None
-    if isinstance(value, int):
-        if value <= 0:
-            raise ValueError(f'{field_label}必须大于 0')
-        return [value]
-    cleaned = _parse_candidate_mode(str(value).strip())[1]
-    if not cleaned:
-        return None
-    parts = [p.strip() for p in cleaned.split(',') if p.strip()]
-    if not parts:
-        return None
-    indices: list[int] = []
-    for part in parts:
-        try:
-            parsed = int(part)
-        except ValueError as exc:
-            raise ValueError(f'{field_label} "{part}" 不是有效的正整数') from exc
-        if parsed <= 0:
-            raise ValueError(f'{field_label} {parsed} 必须大于 0')
-        if parsed in indices:
-            raise ValueError(f'{field_label} {parsed} 重复')
-        indices.append(parsed)
-    indices.sort()
-    return indices
-
-
 def parse_iso_date(value: str | date | None, field_label: str) -> date | None:
     if value is None or value == '':
         return None

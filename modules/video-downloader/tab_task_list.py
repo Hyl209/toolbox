@@ -408,8 +408,8 @@ def _make_list_class(deps, TaskEntryWidget):
         def _emitChanged(self):
             try:
                 self.entryChanged.emit()
-            except Exception:
-                pass
+            except AttributeError:
+                pass  # Signal not available in test environment
 
         def applyTheme(self, theme):
             self._theme = theme

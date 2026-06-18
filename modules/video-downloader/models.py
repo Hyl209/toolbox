@@ -59,8 +59,6 @@ class DownloadOptions:
         output_subdir_by_title: Create per-title subdirectories.
         proxy_url: HTTP/SOCKS5 proxy URL (e.g. 'http://127.0.0.1:7890').
         filename_template: yt-dlp output template.
-        web_candidate_indices: 1-based indices of candidates to download (None = first).
-        web_candidate_mode: How to interpret indices ('pick', 'before', 'after', 'exclude').
         web_download_all_candidates: Download all candidates instead of just the first.
         max_concurrent_downloads: Max parallel web downloads (0 = auto-probe).
         telegram_recent_limit: Max recent messages to scan (None = all).
@@ -75,8 +73,6 @@ class DownloadOptions:
     output_subdir_by_title: bool = False
     proxy_url: str = ''
     filename_template: str = DEFAULT_FILENAME_TEMPLATE
-    web_candidate_indices: list[int] | None = None
-    web_candidate_mode: str = 'pick'
     web_download_all_candidates: bool = False
     max_concurrent_downloads: int = 1
     telegram_recent_limit: int | None = 500

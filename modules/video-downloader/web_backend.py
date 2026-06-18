@@ -40,7 +40,7 @@ from .source_parser import (
     _check_cancel,
     _coerce_tasks, validate_download_request,
     normalize_proxy_url, parse_task_lines,
-    classify_source, _resolve_candidate_indices,
+    classify_source,
 )
 
 # ---------------------------------------------------------------------------
@@ -1125,27 +1125,37 @@ def _download_web_task(task: DownloadTask, output_root: Path, options: DownloadO
     output_root = _resolve_web_task_output_dir(output_root, task)
     output_root.mkdir(parents=True, exist_ok=True)
     if _is_bilibili_cdn_url(task.source_url):
-        downloaded = _download_web_candidate(
-            task.source_url,
-            task,
-            output_root,
-            options,
-            progress_cb,
-            ffmpeg_path=_ffmpeg_path(),
-            token=token,
-        )
-        return _make_result(task, True, downloaded['files'], '')
+        try:
+            downloaded = _download_web_candidate(
+                task.source_url,
+                task,
+                output_root,
+                options,
+                progress_cb,
+                ffmpeg_path=_ffmpeg_path(),
+                token=token,
+            )
+            return _make_result(task, True, downloaded['files'], '')
+        except CancelledError:
+            raise
+        except Exception:
+            pass  # fallback to normal download pipeline
     if _is_m3u8_url(task.source_url):
-        downloaded = _download_web_candidate(
-            task.source_url,
-            task,
-            output_root,
-            options,
-            progress_cb,
-            ffmpeg_path=_ffmpeg_path(),
-            token=token,
-        )
-        return _make_result(task, True, downloaded['files'], '')
+        try:
+            downloaded = _download_web_candidate(
+                task.source_url,
+                task,
+                output_root,
+                options,
+                progress_cb,
+                ffmpeg_path=_ffmpeg_path(),
+                token=token,
+            )
+            return _make_result(task, True, downloaded['files'], '')
+        except CancelledError:
+            raise
+        except Exception:
+            pass  # fallback to normal download pipeline
     first_error = None
     douyin_candidates = _extract_douyin_share_candidates(task.source_url, options)
     if douyin_candidates:
@@ -1178,20 +1188,6 @@ def _download_web_task(task: DownloadTask, output_root: Path, options: DownloadO
                         options,
                         progress_cb,
                         ffmpeg_path=ffmpeg_path,
-                        token=token,
-                    )
-                    if downloaded_files:
-                        return _make_result(task, True, downloaded_files, '')
-                elif options.web_candidate_indices is not None:
-                    selected = _select_candidates(ytdlp_candidates, options.web_candidate_mode, options.web_candidate_indices)
-                    downloaded_files, last_error = _download_web_candidates(
-                        selected,
-                        task,
-                        output_root,
-                        options,
-                        progress_cb,
-                        ffmpeg_path=ffmpeg_path,
-                        download_all=True,
                         token=token,
                     )
                     if downloaded_files:
@@ -1249,21 +1245,6 @@ def _download_web_task(task: DownloadTask, output_root: Path, options: DownloadO
         if downloaded_files:
             return _make_result(task, True, downloaded_files, '')
         raise DownloadError(f'{first_error}; 全部候选下载失败: {last_error}')
-    if options.web_candidate_indices is not None:
-        selected = _select_candidates(candidates, options.web_candidate_mode, options.web_candidate_indices)
-        downloaded_files, last_error = _download_web_candidates(
-            selected,
-            task,
-            output_root,
-            options,
-            progress_cb,
-            ffmpeg_path=ffmpeg_path,
-            download_all=True,
-            token=token,
-        )
-        if downloaded_files:
-            return _make_result(task, True, downloaded_files, '')
-        raise DownloadError(f'{first_error}; 所选候选下载失败: {last_error}')
     downloaded_files, last_error = _download_web_candidates(
         candidates,
         task,
@@ -1276,39 +1257,6 @@ def _download_web_task(task: DownloadTask, output_root: Path, options: DownloadO
     if downloaded_files:
         return _make_result(task, True, downloaded_files, '')
     raise DownloadError(f'{first_error}; 兜底媒体地址下载失败: {last_error}')
-
-
-def _pick_candidates(candidates: list[str], indices: list[int]) -> list[str]:
-    """Pick candidates by 1-based indices. Raises DownloadError if any index is out of range."""
-    if not indices:
-        return candidates
-    selected: list[str] = []
-    total = len(candidates)
-    for idx in indices:
-        pos = idx - 1
-        if pos < 0 or pos >= total:
-            raise DownloadError(f'网页候选序号 {idx} 超出范围，共找到 {total} 个候选')
-        selected.append(candidates[pos])
-    return selected
-
-
-def _select_candidates(candidates: list[str], mode: str, raw_indices: list[int] | None) -> list[str]:
-    """Apply mode + indices to a candidate list. Returns the selected candidates."""
-    if mode in {'before', 'after'} and raw_indices and len(raw_indices) != 1:
-        raise DownloadError('before/after 只需填写一个序号，如 before3 或 after5')
-    total = len(candidates)
-    resolved = _resolve_candidate_indices(mode, raw_indices, total)
-    if resolved is None:
-        return candidates
-    if mode == 'exclude':
-        resolved = _inverse_indices(total, resolved)
-    return _pick_candidates(candidates, resolved)
-
-
-def _inverse_indices(total: int, exclude: list[int]) -> list[int]:
-    """Return all 1-based indices from 1..total except those in `exclude`."""
-    exclude_set = set(exclude)
-    return [i for i in range(1, total + 1) if i not in exclude_set]
 
 
 def _collect_web_media_candidates(source_url: str, options: DownloadOptions | None = None) -> tuple[list[str], str]:
