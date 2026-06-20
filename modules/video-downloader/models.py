@@ -54,7 +54,7 @@ class DownloadOptions:
     """Configuration for a download batch run.
 
     Attributes:
-        web_use_browser_cookies: Try browser cookies for authenticated sites.
+        web_use_browser_cookies: Reserved; browser cookies are retried only after cookie-specific errors.
         overwrite: Overwrite existing files instead of creating unique names.
         output_subdir_by_title: Create per-title subdirectories.
         proxy_url: HTTP/SOCKS5 proxy URL (e.g. 'http://127.0.0.1:7890').

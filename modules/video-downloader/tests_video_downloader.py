@@ -2180,7 +2180,7 @@ def test_m3u8_candidate_tries_ytdlp_before_ffmpeg_fallback():
         wb._download_m3u8_with_ffmpeg = original_ffmpeg
 
 
-def test_m3u8_candidate_keeps_explicit_browser_cookies_for_direct_media_url():
+def test_m3u8_candidate_marks_direct_media_url_without_auto_browser_cookies():
     module = load_module()
     wb = load_web_backend()
     captured: dict[str, object] = {}
@@ -2189,6 +2189,7 @@ def test_m3u8_candidate_keeps_explicit_browser_cookies_for_direct_media_url():
     try:
         def fake_ytdlp(source_url, output_root, options, progress_cb, title_hint='', referer_url='', **kwargs):
             captured['use_cookies'] = options.web_use_browser_cookies
+            captured['disable_auto'] = getattr(options, '_disable_auto_browser_cookies', False)
             return {'success': True, 'files': [output_root / 'ok.mp4']}
 
         wb._download_url_with_ytdlp = fake_ytdlp
@@ -2205,6 +2206,7 @@ def test_m3u8_candidate_keeps_explicit_browser_cookies_for_direct_media_url():
             )
         assert result['success'] is True
         assert captured['use_cookies'] is True
+        assert captured['disable_auto'] is True
     finally:
         wb._download_url_with_ytdlp = original_ytdlp
         wb._download_m3u8_with_ffmpeg = original_ffmpeg
@@ -3334,7 +3336,7 @@ def test_cookie_browser_name():
     assert wb._cookie_browser_name(None) == ''
 
 
-def test_should_use_browser_cookies_defaults_off_even_for_cookie_sensitive_sites():
+def test_should_use_browser_cookies_stays_off_even_for_cookie_sensitive_sites():
     wb = load_web_backend()
 
     assert wb._should_use_browser_cookies('https://www.bilibili.com/video/BV1xx', wb.DownloadOptions()) is False
@@ -3342,7 +3344,7 @@ def test_should_use_browser_cookies_defaults_off_even_for_cookie_sensitive_sites
     assert wb._should_use_browser_cookies(
         'https://www.bilibili.com/video/BV1xx',
         wb.DownloadOptions(web_use_browser_cookies=True),
-    ) is True
+    ) is False
 
 
 def test_clean_ytdlp_error_detail_dedupes_repeated_error_prefixes():

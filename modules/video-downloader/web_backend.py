@@ -371,10 +371,7 @@ def _is_bilibili_page_url(url: str) -> bool:
 
 
 def _should_use_browser_cookies(source_url: str, options: DownloadOptions | None = None) -> bool:
-    explicit = bool(getattr(options, 'web_use_browser_cookies', False))
-    if getattr(options, '_disable_auto_browser_cookies', False):
-        return explicit
-    return explicit
+    return False
 
 
 def _fetch_douyin_share_html(url: str, proxy_url: str = '') -> str:

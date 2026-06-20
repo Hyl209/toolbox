@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import tempfile
+import base64
 from pathlib import Path
 from unittest.mock import MagicMock, patch, PropertyMock
 
@@ -264,6 +265,33 @@ class TestPDFService:
         svc = self._make_service()
         with pytest.raises(Exception):
             svc.export_text(Path("/nonexistent/input.pdf"), Path("/tmp/out"))
+
+
+# ---------------------------------------------------------------------------
+# Base64Service
+# ---------------------------------------------------------------------------
+class TestBase64Service:
+    """Base64Service 测试 — 包装 base64/converter.py"""
+
+    def test_encode_data_url_and_decode_extensions(self):
+        from toolbox_app.services.base64_service import Base64Service
+
+        svc = Base64Service()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "demo.txt"
+            source.write_text("hello", encoding="utf-8")
+
+            data_url = svc.encode(source, data_url=True)
+            decoded_from_data_url = svc.decode(data_url, root, "restored")
+            plain = base64.b64encode(b"raw").decode("ascii")
+            decoded_plain = svc.decode(plain, root, "payload")
+
+            assert data_url == "data:text/plain;base64,aGVsbG8="
+            assert decoded_from_data_url.name == "restored.txt"
+            assert decoded_from_data_url.read_text(encoding="utf-8") == "hello"
+            assert decoded_plain.name == "payload.bin"
+            assert decoded_plain.read_bytes() == b"raw"
 
 
 # ---------------------------------------------------------------------------

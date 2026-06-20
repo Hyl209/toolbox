@@ -55,8 +55,6 @@ def get_base64_mode_value(label: str) -> str:
     mapping = {
         '文件转Base64': 'encode',
         'Base64转文件': 'decode',
-        '图片转Base64': 'encode',
-        'Base64转图片': 'decode',
     }
     return mapping.get(label, label)
 

@@ -250,12 +250,12 @@ def test_collect_base64_file_inputs_collects_top_level_files_only():
     assert [p.name for p in paths] == ['a.png', 'b.txt']
 
 
-def test_base64_drop_summary_shows_selected_images():
+def test_base64_drop_summary_shows_selected_files():
     toolbox = load_module()
     assert toolbox.format_base64_drop_summary([]) == '拖入 文件'
-    one = toolbox.format_base64_drop_summary([pathlib.Path('cover.png')])
+    one = toolbox.format_base64_drop_summary([pathlib.Path('demo.txt')])
     assert '已添加 1 个文件' in one
-    assert 'cover' in one
+    assert 'demo' in one
 
 
 def test_validate_base64_form_requires_mode_specific_inputs():
@@ -272,10 +272,16 @@ def test_validate_base64_form_requires_mode_specific_inputs():
 def test_validate_base64_form_accepts_valid_encode_request():
     toolbox = load_module()
     with tempfile.TemporaryDirectory() as tmp:
-        image = pathlib.Path(tmp) / 'demo.png'
-        image.write_text('x', encoding='utf-8')
-        errors = toolbox.validate_base64_form('encode', [image], '', tmp, 'demo')
+        file_path = pathlib.Path(tmp) / 'demo.dat'
+        file_path.write_text('x', encoding='utf-8')
+        errors = toolbox.validate_base64_form('encode', [file_path], '', tmp, 'demo')
     assert errors == []
+
+
+def test_base64_tab_no_longer_uses_image_base64_labels():
+    source = (ROOT / 'modules' / 'base64' / 'tab.py').read_text(encoding='utf-8')
+    assert '图片转Base64' not in source
+    assert 'Base64转图片' not in source
 
 
 def test_format_video_download_task_summary_counts_mixed_links():
