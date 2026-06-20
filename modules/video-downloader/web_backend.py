@@ -261,6 +261,8 @@ def _needs_browser_cookie_retry(source_url: str, exc: Exception) -> bool:
     text = str(exc or '').lower()
     if not text:
         return False
+    if _is_cookie_access_blocked_error(exc):
+        return True
     if 'fresh cookies' in text:
         return True
     host = urlparse(str(source_url or '')).netloc.lower()
@@ -372,7 +374,7 @@ def _should_use_browser_cookies(source_url: str, options: DownloadOptions | None
     explicit = bool(getattr(options, 'web_use_browser_cookies', False))
     if getattr(options, '_disable_auto_browser_cookies', False):
         return explicit
-    return explicit or _is_bilibili_page_url(source_url)
+    return explicit
 
 
 def _fetch_douyin_share_html(url: str, proxy_url: str = '') -> str:

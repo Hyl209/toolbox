@@ -36,7 +36,7 @@ TOOL_DEFINITIONS: list[ToolDef] = [
     ToolDef('batchrename', '批量命名', '批量命名', 'modules/batch-rename', 'converter.py', 'tab.py'),
     ToolDef('filesorter', '文件分类', '文件分类', 'modules/file-sorter', 'converter.py', 'tab.py'),
     ToolDef('same', '重复文件', '重复文件', 'modules/duplicate-finder', 'converter.py', 'tab.py'),
-    ToolDef('base64', '图片Base64', '图片Base64', 'modules/base64', 'converter.py', 'tab.py'),
+    ToolDef('base64', '文件Base64', '文件Base64', 'modules/base64', 'converter.py', 'tab.py'),
     ToolDef('wordformatter', 'Word排版统一', 'Word排版', 'modules/word-formatter', 'converter.py', 'tab.py'),
 ]
 

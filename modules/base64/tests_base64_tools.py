@@ -5,6 +5,7 @@ import tempfile
 from converter import (
     build_data_url,
     decode_base64_to_file,
+    encode_file_to_base64,
     encode_image_to_base64,
     infer_extension_from_base64,
     normalize_base64_text,
@@ -21,9 +22,22 @@ def test_encode_image_to_base64_roundtrip_png_header():
     assert encoded.startswith('iVBORw0KGgo')
 
 
+def test_encode_file_to_base64_accepts_any_file_type():
+    with tempfile.TemporaryDirectory() as tmp:
+        text_file = pathlib.Path(tmp) / 'demo.txt'
+        text_file.write_text('hello', encoding='utf-8')
+        encoded = encode_file_to_base64(text_file)
+    assert base64.b64decode(encoded) == b'hello'
+
+
 def test_build_data_url_uses_extension_mime():
     result = build_data_url('abcd', '.png')
     assert result == 'data:image/png;base64,abcd'
+
+
+def test_build_data_url_uses_non_image_mime():
+    result = build_data_url('abcd', '.txt')
+    assert result == 'data:text/plain;base64,abcd'
 
 
 def test_normalize_base64_text_accepts_data_url_and_plain_text():
@@ -46,11 +60,11 @@ def test_decode_base64_to_file_restores_bytes():
         assert out.name == 'demo.bin'
 
 
-def test_decode_base64_to_file_falls_back_to_png_extension():
+def test_decode_base64_to_file_falls_back_to_bin_extension():
     payload = base64.b64encode(b'abc').decode('ascii')
     with tempfile.TemporaryDirectory() as tmp:
         out = decode_base64_to_file(payload, pathlib.Path(tmp), 'image')
-        assert out.suffix == '.png'
+        assert out.suffix == '.bin'
 
 
 def test_save_base64_text_writes_txt_file():

@@ -4,13 +4,16 @@ import base64
 import mimetypes
 from pathlib import Path
 
-SUPPORTED_IMAGE_SUFFIXES = {'.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'}
 MIME_TO_SUFFIX = {
     'image/png': '.png',
     'image/jpeg': '.jpg',
     'image/webp': '.webp',
     'image/gif': '.gif',
     'image/bmp': '.bmp',
+    'text/plain': '.txt',
+    'application/json': '.json',
+    'application/pdf': '.pdf',
+    'application/zip': '.zip',
 }
 SUFFIX_TO_MIME = {
     '.png': 'image/png',
@@ -20,20 +23,22 @@ SUFFIX_TO_MIME = {
     '.gif': 'image/gif',
     '.bmp': 'image/bmp',
 }
+SUPPORTED_IMAGE_SUFFIXES = set(SUFFIX_TO_MIME)
 
 
-def encode_image_to_base64(image_path: str | Path) -> str:
-    path = Path(image_path)
-    suffix = path.suffix.lower()
+def encode_file_to_base64(file_path: str | Path) -> str:
+    path = Path(file_path)
     if not path.is_file():
-        raise ValueError('图片文件不存在')
-    if suffix not in SUPPORTED_IMAGE_SUFFIXES:
-        raise ValueError('暂不支持该图片格式')
+        raise ValueError('文件不存在')
     return base64.b64encode(path.read_bytes()).decode('ascii')
 
 
+def encode_image_to_base64(image_path: str | Path) -> str:
+    return encode_file_to_base64(image_path)
+
+
 def build_data_url(base64_text: str, image_suffix: str) -> str:
-    mime = SUFFIX_TO_MIME.get(image_suffix.lower(), 'image/png')
+    mime = SUFFIX_TO_MIME.get(image_suffix.lower()) or mimetypes.types_map.get(image_suffix.lower()) or 'application/octet-stream'
     return f'data:{mime};base64,{base64_text}'
 
 
@@ -60,14 +65,17 @@ def infer_extension_from_base64(text: str) -> str:
         mime = raw.split(';', 1)[0][5:].strip().lower()
         if mime in MIME_TO_SUFFIX:
             return MIME_TO_SUFFIX[mime]
-    return '.png'
+        suffix = mimetypes.guess_extension(mime)
+        if suffix:
+            return suffix
+    return ''
 
 
 def decode_base64_to_file(
     text: str,
     output_dir: str | Path,
     output_name: str,
-    default_extension: str = '.png',
+    default_extension: str = '.bin',
 ) -> Path:
     normalized = normalize_base64_text(text)
     ext = infer_extension_from_base64(text) or default_extension
@@ -94,4 +102,4 @@ def save_base64_text(text: str, output_dir: str | Path, filename: str) -> Path:
 
 def guess_mime_from_path(path: str | Path) -> str:
     suffix = Path(path).suffix.lower()
-    return SUFFIX_TO_MIME.get(suffix) or mimetypes.guess_type(str(path))[0] or 'image/png'
+    return SUFFIX_TO_MIME.get(suffix) or mimetypes.guess_type(str(path))[0] or 'application/octet-stream'

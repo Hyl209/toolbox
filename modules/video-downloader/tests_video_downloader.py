@@ -874,7 +874,57 @@ def test_run_download_assigns_web_tasks_to_named_subfolders():
     assert [task.output_subdir for task in captured['tasks']] == ['片头', '正片']
     assert captured['options'].output_subdir_by_title is True
     assert captured['options'].proxy_url == 'http://127.0.0.1:7890'
-    assert captured['options'].web_use_browser_cookies is True
+    assert captured['options'].web_use_browser_cookies is False
+
+
+def test_build_web_options_defaults_browser_cookies_off_for_scan():
+    tab_module = load_tab_module()
+    module = load_module()
+    tab_class = tab_module.build_video_downloader_tab_class({
+        'QWidget': object,
+        'QVBoxLayout': object,
+        'QHBoxLayout': object,
+        'QScrollArea': object,
+        'QFrame': object,
+        'QLabel': object,
+        'QLineEdit': object,
+        'QPushButton': object,
+        'QPlainTextEdit': object,
+        'QProgressBar': object,
+        'QFileDialog': object,
+        'QApplication': object,
+        'QCheckBox': object,
+        'QComboBox': object,
+        'QObject': object,
+        'QThread': None,
+        'Signal': lambda *a, **k: None,
+        'load_setting': lambda *a, **k: '',
+        'save_setting': lambda *a, **k: None,
+        'make_card': lambda *a, **k: None,
+        'make_transparent_row': lambda *a, **k: None,
+        'build_global_scrollbar_style': lambda *a, **k: '',
+        'show_themed_warning': lambda *a, **k: None,
+        'show_themed_error': lambda *a, **k: None,
+        'show_themed_success': lambda *a, **k: None,
+        'style_combo_popup': lambda *a, **k: None,
+        'get_video_downloader_module': lambda: module,
+        'ROOT': ROOT,
+        'VIDEO_DOWNLOADER_DIR': ROOT,
+    })
+
+    class DummyTab:
+        proxy_host_edit = types.SimpleNamespace(text=lambda: '127.0.0.1')
+        proxy_port_edit = types.SimpleNamespace(text=lambda: '7890')
+
+        @staticmethod
+        def _widget_text(widget):
+            return widget.text()
+
+    DummyTab.module = module
+    options = tab_class.build_web_options(DummyTab())
+
+    assert options.proxy_url == 'http://127.0.0.1:7890'
+    assert options.web_use_browser_cookies is False
 
 
 def test_validate_video_downloader_form_rejects_web_link_on_telegram_page():
@@ -2297,7 +2347,7 @@ def test_bilibili_page_scan_uses_html_fallback_before_page_url():
     assert source == 'html'
 
 
-def test_bilibili_page_ytdlp_probe_uses_browser_cookies_by_default():
+def test_bilibili_page_ytdlp_probe_retries_with_browser_cookies_only_after_cookie_error():
     module = load_module()
     wb = load_web_backend()
     sh = load_shared()
@@ -2316,6 +2366,8 @@ def test_bilibili_page_ytdlp_probe_uses_browser_cookies_by_default():
             return False
 
         def extract_info(self, url, download=False):
+            if 'cookiesfrombrowser' not in self.opts:
+                raise RuntimeError('ERROR: [BiliBili] This video needs fresh cookies')
             if not download:
                 return {'title': 'Bili Demo', 'id': 'BV1xx'}
             pathlib.Path(str(self.opts['outtmpl']).replace('%(ext)s', 'mp4')).write_text('ok', encoding='utf-8')
@@ -2348,7 +2400,7 @@ def test_bilibili_page_ytdlp_probe_uses_browser_cookies_by_default():
         wb.shutil.which = original_ffmpeg
 
     assert result['success'] is True
-    assert captured_opts[0].get('cookiesfrombrowser') == ('chrome',)
+    assert 'cookiesfrombrowser' not in captured_opts[0]
     assert any(opts.get('cookiesfrombrowser') == ('chrome',) for opts in captured_opts)
 
 
@@ -3282,6 +3334,17 @@ def test_cookie_browser_name():
     assert wb._cookie_browser_name(None) == ''
 
 
+def test_should_use_browser_cookies_defaults_off_even_for_cookie_sensitive_sites():
+    wb = load_web_backend()
+
+    assert wb._should_use_browser_cookies('https://www.bilibili.com/video/BV1xx', wb.DownloadOptions()) is False
+    assert wb._should_use_browser_cookies('https://www.douyin.com/video/123', wb.DownloadOptions()) is False
+    assert wb._should_use_browser_cookies(
+        'https://www.bilibili.com/video/BV1xx',
+        wb.DownloadOptions(web_use_browser_cookies=True),
+    ) is True
+
+
 def test_clean_ytdlp_error_detail_dedupes_repeated_error_prefixes():
     wb = load_web_backend()
     message = wb._clean_ytdlp_error_detail(RuntimeError(
@@ -3302,7 +3365,7 @@ def test_run_ytdlp_with_cookie_retry_falls_back_without_browser_cookies_when_coo
         return {'ok': True}
 
     result = wb._run_ytdlp_with_cookie_retry(
-        'https://www.bilibili.com/video/BV1xx',
+        'https://example.com/video',
         {'cookiesfrombrowser': ('chrome',)},
         None,
         runner,

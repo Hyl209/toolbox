@@ -237,7 +237,7 @@ def test_validate_word_format_form_accepts_overwrite_docx_without_output_dir():
     assert errors == []
 
 
-def test_collect_base64_image_inputs_filters_supported_images_only():
+def test_collect_base64_file_inputs_collects_top_level_files_only():
     toolbox = load_module()
     with tempfile.TemporaryDirectory() as tmp:
         root = pathlib.Path(tmp)
@@ -246,22 +246,22 @@ def test_collect_base64_image_inputs_filters_supported_images_only():
         nested = root / 'nested'
         nested.mkdir()
         (nested / 'c.webp').write_text('z', encoding='utf-8')
-        paths = toolbox.collect_base64_image_inputs([str(root)])
-    assert [p.name for p in paths] == ['a.png']
+        paths = toolbox.collect_base64_file_inputs([str(root)])
+    assert [p.name for p in paths] == ['a.png', 'b.txt']
 
 
 def test_base64_drop_summary_shows_selected_images():
     toolbox = load_module()
-    assert toolbox.format_base64_drop_summary([]) == '拖入 PNG / JPG / JPEG / WebP / GIF / BMP 图片'
+    assert toolbox.format_base64_drop_summary([]) == '拖入 文件'
     one = toolbox.format_base64_drop_summary([pathlib.Path('cover.png')])
-    assert '已添加 1 个PNG / JPG / JPEG / WebP / GIF / BMP 图片' in one
+    assert '已添加 1 个文件' in one
     assert 'cover' in one
 
 
 def test_validate_base64_form_requires_mode_specific_inputs():
     toolbox = load_module()
     encode_errors = toolbox.validate_base64_form('encode', [], '', '', '')
-    assert '请先添加要转换的图片' in encode_errors
+    assert '请先添加要转换的文件' in encode_errors
     assert '请选择输出目录' in encode_errors
     assert '请输入输出文件名' in encode_errors
     decode_errors = toolbox.validate_base64_form('decode', [], '', '', '')
@@ -354,7 +354,7 @@ def test_validate_video_downloader_form_rejects_invalid_date_and_empty_media_sel
     assert 'Telegram 任务至少要勾选一种下载类型' in errors
 
 
-def test_validate_video_downloader_form_rejects_invalid_web_candidate_index():
+def test_validate_video_downloader_form_ignores_removed_web_candidate_index():
     toolbox = load_module()
     with tempfile.TemporaryDirectory() as tmp:
         errors = toolbox.validate_video_downloader_form(
@@ -372,7 +372,7 @@ def test_validate_video_downloader_form_rejects_invalid_web_candidate_index():
             '0',
             False,
         )
-    assert '网页候选序号 0 必须大于 0' in errors
+    assert errors == []
 
 
 def test_validate_file_sorter_form_requires_existing_folder():
@@ -628,9 +628,8 @@ def test_video_downloader_tab_source_contains_log_recent_limit_and_status_contro
     assert 'class DownloadWorker' in source or 'DownloadWorker' in source
     assert "elif kind == 'tg_scan':" in source or 'tg_scan' in source
     assert "elif kind == 'file':" in source or "kind == 'file'" in source
-    assert 'self.web_candidate_index_edit' in source or 'web_candidate_index_edit' in source
-    assert 'self.web_candidate_mode_combo' in source or 'web_candidate_mode_combo' in source
-    assert "'全部候选'" in source
+    assert 'self.scan_button' in source or 'scan_button' in source
+    assert 'scan_web_candidates' in source
     assert 'self.send_code_button' in source or 'send_code_button' in source
     assert 'self.check_status_button' in source or 'check_status_button' in source
 

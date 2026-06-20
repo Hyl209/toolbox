@@ -432,12 +432,16 @@ def collect_base64_image_inputs(paths: list[str]) -> list[Path]:
     return _load_base64_tab_module().collect_base64_image_inputs(paths)
 
 
+def collect_base64_file_inputs(paths: list[str]) -> list[Path]:
+    return _load_base64_tab_module().collect_base64_file_inputs(paths)
+
+
 def format_base64_drop_summary(files: list[Path]) -> str:
     return _load_base64_tab_module().format_base64_drop_summary(files)
 
 
-def validate_base64_form(mode: str, image_files: list[Path], base64_text: str, output_dir: str, output_name: str) -> list[str]:
-    return _load_base64_tab_module().validate_base64_form(mode, image_files, base64_text, output_dir, output_name)
+def validate_base64_form(mode: str, files: list[Path], base64_text: str, output_dir: str, output_name: str) -> list[str]:
+    return _load_base64_tab_module().validate_base64_form(mode, files, base64_text, output_dir, output_name)
 
 
 def collect_word_format_inputs(paths: list[str]) -> list[Path]:
@@ -487,9 +491,6 @@ def validate_video_downloader_form(
         date_to,
         telegram_include_videos,
         telegram_include_photos,
-        web_candidate_index,
-        web_download_all_candidates,
-        web_candidate_mode=web_candidate_mode,
         get_video_downloader_module=get_video_downloader_module,
     )
 

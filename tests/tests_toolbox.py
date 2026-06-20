@@ -33,7 +33,7 @@ def test_tool_definitions_include_image_convert_pdf_split_video_downloaders_base
     assert '批量命名' in titles
     assert '文件分类' in titles
     assert '重复文件' in titles
-    assert '图片Base64' in titles
+    assert '文件Base64' in titles
 
 
 def test_get_image_convert_module_loads_converter_helpers():
@@ -62,6 +62,7 @@ def test_get_video_downloader_module_loads_converter_helpers():
 def test_get_base64_module_loads_converter_helpers():
     toolbox = load_module()
     module = toolbox.get_base64_module()
+    assert hasattr(module, 'encode_file_to_base64')
     assert hasattr(module, 'encode_image_to_base64')
     assert hasattr(module, 'decode_base64_to_file')
 
@@ -721,7 +722,7 @@ def test_main_window_sidebar_includes_all_builtin_tools():
         window, app = toolbox.build_main_window_for_test(tmp)
         try:
             sidebar_titles = [window.sidebar.item(i).text() for i in range(window.sidebar.count())]
-            for title in ('图片格式互转', 'PDF工具', 'TG下载', '网页视频下载', '批量命名', '文件分类', '重复文件', '图片Base64'):
+            for title in ('图片格式互转', 'PDF工具', 'TG下载', '网页视频下载', '批量命名', '文件分类', '重复文件', '文件Base64'):
                 assert title in sidebar_titles
             assert window.stack.count() >= 11
         finally:
@@ -893,12 +894,9 @@ def test_web_video_downloader_tab_properties():
             assert tab.task_edit.minimumHeight() == 150
             assert tab.log.minimumHeight() == 110
             assert tab.progress_label.text() == '等待开始'
-            assert tab.web_candidate_index_edit is not None
-            assert tab.web_candidate_mode_combo is not None
-            assert tab.web_candidate_mode_combo.currentText() == '自动'
-            assert tab.web_candidate_index_edit.isEnabled() is False
-            assert tab._resolve_candidate_mode() == 'auto'
-            assert tab._web_candidate_mode_value() == 'auto'
+            assert tab.scan_button is not None
+            assert getattr(tab, 'web_candidate_index_edit', None) is None
+            assert getattr(tab, 'web_candidate_mode_combo', None) is None
             tab.set_busy(True)
             assert tab.run_button.isHidden() is True
             assert tab.scan_button.isHidden() is True
@@ -951,7 +949,7 @@ def test_web_video_downloader_task_rename_emits_change():
             app.quit()
 
 
-def test_web_video_downloader_migrates_legacy_all_candidates_setting():
+def test_web_video_downloader_ignores_legacy_all_candidates_setting():
     toolbox = load_module()
     if toolbox.QWidget is None:
         return
@@ -961,8 +959,8 @@ def test_web_video_downloader_migrates_legacy_all_candidates_setting():
         window, app = toolbox.build_main_window_for_test(tmp)
         try:
             tab = window.web_video_downloader_tab
-            assert tab._web_candidate_mode_value() == 'all'
-            assert tab.web_candidate_index_edit.isEnabled() is False
+            assert getattr(tab, '_web_candidate_mode_value', None) is None
+            assert getattr(tab, 'web_candidate_index_edit', None) is None
         finally:
             window.close()
             app.quit()
@@ -1076,8 +1074,8 @@ def test_same_tab_and_base64_tab_properties():
             assert window.same_tab.move_button.isEnabled() is False
             assert window.same_tab.recursive_checkbox.isChecked() is True
             assert window.base64_tab.mode_combo.minimumWidth() == 144
-            assert window.base64_tab.mode_combo.itemText(0) == '图片转Base64'
-            assert window.base64_tab.mode_combo.itemText(1) == 'Base64转图片'
+            assert window.base64_tab.mode_combo.itemText(0) == '文件转Base64'
+            assert window.base64_tab.mode_combo.itemText(1) == 'Base64转文件'
             assert not window.base64_tab.mode_combo.isEditable()
             popup = window.base64_tab.mode_combo.view()
             assert popup.objectName() == 'comboPopupView'

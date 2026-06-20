@@ -2,27 +2,43 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from toolbox_app.tab_utils import collect_inputs_by_suffix, format_drop_summary
+from toolbox_app.tab_utils import format_drop_summary
 
 
-_BASE64_SUFFIXES = {'.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'}
+_IMAGE_SUFFIXES = {'.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'}
+
+
+def collect_base64_file_inputs(paths: list[str]) -> list[Path]:
+    files: dict[Path, None] = {}
+    for raw in paths:
+        path = Path(raw).resolve()
+        try:
+            if path.is_file():
+                files[path] = None
+            elif path.is_dir():
+                for item in sorted(path.iterdir()):
+                    if item.is_file():
+                        files[item.resolve()] = None
+        except OSError:
+            continue
+    return sorted(files)
 
 
 def collect_base64_image_inputs(paths: list[str]) -> list[Path]:
-    return collect_inputs_by_suffix(paths, _BASE64_SUFFIXES, recursive=False)
+    return collect_base64_file_inputs(paths)
 
 
 def format_base64_drop_summary(files: list[Path]) -> str:
-    return format_drop_summary(files, 'PNG / JPG / JPEG / WebP / GIF / BMP 图片')
+    return format_drop_summary(files, '文件')
 
 
-def validate_base64_form(mode: str, image_files: list[Path], base64_text: str, output_dir: str, output_name: str) -> list[str]:
+def validate_base64_form(mode: str, files: list[Path], base64_text: str, output_dir: str, output_name: str) -> list[str]:
     errors: list[str] = []
     if mode == 'encode':
-        if not image_files:
-            errors.append('请先添加要转换的图片')
-        elif len(image_files) != 1:
-            errors.append('图片转 Base64 仅支持单张图片')
+        if not files:
+            errors.append('请先添加要转换的文件')
+        elif len(files) != 1:
+            errors.append('文件转 Base64 仅支持单个文件')
         if not output_dir.strip():
             errors.append('请选择输出目录')
     else:
@@ -37,6 +53,8 @@ def validate_base64_form(mode: str, image_files: list[Path], base64_text: str, o
 
 def get_base64_mode_value(label: str) -> str:
     mapping = {
+        '文件转Base64': 'encode',
+        'Base64转文件': 'decode',
         '图片转Base64': 'encode',
         'Base64转图片': 'decode',
     }
@@ -82,13 +100,13 @@ def build_base64_tab_class(deps: dict[str, object]):
             self.current_theme = load_setting(settings, 'ui/theme', 'dark')
             self.files: list[Path] = []
             root = QVBoxLayout(self)
-            card, layout = make_card('图片Base64', '支持图片转 Base64 / Data URL，或把 Base64 还原为图片')
-            self.drop_zone = DropZoneCard('拖入 PNG / JPG / JPEG / WebP / GIF / BMP 图片', self.add_paths)
+            card, layout = make_card('文件Base64', '支持任意文件转 Base64 / Data URL，或把 Base64 还原为文件')
+            self.drop_zone = DropZoneCard('拖入任意文件', self.add_paths)
             layout.addWidget(self.drop_zone)
             mode_row_widget, mode_row = make_transparent_row()
             mode_row.addWidget(QLabel('模式'))
             self.mode_combo = QComboBox()
-            self.mode_combo.addItems(['图片转Base64', 'Base64转图片'])
+            self.mode_combo.addItems(['文件转Base64', 'Base64转文件'])
             self.mode_combo.setMinimumWidth(144)
             style_combo_popup(self.mode_combo, load_setting(settings, 'ui/theme', 'dark'))
             self.mode_combo.currentTextChanged.connect(self.update_mode_ui)
@@ -99,7 +117,7 @@ def build_base64_tab_class(deps: dict[str, object]):
             layout.addWidget(mode_row_widget)
             layout.addWidget(QLabel('Base64 编码内容'))
             self.base64_edit = QPlainTextEdit()
-            self.base64_edit.setPlaceholderText('可直接粘贴 Base64 或 Data URL（data:image/...;base64,...）')
+            self.base64_edit.setPlaceholderText('可直接粘贴 Base64 或 Data URL（data:...;base64,...）')
             self.base64_edit.setMinimumHeight(150)
             self.base64_edit.setStyleSheet(build_global_scrollbar_style())
             layout.addWidget(self.base64_edit)
@@ -138,24 +156,21 @@ def build_base64_tab_class(deps: dict[str, object]):
             style_combo_popup(self.mode_combo, theme_name if theme_name in {'dark', 'light'} else 'dark')
 
         def add_paths(self, paths: list[str]):
-            files = collect_base64_image_inputs(paths)
+            files = collect_base64_file_inputs(paths)
             if not files:
-                self.log.appendPlainText('没有新增图片')
+                self.log.appendPlainText('没有新增文件')
                 return
             picked = files[0].resolve()
             self.files = [picked]
             if not self.output_name_edit.text().strip() or self.output_name_edit.text().strip() == 'output':
                 self.output_name_edit.setText(picked.stem)
-            self.drop_zone.set_preview_image(
-                str(picked),
-                header_text='',
-                body_text=picked.name,
-            )
+            preview = self.drop_zone.set_preview_image if picked.suffix.lower() in _IMAGE_SUFFIXES else self.drop_zone.set_preview_file_icon
+            preview(str(picked), header_text='', body_text=picked.name)
             self.log.appendPlainText(picked.name)
 
         def clear_form(self):
             self.clear_files(self.drop_zone, format_base64_drop_summary([]))
-            if self.mode_combo.currentText() == '图片转Base64':
+            if get_base64_mode_value(self.mode_combo.currentText()) == 'encode':
                 self.base64_edit.clear()
 
         def update_mode_ui(self, label: str):
@@ -168,8 +183,8 @@ def build_base64_tab_class(deps: dict[str, object]):
                 self.base64_edit.setPlaceholderText('编码结果会显示在这里，可继续保存为 TXT')
                 self.run_button.setText('生成 Base64 编码')
             else:
-                self.base64_edit.setPlaceholderText('可直接粘贴 Base64 或 Data URL（data:image/...;base64,...）')
-                self.run_button.setText('还原图片')
+                self.base64_edit.setPlaceholderText('可直接粘贴 Base64 或 Data URL（data:...;base64,...）')
+                self.run_button.setText('还原文件')
 
         def run_action(self):
             mode = get_base64_mode_value(self.mode_combo.currentText())
@@ -186,14 +201,14 @@ def build_base64_tab_class(deps: dict[str, object]):
 
             def do_action():
                 if mode == 'encode':
-                    image_path = self.files[0]
-                    encoded = service.encode(image_path, data_url=self.data_url_checkbox.isChecked())
+                    file_path = self.files[0]
+                    encoded = service.encode(file_path, data_url=self.data_url_checkbox.isChecked())
                     self.base64_edit.setPlainText(encoded)
                     out = service.save_text(encoded, output_dir, output_name)
                     self.log.appendPlainText(f'OK base64 -> {out}')
                 else:
                     out = service.decode(base64_text, output_dir, output_name)
-                    self.log.appendPlainText(f'OK image -> {out}')
+                    self.log.appendPlainText(f'OK file -> {out}')
                 return True
 
             result = self.run_action_with_error_handling('处理', do_action, 'Base64 处理完成', clear_on_success=False)
