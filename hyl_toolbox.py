@@ -121,6 +121,7 @@ MP4_DIR = ROOT / 'modules' / 'audio-extractor'
 IMAGE_CONVERT_DIR = ROOT / 'modules' / 'image-converter'
 PDF_TOOLS_DIR = ROOT / 'modules' / 'pdf-tools'
 VIDEO_DOWNLOADER_DIR = ROOT / 'modules' / 'video-downloader'
+DIRECT_DOWNLOADER_DIR = ROOT / 'modules' / 'direct-downloader'
 BASE64_DIR = ROOT / 'modules' / 'base64'
 NAME_DIR = ROOT / 'modules' / 'batch-rename'
 FILE_SORTER_DIR = ROOT / 'modules' / 'file-sorter'
@@ -233,6 +234,8 @@ _load_image_convert_module = lambda: _load_dynamic('image_convert')
 _load_pdf_tools_module = lambda: _load_dynamic('pdf_tools')
 _load_video_downloader_module = lambda: _load_dynamic('video_downloader')
 _load_video_downloader_tab_module = lambda: _load_dynamic('video_downloader_tab')
+_load_direct_downloader_module = lambda: _load_dynamic('directdownloader')
+_load_direct_downloader_tab_module = lambda: _load_dynamic('directdownloader_tab')
 _load_file_sorter_module = lambda: _load_dynamic('file_sorter')
 _load_file_sorter_tab_module = lambda: _load_dynamic('file_sorter_tab')
 _load_name_module = lambda: _load_dynamic('name')
@@ -319,6 +322,10 @@ def get_pdf_tools_module():
 
 def get_video_downloader_module():
     return _load_video_downloader_module()
+
+
+def get_direct_downloader_module():
+    return _load_direct_downloader_module()
 
 
 def get_file_sorter_module():
@@ -728,6 +735,31 @@ if QWidget is not None:
         'ROOT': ROOT,
         'VIDEO_DOWNLOADER_DIR': VIDEO_DOWNLOADER_DIR,
     })
+    DirectDownloaderTab = LazyTabClass(_load_direct_downloader_tab_module, 'build_direct_downloader_tab_class', {
+        'QWidget': QWidget,
+        'QVBoxLayout': QVBoxLayout,
+        'QHBoxLayout': QHBoxLayout,
+        'QLineEdit': QLineEdit,
+        'QPushButton': QPushButton,
+        'QLabel': QLabel,
+        'QCheckBox': QCheckBox,
+        'QPlainTextEdit': QPlainTextEdit,
+        'QFileDialog': QFileDialog,
+        'QScrollArea': QScrollArea,
+        'QObject': QObject,
+        'QThread': QThread,
+        'Signal': Signal,
+        'load_setting': load_setting,
+        'save_setting': save_setting,
+        'make_card': make_card,
+        'make_transparent_row': make_transparent_row,
+        'build_global_scrollbar_style': build_global_scrollbar_style,
+        'show_themed_warning': show_themed_warning,
+        'show_themed_error': show_themed_error,
+        'show_themed_success': show_themed_success,
+        'get_direct_downloader_module': get_direct_downloader_module,
+        'ROOT': ROOT,
+    })
     MusicTab = LazyTabClass(_load_music_tab_module, 'build_music_tab_class', {
         'QWidget': QWidget,
         'QVBoxLayout': QVBoxLayout,
@@ -940,6 +972,7 @@ if QWidget is not None:
         'pdftools': PdfToolsTab,
         'tgdownloader': VideoDownloaderTab,
         'webvideodownloader': VideoDownloaderTab,
+        'directdownloader': DirectDownloaderTab,
         'batchrename': BatchRenameTab,
         'filesorter': FileSorterTab,
         'same': SameTab,

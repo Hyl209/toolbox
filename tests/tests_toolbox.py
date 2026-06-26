@@ -59,6 +59,14 @@ def test_get_video_downloader_module_loads_converter_helpers():
     assert hasattr(module, 'download_batch')
 
 
+def test_get_direct_downloader_module_loads_converter_helpers():
+    toolbox = load_module()
+    module = toolbox.get_direct_downloader_module()
+    assert hasattr(module, 'parse_url_lines')
+    assert hasattr(module, 'build_aria2_command')
+    assert hasattr(module, 'DirectDownloadOptions')
+
+
 def test_get_base64_module_loads_converter_helpers():
     toolbox = load_module()
     module = toolbox.get_base64_module()
@@ -102,6 +110,13 @@ def test_video_downloader_modules_live_under_video_downloader_directory():
     assert toolbox.VIDEO_DOWNLOADER_DIR.name == 'video-downloader'
     assert (ROOT / 'modules' / 'video-downloader' / 'converter.py').exists()
     assert (ROOT / 'modules' / 'video-downloader' / 'tab.py').exists()
+
+
+def test_direct_downloader_modules_live_under_direct_downloader_directory():
+    toolbox = load_module()
+    assert toolbox.DIRECT_DOWNLOADER_DIR.name == 'direct-downloader'
+    assert (ROOT / 'modules' / 'direct-downloader' / 'converter.py').exists()
+    assert (ROOT / 'modules' / 'direct-downloader' / 'tab.py').exists()
 
 
 def test_get_same_module_loads_duplicate_helpers():

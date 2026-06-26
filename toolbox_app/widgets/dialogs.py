@@ -113,6 +113,8 @@ _active_audio_players: list = []
 
 
 def show_themed_success(parent, title: str, lines: list[str]):
+    if isinstance(lines, str):
+        lines = [line for line in lines.splitlines() if line.strip()] or [lines]
     if QMediaPlayer is not None and _SOUND_PATH.exists():
         try:
             player = QMediaPlayer()

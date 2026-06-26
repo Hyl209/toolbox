@@ -37,6 +37,8 @@ a = Analysis(
         ('modules/video-downloader/tab_workers.py', 'modules/video-downloader'),
         ('modules/video-downloader/tab_panels.py', 'modules/video-downloader'),
         ('modules/video-downloader/__init__.py', 'modules/video-downloader'),
+        ('modules/direct-downloader/converter.py', 'modules/direct-downloader'),
+        ('modules/direct-downloader/tab.py', 'modules/direct-downloader'),
         ('modules/batch-rename/converter.py', 'modules/batch-rename'),
         ('modules/batch-rename/tab.py', 'modules/batch-rename'),
         ('modules/file-sorter/converter.py', 'modules/file-sorter'),

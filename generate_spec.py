@@ -133,5 +133,5 @@ exe = EXE(
 if __name__ == '__main__':
     spec_content = generate_spec()
     spec_path = Path(__file__).resolve().parent / 'HylToolbox.spec'
-    spec_path.write_text(spec_content, encoding='utf-8')
+    spec_path.write_text(spec_content, encoding='utf-8', newline='\n')
     print(f'Generated {spec_path}')

@@ -4,7 +4,7 @@
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
 [![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)]()
 
-PySide6 桌面工具箱，集成 19 种常用文件处理工具，支持暗色/亮色主题切换，自定义无边框窗口。
+PySide6 桌面工具箱，集成 20 种常用文件处理工具，支持暗色/亮色主题切换，自定义无边框窗口。
 
 ## 功能一览
 
@@ -18,6 +18,7 @@ PySide6 桌面工具箱，集成 19 种常用文件处理工具，支持暗色/�
 | Word排版统一 | 统一页面设置、标题、正文与表格样式 |
 | TG 下载 | Telegram 频道/群组视频下载，登录区可折叠 |
 | 网页视频下载 | 支持 yt-dlp / aria2c 加速，识别后自动添加到任务区，支持 hover 高亮和 × 删除单条 |
+| 直链下载 | 支持粘贴普通直链或完整 `aria2c ... --header ...` 命令，保留 Cookie / Referer 等请求头，多连接下载网盘直链 |
 | 批量命名 | 正则、序号、模板批量重命名 |
 | 文件分类 | 按类型/扩展名自动归档 |
 | 重复文件 | 精确哈希 + 视频指纹检测 |
@@ -46,6 +47,16 @@ python hyl_toolbox.py
 ```
 
 Windows 用户也可双击 `启动工具箱.bat` 直接运行。
+
+## 直链下载
+
+`直链下载` 模块适合配合 LinkSwift 等工具下载网盘真实直链：
+
+- 输入框支持每行一个 `http/https` 直链。
+- 也支持直接粘贴油猴脚本复制出的完整 `aria2c "https://..." --out "file.rar" --header "Cookie:..."` 命令。
+- 会保留命令中的 `--out`、`User-Agent`、`Referer`、`Cookie` 等参数，并使用内置 aria2c 下载。
+- 可设置连接数、代理、覆盖同名文件，并可勾选“按文件名建文件夹”把文件下载到同名子目录。
+- 日志区会原地刷新 aria2 进度，避免进度日志刷屏。
 
 ## 打包发布
 
@@ -83,7 +94,7 @@ hyl-toolbox/
 │   ├── plugins/                # 插件系统
 │   └── window.py               # 主窗口
 │
-├── modules/                    # 11 个工具模块
+├── modules/                    # 12 个工具模块
 │   ├── ncm-converter/
 │   ├── file-disguise/
 │   ├── audio-extractor/
@@ -91,6 +102,7 @@ hyl-toolbox/
 │   ├── pdf-tools/
 │   ├── word-formatter/
 │   ├── video-downloader/       # 含 TG + 网页下载
+│   ├── direct-downloader/      # aria2 直链下载
 │   ├── batch-rename/
 │   ├── file-sorter/
 │   ├── duplicate-finder/
@@ -138,7 +150,7 @@ def build_xxx_tab_class(deps: dict):
 | PDF 处理 | PyMuPDF, pypdf, pdf2image |
 | 图片处理 | Pillow |
 | 音频处理 | mutagen, ncmdump |
-| 视频下载 | yt-dlp, aria2c, Telethon |
+| 下载 | yt-dlp, aria2c, Telethon |
 | OCR | pytesseract |
 | 打包 | PyInstaller |
 | 测试 | pytest |
