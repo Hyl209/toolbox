@@ -712,7 +712,8 @@ def test_bottom_left_button_order_places_avatar_theme_and_hint_buttons():
         assert bottom_layout.itemAt(2).widget() is window.hint_button
         assert window.hint_button.text() == '❕'
         assert window.hint_button.toolTip() == '赞赏'
-        assert window.theme_button.toolTip() in {'切换为亮色主题', '切换为暗色主题'}
+        assert not hasattr(window, 'custom_theme_button')
+        assert window.theme_button.toolTip() in {'切换为白天主题', '切换为夜晚主题', '切换为自定义配色'}
 
 
 def test_build_user_menu_state_exposes_avatar_button_and_roomier_popup_style():
@@ -999,12 +1000,13 @@ def test_video_downloader_embed_thumbnail_without_source_url_starts_worker_when_
             def fake_get_open_file_names(*_args, **_kwargs):
                 return [str(video_path)], ''
 
-            def fake_embed_thumbnail(path, source_url, progress_cb=None, candidate_index=None, thumbnail_mode='web_then_frame'):
+            def fake_embed_thumbnail(path, source_url, progress_cb=None, candidate_index=None, thumbnail_mode='web_then_frame', proxy_url=''):
                 embed_calls.append({
                     'path': path,
                     'source_url': source_url,
                     'candidate_index': candidate_index,
                     'thumbnail_mode': thumbnail_mode,
+                    'proxy_url': proxy_url,
                 })
                 if progress_cb is not None:
                     progress_cb(f'补封面 1/1: {pathlib.Path(path).name}')
@@ -1039,6 +1041,7 @@ def test_video_downloader_embed_thumbnail_without_source_url_starts_worker_when_
             assert len(embed_calls) == 1
             assert embed_calls[0]['source_url'] == ''
             assert embed_calls[0]['thumbnail_mode'] == 'frame'
+            assert embed_calls[0]['proxy_url'] == ''
             assert finalized and finalized[0][0]['success'] is True
             assert tab.thumbnail_worker is None
             assert tab.thumbnail_worker_thread is None
@@ -1251,29 +1254,119 @@ def test_toolbox_window_tabs_do_not_grow_window_height_when_pyside_available():
             app.quit()
 
 
-def test_theme_toggle_switches_dark_light():
-    """测试主题切换 dark <-> light"""
+def test_theme_toggle_cycles_light_dark_custom_light():
+    """测试主题切换 light -> dark -> custom -> light"""
+    toolbox = load_module()
+    if toolbox.QWidget is None:
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        settings = toolbox.make_settings(tmp)
+        toolbox.save_setting(settings, 'ui/theme', 'light')
+        toolbox.save_setting(settings, 'ui/custom_theme_enabled', '0')
+        app = toolbox.QApplication.instance() or toolbox.QApplication([])
+        window = toolbox.ToolboxWindow(settings, 'admin')
+        window.show()
+        app.processEvents()
+        try:
+            assert window.current_theme == 'light'
+            assert window.custom_theme_enabled is False
+            assert window.theme_button.text() == '🌙'
+            assert window.theme_button.toolTip() == '切换为夜晚主题'
+
+            window.toggle_theme()
+            app.processEvents()
+            assert window.current_theme == 'dark'
+            assert window.custom_theme_enabled is False
+            assert toolbox.load_setting(window.settings, 'ui/theme', '') == 'dark'
+            assert toolbox.load_setting(window.settings, 'ui/custom_theme_enabled', '1') == '0'
+            assert window.theme_button.text() == '☀️'
+            assert window.theme_button.toolTip() == '切换为自定义配色'
+
+            window.toggle_theme()
+            app.processEvents()
+            assert window.current_theme == 'dark'
+            assert window.custom_theme_enabled is True
+            assert toolbox.load_setting(window.settings, 'ui/theme', '') == 'dark'
+            assert toolbox.load_setting(window.settings, 'ui/custom_theme_enabled', '0') == '1'
+            assert window.theme_button.text() == '🎨'
+            assert window.theme_button.toolTip() == '切换为白天主题'
+
+            window.toggle_theme()
+            app.processEvents()
+            assert window.current_theme == 'light'
+            assert window.custom_theme_enabled is False
+            assert toolbox.load_setting(window.settings, 'ui/theme', '') == 'light'
+            assert toolbox.load_setting(window.settings, 'ui/custom_theme_enabled', '1') == '0'
+            assert window.theme_button.text() == '🌙'
+            assert window.theme_button.toolTip() == '切换为夜晚主题'
+        finally:
+            window.close()
+            app.quit()
+
+
+
+def test_toggle_custom_theme_persists_state_without_sidebar_button():
     toolbox = load_module()
     if toolbox.QWidget is None:
         return
     with tempfile.TemporaryDirectory() as tmp:
         window, app = toolbox.build_main_window_for_test(tmp)
         try:
-            initial = window.current_theme
-            window.toggle_theme()
+            assert window.custom_theme_enabled is False
+            assert not hasattr(window, 'custom_theme_button')
+
+            window.toggle_custom_theme()
             app.processEvents()
-            assert window.current_theme == ('light' if initial == 'dark' else 'dark')
-            window.toggle_theme()
+            assert toolbox.load_setting(window.settings, 'ui/custom_theme_enabled', '0') == '1'
+            assert window.theme_button.toolTip() == '切换为白天主题'
+
+            window.toggle_custom_theme()
             app.processEvents()
-            assert window.current_theme == initial
-            expected_icon = '☀️' if window.current_theme == 'dark' else '🌙'
-            assert window.theme_button.text() == expected_icon
-            assert window.theme_button.toolTip() == (
-                '切换为亮色主题' if window.current_theme == 'dark' else '切换为暗色主题'
-            )
+            assert toolbox.load_setting(window.settings, 'ui/custom_theme_enabled', '1') == '0'
+            assert window.theme_button.toolTip() == '切换为自定义配色'
         finally:
             window.close()
             app.quit()
+
+
+def test_settings_dialog_custom_theme_switch_persists_and_controls_swatches():
+    toolbox = load_module()
+    if toolbox.QWidget is None:
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        app = toolbox.QApplication.instance() or toolbox.QApplication([])
+        settings = toolbox.make_settings(tmp)
+        dialog = toolbox.SettingsDialog(settings, None, None)
+        try:
+            assert dialog._custom_theme_checkbox.isChecked() is False
+            assert dialog.custom_theme_enabled is False
+            assert all(not swatch.isEnabled() for swatch in dialog._theme_swatches.values())
+
+            dialog._custom_theme_checkbox.setChecked(True)
+            app.processEvents()
+            assert dialog.custom_theme_enabled is True
+            assert all(swatch.isEnabled() for swatch in dialog._theme_swatches.values())
+            dialog._save_and_close()
+            assert toolbox.load_setting(settings, 'ui/custom_theme_enabled', '0') == '1'
+        finally:
+            dialog.close()
+            app.processEvents()
+
+        dialog = toolbox.SettingsDialog(settings, None, None)
+        try:
+            assert dialog._custom_theme_checkbox.isChecked() is True
+            assert dialog.custom_theme_enabled is True
+            assert all(swatch.isEnabled() for swatch in dialog._theme_swatches.values())
+
+            dialog._custom_theme_checkbox.setChecked(False)
+            app.processEvents()
+            assert dialog.custom_theme_enabled is False
+            assert all(not swatch.isEnabled() for swatch in dialog._theme_swatches.values())
+            dialog._save_and_close()
+            assert toolbox.load_setting(settings, 'ui/custom_theme_enabled', '1') == '0'
+        finally:
+            dialog.close()
+            app.processEvents()
 
 
 def test_settings_dialog_reuses_plugin_metadata_and_ignores_invalid_nav_rows():

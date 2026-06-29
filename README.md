@@ -140,7 +140,12 @@ def build_xxx_tab_class(deps: dict):
 
 ### 主题系统
 
-全局 QSS 样式 (`themes/dark.qss` + `light.qss`)，主窗口 `toggle_theme()` 遍历所有 tab 调用 `apply_theme()` 协议。
+全局 QSS 样式 (`themes/dark.qss` + `light.qss`)，支持三种模式：
+- **白天模式** (light) — 使用 `light.qss` 默认配色
+- **夜晚模式** (dark) — 使用 `dark.qss` 默认配色
+- **自定义模式** — 独立于白天/夜晚，可自定义 7 个颜色区域（窗口背景、面板背景、卡片背景、强调色、主文字、次文字、输入框背景）
+
+侧栏底部按钮：☀️/🌙 切换白天夜晚，🎨 切换自定义模式开关。
 
 ## 技术栈
 

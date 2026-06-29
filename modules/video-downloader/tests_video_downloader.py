@@ -722,6 +722,33 @@ def test_download_web_concurrent_passes_current_token_to_workers():
         wb._run_web_task = original_run
 
 
+def test_download_batch_exposes_token_to_telegram_backend():
+    module = load_module()
+    _ensure_package()
+    tg = sys.modules[f'{_PKG_NAME}.telegram_backend']
+    sp = sys.modules[f'{_PKG_NAME}.source_parser']
+    original_download = tg._download_telegram_entries
+    token = module.Token()
+    seen = []
+    try:
+        async def fake_download(entries, output_root, config, options, progress_cb, total_tasks=0):
+            seen.append(sp._current_token())
+            return {
+                index: load_progress()._make_result(task, True, [], '')
+                for index, task in entries
+            }
+
+        tg._download_telegram_entries = fake_download
+        config = module.TelegramConfig('1', 'hash', '+123', 'telegram.session')
+        tasks = [module.DownloadTask('https://t.me/demo/1', 'telegram_message', 'demo')]
+        with tempfile.TemporaryDirectory() as tmp:
+            module.download_batch(tasks, tmp, config, module.DownloadOptions(), token=token)
+        assert seen == [token]
+    finally:
+        tg._download_telegram_entries = original_download
+        sp._set_current_token(None)
+
+
 def test_make_telegram_progress_callback_emits_speed_and_eta():
     pr = load_progress()
     captured: list[str] = []

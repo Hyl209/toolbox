@@ -38,6 +38,7 @@ from .progress import (
 )
 from .source_parser import (
     _check_cancel,
+    _set_current_token,
     _coerce_tasks, validate_download_request,
     normalize_proxy_url, parse_task_lines,
     classify_source,
@@ -894,6 +895,8 @@ def download_batch(
     task_list = _coerce_tasks(tasks)
     config = telegram_config
     download_options = options or DownloadOptions()
+    if token is not None:
+        _set_current_token(token)
     errors = validate_download_request(
         task_list,
         str(output_dir),

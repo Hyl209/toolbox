@@ -67,6 +67,7 @@ def build_toolbox_window_class(deps: dict):
             self.settings = settings
             self.authenticated_username = authenticated_username.strip() or load_setting(settings, 'auth/last_user', '')
             self.current_theme = load_setting(settings, 'ui/theme', 'dark')
+            self.custom_theme_enabled = load_setting(settings, 'ui/custom_theme_enabled', '0') == '1'
             self._drag_offset = None
             self._normal_geometry = None
             self._resize_margin = 8
@@ -112,11 +113,11 @@ def build_toolbox_window_class(deps: dict):
             sub.setProperty('brandSub', True)
             side_layout.addWidget(brand)
             side_layout.addWidget(sub)
-            self.theme_button = QPushButton('☀️' if self.current_theme == 'dark' else '🌙')
+            self.theme_button = QPushButton()
             self.theme_button.setProperty('themeToggle', True)
             self.theme_button.setMinimumSize(44, 44)
             self.theme_button.setMaximumSize(44, 44)
-            self._update_theme_button_tooltip()
+            self._update_theme_button_state()
             self.theme_button.clicked.connect(self.toggle_theme)
             disabled_tools_str = load_setting(settings, 'tools/disabled', '')
             self._disabled_tools = set(disabled_tools_str.split(',')) if disabled_tools_str.strip() else set()
@@ -593,6 +594,8 @@ def build_toolbox_window_class(deps: dict):
             dialog = SettingsDialog(self.settings, self._plugin_manager, self)
             if dialog.exec() == SettingsDialog.Accepted:
                 self._apply_sidebar_order(self.settings)
+                self.custom_theme_enabled = load_setting(self.settings, 'ui/custom_theme_enabled', '0') == '1'
+                self._update_theme_button_state()
                 self.refresh_theme_style()
 
         def _apply_sidebar_order(self, settings):
@@ -723,50 +726,131 @@ def build_toolbox_window_class(deps: dict):
             self.update_window_controls()
 
         def toggle_theme(self):
-            self.current_theme = 'light' if self.current_theme == 'dark' else 'dark'
+            next_mode = self._next_theme_mode()
+            if next_mode == 'light':
+                self.current_theme = 'light'
+                self.custom_theme_enabled = False
+            elif next_mode == 'dark':
+                self.current_theme = 'dark'
+                self.custom_theme_enabled = False
+            else:
+                self.custom_theme_enabled = True
             save_setting(self.settings, 'ui/theme', self.current_theme)
-            self.theme_button.setText('☀️' if self.current_theme == 'dark' else '🌙')
-            self._update_theme_button_tooltip()
+            save_setting(self.settings, 'ui/custom_theme_enabled', '1' if self.custom_theme_enabled else '0')
+            self._update_theme_button_state()
             # Generic: iterate all tabs, call apply_theme if available
             for i in range(self.stack.count()):
                 page = self.stack.widget(i)
                 if hasattr(page, 'apply_theme'):
                     page.apply_theme(self.current_theme)
             self.setStyleSheet(get_theme_stylesheet(self.current_theme))
-            self._apply_custom_theme_colors()
+            if self.custom_theme_enabled:
+                self._apply_custom_theme_colors()
             self.content_surface.setGraphicsEffect(None)
             self.update_window_controls()
             self.update_user_menu_ui()
-            # 通知插件主题变更
-            if hasattr(self, '_plugin_manager') and self._plugin_manager is not None:
-                for name, plugin in self._plugin_manager.get_enabled_plugins().items():
-                    try:
-                        plugin.on_theme_change(self.current_theme)
-                    except Exception:
-                        logger.error("插件 on_theme_change 异常: %s", name, exc_info=True)
+            self._notify_plugins_theme_change()
             if hasattr(self, 'user_menu') and self.user_menu.isVisible():
                 self.user_menu.hide()
             if hasattr(self, 'help_popup') and self.help_popup.isVisible():
                 self.hide_help_popup()
 
+        def toggle_custom_theme(self):
+            self.custom_theme_enabled = not self.custom_theme_enabled
+            save_setting(self.settings, 'ui/custom_theme_enabled', '1' if self.custom_theme_enabled else '0')
+            self._update_theme_button_state()
+            if self.custom_theme_enabled:
+                self._apply_custom_theme_colors()
+            else:
+                self.setStyleSheet(get_theme_stylesheet(self.current_theme))
+            self.content_surface.setGraphicsEffect(None)
+            self.update_window_controls()
+            self.update_user_menu_ui()
+            self._notify_plugins_theme_change()
+
+        def _update_custom_theme_button_state(self):
+            self._update_theme_button_state()
+            self._update_custom_theme_button_style()
+
+        def _update_custom_theme_button_style(self):
+            if not hasattr(self, 'custom_theme_button'):
+                return
+            if self.custom_theme_enabled:
+                text_color = '#1f252d' if self.current_theme == 'light' else '#eef2f7'
+                self.custom_theme_button.setStyleSheet(
+                    'QPushButton { '
+                    'background-color: rgba(111, 149, 199, 0.34); '
+                    'border: 1px solid rgba(126, 166, 217, 0.85); '
+                    'border-radius: 19px; '
+                    'padding: 0; '
+                    f'color: {text_color}; '
+                    '} '
+                    'QPushButton:hover { background-color: rgba(111, 149, 199, 0.44); } '
+                    'QPushButton:pressed { background-color: rgba(111, 149, 199, 0.26); }'
+                )
+            else:
+                self.custom_theme_button.setStyleSheet('')
+
         def _apply_custom_theme_colors(self):
-            """Apply custom theme color overrides if any."""
+            """Apply custom theme color overrides if enabled."""
+            if not self.custom_theme_enabled:
+                return
             custom = load_custom_colors(self.settings, self.current_theme)
             def_colors = get_default_colors(self.current_theme)
             overrides = {
                 z: v for z, v in custom.items()
                 if v and v != def_colors.get(z, '')
             }
+            base = get_theme_stylesheet(self.current_theme)
             if overrides:
-                base = get_theme_stylesheet(self.current_theme)
                 qss = generate_qss(base, overrides, self.current_theme)
                 self.setStyleSheet(qss + build_global_scrollbar_style())
+            else:
+                # 所有颜色都是默认值，也要重置掉旧的自定义 QSS
+                self.setStyleSheet(base)
 
         def refresh_theme_style(self):
             """Re-apply theme with custom colors (called after settings dialog closes)."""
-            self._apply_custom_theme_colors()
+            if self.custom_theme_enabled:
+                self._apply_custom_theme_colors()
+            else:
+                self.setStyleSheet(get_theme_stylesheet(self.current_theme))
+
+        def _notify_plugins_theme_change(self):
+            if hasattr(self, '_plugin_manager') and self._plugin_manager is not None:
+                for name, plugin in self._plugin_manager.get_enabled_plugins().items():
+                    try:
+                        plugin.on_theme_change(self.current_theme)
+                    except Exception:
+                        logger.error("插件 on_theme_change 异常: %s", name, exc_info=True)
 
         def _update_theme_button_tooltip(self):
-            self.theme_button.setToolTip('切换为亮色主题' if self.current_theme == 'dark' else '切换为暗色主题')
+            self._update_theme_button_state()
+
+        def _theme_mode(self):
+            if self.custom_theme_enabled:
+                return 'custom'
+            return 'light' if self.current_theme == 'light' else 'dark'
+
+        def _next_theme_mode(self):
+            return {
+                'light': 'dark',
+                'dark': 'custom',
+                'custom': 'light',
+            }[self._theme_mode()]
+
+        def _update_theme_button_state(self):
+            mode = self._theme_mode()
+            next_mode = self._next_theme_mode()
+            self.theme_button.setText({
+                'light': '🌙',
+                'dark': '☀️',
+                'custom': '🎨',
+            }[mode])
+            self.theme_button.setToolTip({
+                'light': '切换为白天主题',
+                'dark': '切换为夜晚主题',
+                'custom': '切换为自定义配色',
+            }[next_mode])
 
     return ToolboxWindow

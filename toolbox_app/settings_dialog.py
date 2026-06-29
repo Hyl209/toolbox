@@ -107,6 +107,7 @@ def build_settings_dialog_class(deps: dict):
             self.settings = settings
             self.plugin_manager = plugin_manager
             self.current_theme = load_setting(settings, 'ui/theme', 'dark')
+            self.custom_theme_enabled = load_setting(settings, 'ui/custom_theme_enabled', '0') == '1'
             self._order_item_role = getattr(Qt, 'UserRole', Qt.ItemDataRole.UserRole)
             self._plugin_infos = self._discover_plugin_infos()
             self._label_map = self._build_label_map()
@@ -462,10 +463,30 @@ def build_settings_dialog_class(deps: dict):
             title = QLabel('主题配色')
             title.setProperty('brandTitle', True)
             layout.addWidget(title)
+            # 自定义主题开关
+            enable_card = QFrame()
+            enable_card.setProperty('card', True)
+            enable_layout = QHBoxLayout(enable_card)
+            enable_layout.setContentsMargins(18, 14, 18, 14)
+            enable_layout.setSpacing(12)
+            enable_text = QVBoxLayout()
+            enable_text.setSpacing(3)
+            enable_title = QLabel('启用自定义主题')
+            enable_title.setProperty('cardTitle', True)
+            enable_text.addWidget(enable_title)
+            enable_desc = QLabel('开启后可自定义颜色，独立于白天/夜晚模式')
+            enable_desc.setProperty('cardSub', True)
+            enable_text.addWidget(enable_desc)
+            enable_layout.addLayout(enable_text, 1)
+            self._custom_theme_checkbox = QCheckBox()
+            self._custom_theme_checkbox.setChecked(self.custom_theme_enabled)
+            self._custom_theme_checkbox.toggled.connect(self._on_custom_theme_toggled)
+            enable_layout.addWidget(self._custom_theme_checkbox, 0, Qt.AlignVCenter)
+            layout.addWidget(enable_card)
             theme_label = '当前：深色主题' if self.current_theme == 'dark' else '当前：浅色主题'
-            hint = QLabel(f'{theme_label}  —  点击色块可自定义颜色，保存后生效。')
-            hint.setProperty('cardSub', True)
-            layout.addWidget(hint)
+            self._theme_hint_label = QLabel(f'{theme_label}  —  点击色块可自定义颜色，保存后生效。')
+            self._theme_hint_label.setProperty('cardSub', True)
+            layout.addWidget(self._theme_hint_label)
             scroll = QScrollArea()
             scroll.setWidgetResizable(True)
             scroll.setFrameShape(QFrame.NoFrame)
@@ -509,6 +530,7 @@ def build_settings_dialog_class(deps: dict):
             btn_row.addWidget(restore_btn)
             layout.addLayout(btn_row)
             self._update_theme_swatches()
+            self._update_theme_page_enabled()
             return page
 
         def _update_theme_swatches(self):
@@ -519,6 +541,20 @@ def build_settings_dialog_class(deps: dict):
                     f'QPushButton {{ background-color: {hex_color}; border: 2px solid rgba(128,128,128,0.3); '
                     f'border-radius: 8px; }} QPushButton:hover {{ border-color: rgba(255,255,255,0.6); }}'
                 )
+
+        def _on_custom_theme_toggled(self, checked: bool):
+            self.custom_theme_enabled = checked
+            self._update_theme_page_enabled()
+
+        def _update_theme_page_enabled(self):
+            enabled = self.custom_theme_enabled
+            for swatch in self._theme_swatches.values():
+                swatch.setEnabled(enabled)
+            if enabled:
+                theme_label = '当前：深色主题' if self.current_theme == 'dark' else '当前：浅色主题'
+                self._theme_hint_label.setText(f'{theme_label}  —  点击色块可自定义颜色，保存后生效。')
+            else:
+                self._theme_hint_label.setText('自定义主题未启用，白天/夜晚模式使用默认配色。')
 
         def _pick_theme_color(self, zone_id: str):
             if QColorDialog is None:
@@ -544,7 +580,8 @@ def build_settings_dialog_class(deps: dict):
             self._apply_theme_preview()
 
         def _save_theme_colors(self):
-            save_custom_colors(self.settings, self.current_theme, self._theme_colors)
+            if self.custom_theme_enabled:
+                save_custom_colors(self.settings, self.current_theme, self._theme_colors)
 
         # ---- logic ----
 
@@ -636,6 +673,8 @@ def build_settings_dialog_class(deps: dict):
                 save_setting(self.settings, 'plugins/disabled', ','.join(sorted(disabled_plugins)))
             order_ids = self._get_current_order_ids()
             save_setting(self.settings, 'sidebar/order', ','.join(order_ids))
+            # 自定义主题
+            save_setting(self.settings, 'ui/custom_theme_enabled', '1' if self.custom_theme_enabled else '0')
             self._save_theme_colors()
             self.accept()
 

@@ -33,6 +33,7 @@ AGENTS.md
 docs/
 
 # Logs / temp files
+.codex-review-registry-tmp/
 *.log
 archive_*.txt
 *.tmp

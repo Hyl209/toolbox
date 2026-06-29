@@ -162,8 +162,10 @@ def build_base64_tab_class(deps: dict[str, object]):
             self.files = [picked]
             if not self.output_name_edit.text().strip() or self.output_name_edit.text().strip() == 'output':
                 self.output_name_edit.setText(picked.stem)
-            preview = self.drop_zone.set_preview_image if picked.suffix.lower() in _IMAGE_SUFFIXES else self.drop_zone.set_preview_file_icon
-            preview(str(picked), header_text='', body_text=picked.name)
+            if picked.suffix.lower() in _IMAGE_SUFFIXES:
+                self.drop_zone.set_preview_image(str(picked), header_text='', body_text=picked.name)
+            else:
+                self.drop_zone.set_preview_file_icon(str(picked), header_text='', body_text=picked.name)
             self.log.appendPlainText(picked.name)
 
         def clear_form(self):
