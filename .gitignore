@@ -1,4 +1,4 @@
-# Python cache
+﻿# Python cache
 __pycache__/
 *.pyc
 *.pyo
@@ -9,6 +9,13 @@ __pycache__/
 .pytest-tmp/
 */.pytest-tmp/
 .codex-pytest-tmp/
+.codex-pytest-tmp*/
+.codex-plugin-*/
+.codex-*-smoke*/
+.codex-*-settings*/
+.codex-review-tmp*/
+.codex-*.json
+.codex-*.ini
 */.codex-pytest-tmp/
 .venv/
 */.venv/
@@ -28,16 +35,20 @@ hyl_toolbox.ini
 users.json
 .claude/
 .hermes/
-测试/
+娴嬭瘯/
 AGENTS.md
 docs/
+.planning/
+*/.planning/
 
 # Logs / temp files
 .codex-review-registry-tmp/
 *.log
+*.log.*
 archive_*.txt
 *.tmp
 *.temp
+desktop-tauri/test-results/
 
 # Media / archives
 *.mp3

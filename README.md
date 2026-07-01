@@ -1,170 +1,107 @@
 # Hyl Toolbox
 
-[![Tests](https://github.com/Hyl209/toolbox/actions/workflows/tests.yml/badge.svg)](https://github.com/Hyl209/toolbox/actions/workflows/tests.yml)
-[![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
-[![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)]()
+Hyl Toolbox 现在以 **Tauri + React** 新版 UI 为主要开发方向。旧版 PyQt / PySide6 前端已进入归档维护状态，仅用于保留历史功能和兼容验证，不再作为主要界面迭代入口。
 
-PySide6 桌面工具箱，集成 20 种常用文件处理工具，支持暗色/亮色主题切换，自定义无边框窗口。
+## 当前主线：新版 Tauri UI
 
-## 功能一览
+新版界面位于：
 
-| 工具 | 说明 |
-|------|------|
-| NCM 转 MP3 | 网易云音乐格式转换 |
-| 图片伪装 | 将文件隐藏到 PNG 图片中 |
-| MP4 转 MP3 | 视频提取音频 |
-| 图片格式互转 | PNG / JPG / WEBP / BMP / ICO 等 |
-| PDF 工具 | 合并、拆分、转图片等 |
-| Word排版统一 | 统一页面设置、标题、正文与表格样式 |
-| TG 下载 | Telegram 频道/群组视频下载，登录区可折叠 |
-| 网页视频下载 | 支持 yt-dlp / aria2c 加速，识别后自动添加到任务区，支持 hover 高亮和 × 删除单条 |
-| 直链下载 | 支持粘贴普通直链或完整 `aria2c ... --header ...` 命令，保留 Cookie / Referer 等请求头，多连接下载网盘直链 |
-| 批量命名 | 正则、序号、模板批量重命名 |
-| 文件分类 | 按类型/扩展名自动归档 |
-| 重复文件 | 精确哈希 + 视频指纹检测 |
-| 图片 Base64 | 编解码互转 |
-| 解压 | ZIP / TAR 等压缩包解压 |
-| 哈希校验 | 计算并校验文件 MD5 / SHA1 / SHA256 |
-| JSON 工具 | 格式化、压缩和校验 JSON 文本 |
-| URL 工具 | URL 编码、解码和查询参数解析 |
-| UUID 工具 | 生成、校验和规范化 UUID |
-| 文本工具 | 清理、去重、排序和转换文本行 |
-| CSV 工具 | 格式化 CSV，转换 TSV 和 JSON |
-| 正则工具 | 正则提取、替换和匹配统计 |
-
-## 快速开始
-
-```bash
-# 克隆仓库
-git clone https://github.com/Hyl209/toolbox.git
-cd toolbox
-
-# 安装依赖
-pip install -r requirements.txt
-
-# 启动
-python hyl_toolbox.py
+```text
+desktop-tauri/
 ```
 
-Windows 用户也可双击 `启动工具箱.bat` 直接运行。
+启动方式：
 
-## 直链下载
-
-`直链下载` 模块适合配合 LinkSwift 等工具下载网盘真实直链：
-
-- 输入框支持每行一个 `http/https` 直链。
-- 也支持直接粘贴油猴脚本复制出的完整 `aria2c "https://..." --out "file.rar" --header "Cookie:..."` 命令。
-- 会保留命令中的 `--out`、`User-Agent`、`Referer`、`Cookie` 等参数，并使用内置 aria2c 下载。
-- 可设置连接数、代理、覆盖同名文件，并可勾选“按文件名建文件夹”把文件下载到同名子目录。
-- 日志区会原地刷新 aria2 进度，避免进度日志刷屏。
-
-## 打包发布
-
-```bash
-python generate_spec.py   # 从工具注册表自动生成 HylToolbox.spec
-pyinstaller HylToolbox.spec
+```powershell
+cd "desktop-tauri"
+.\start-new-ui.bat
 ```
 
-## 测试
+这个脚本会自动判断环境：
 
-```bash
-pip install -r requirements-dev.txt
+- 已安装 `cargo`：启动真正的 Tauri 桌面窗口。
+- 未安装 `cargo`：启动 Web 预览，地址为 `http://127.0.0.1:1420/`。
 
-# 全量 (411 个用例)
-python -m pytest --tb=short -q
+手动启动也可以：
 
-# 单模块
-python -m pytest tests/tests_toolbox.py -q        # 应用主流程
-python -m pytest tests/tests_core.py -q           # 核心模块
-python -m pytest tests/tests_tool_registry.py -q  # 注册表 + spec 一致性
-python -m pytest tests/tests_services.py -q       # 服务层
+```powershell
+cd "desktop-tauri"
+npm run tauri -- dev
 ```
 
-## 项目结构
+只看网页预览：
 
-```
-hyl-toolbox/
-├── hyl_toolbox.py              # 主入口
-├── toolbox_app/                # 核心框架
-│   ├── tool_registry.py        # 工具注册表 (唯一来源)
-│   ├── core/                   # 日志、路径、异常、Worker
-│   ├── task_framework/         # 统一任务框架
-│   ├── services/               # 服务层 (PDF、图片、视频等)
-│   ├── widgets/                # 通用 UI 组件
-│   ├── plugins/                # 插件系统
-│   └── window.py               # 主窗口
-│
-├── modules/                    # 12 个工具模块
-│   ├── ncm-converter/
-│   ├── file-disguise/
-│   ├── audio-extractor/
-│   ├── image-converter/
-│   ├── pdf-tools/
-│   ├── word-formatter/
-│   ├── video-downloader/       # 含 TG + 网页下载
-│   ├── direct-downloader/      # aria2 直链下载
-│   ├── batch-rename/
-│   ├── file-sorter/
-│   ├── duplicate-finder/
-│   └── base64/
-│
-├── config/                     # 配置管理
-├── themes/                     # dark.qss / light.qss
-├── tests/                      # pytest 测试套件
-└── resources/                  # 图标、资源文件
+```powershell
+cd "desktop-tauri"
+npm run dev -- --host 127.0.0.1
 ```
 
-## 架构设计
+## 旧版 PyQt / PySide6 前端
 
-### 工具注册表
+旧版入口仍保留在仓库中，但定位为归档版本：
 
-`toolbox_app/tool_registry.py` 是工具定义的唯一来源。`window.py` 从注册表动态构建侧栏和 Tab，新增工具只需在注册表中添加一条 `ToolDef`。
-
-### Builder + 依赖注入
-
-每个工具模块采用 builder 函数 + deps 字典模式，不直接 import PySide6，方便测试和解耦：
-
-```python
-def build_xxx_tab_class(deps: dict):
-    QWidget = deps['QWidget']
-    class XxxTab(BaseToolTab): ...
-    return XxxTab
+```text
+hyl_toolbox.py
+toolbox_app/
+modules/*/tab.py
+modules/**/GUI 文件
 ```
 
-### 认证系统
+旧版用于：
 
-- `password_policy.py` — 密码策略 (6-64 位 + 含字母 + 含数字)
-- `auth_store.py` — SHA-256 哈希 + salt 存储
-- `auth_preferences.py` — 记住密码、自动登录
-- 默认账号 `admin`，默认密码 `123`
+- 查询历史实现
+- 回归对照
+- 临时使用尚未迁移到 Tauri 的工具
 
-### 主题系统
+默认不再改旧版 PyQt / PySide6 前端。新增 UI、视觉优化、主流程接入优先落到 `desktop-tauri/`。
 
-全局 QSS 样式 (`themes/dark.qss` + `light.qss`)，支持三种模式：
-- **白天模式** (light) — 使用 `light.qss` 默认配色
-- **夜晚模式** (dark) — 使用 `dark.qss` 默认配色
-- **自定义模式** — 独立于白天/夜晚，可自定义 7 个颜色区域（窗口背景、面板背景、卡片背景、强调色、主文字、次文字、输入框背景）
+## 新版目录结构
 
-侧栏底部按钮：☀️/🌙 切换白天夜晚，🎨 切换自定义模式开关。
+```text
+desktop-tauri/
+├─ src/                  # React 前端
+│  ├─ api/               # Tauri / Web 调用适配
+│  ├─ components/        # 新版 UI 壳和通用组件
+│  └─ tools/             # 已迁移工具界面
+├─ src-tauri/            # Tauri Rust 桌面壳
+└─ start-new-ui.bat      # 新版 UI 启动脚本
+
+sidecar/                 # 新版 UI 调用的本地 sidecar 能力
+```
+
+## 开发与验证
+
+```powershell
+cd "desktop-tauri"
+
+# 前端类型检查与构建
+npm run build
+
+# Tauri Debug 构建，不打包安装器
+npm run tauri -- build --debug --no-bundle
+```
+
+当前已验证新版 UI 可完成：
+
+- React/Vite 构建
+- Tauri Debug 构建
+- Base64 工具在桌面端和 Web 预览下运行
+- 玻璃拟态无边框 UI 渲染
 
 ## 技术栈
 
-| 组件 | 技术 |
-|------|------|
-| GUI 框架 | PySide6 (Qt for Python) |
-| PDF 处理 | PyMuPDF, pypdf, pdf2image |
-| 图片处理 | Pillow |
-| 音频处理 | mutagen, ncmdump |
-| 下载 | yt-dlp, aria2c, Telethon |
-| OCR | pytesseract |
-| 打包 | PyInstaller |
-| 测试 | pytest |
+| 区域 | 技术 |
+| --- | --- |
+| 新版桌面 UI | Tauri 2 + React + TypeScript + Vite |
+| 新版本地能力 | Rust Tauri command + sidecar |
+| 旧版归档 UI | PyQt / PySide6 |
+| 旧版打包 | PyInstaller |
+| Python 测试 | pytest |
 
-## 依赖
+## 维护原则
 
-- **运行**: `pip install -r requirements.txt`
-- **开发**: `pip install -r requirements-dev.txt` (额外包含 pytest)
-
-## 许可证
-
-本项目仅供个人学习使用。
+- 新 UI 相关开发优先修改 `desktop-tauri/src/**`。
+- 需要桌面能力时再联动 `desktop-tauri/src-tauri/**`。
+- 需要本地工具链时再联动 `sidecar/**`。
+- 默认不碰旧版 PyQt / PySide6 前端文件。
+- 所有完成结论必须基于实际构建、测试或可复查输出。
