@@ -6,6 +6,15 @@ type ThemePaletteSectionProps = {
   onChange: (zone: ThemeZone, value: string) => void;
 };
 
+const GLASS_MIN_ALPHA = 10;
+const GLASS_MAX_ALPHA = 70;
+const GLASS_MIN_BLUR = 4;
+const GLASS_MAX_BLUR = 24;
+
+function clampGlassAlpha(value: number): number {
+  return Math.max(GLASS_MIN_ALPHA, Math.min(GLASS_MAX_ALPHA, Math.round(value)));
+}
+
 function clampColorPart(value: string): number {
   return Math.max(0, Math.min(255, Math.round(Number(value) || 0)));
 }
@@ -27,14 +36,19 @@ function hexColor(value: string): string {
 function colorAlpha(value: string): number {
   const hex = value.trim().match(/^#[0-9a-f]{8}$/i)?.[0];
   if (hex) {
-    return Math.round((parseInt(hex.slice(7, 9), 16) / 255) * 100);
+    return clampGlassAlpha((parseInt(hex.slice(7, 9), 16) / 255) * 100);
   }
 
   const alpha = value.match(/^rgba\([^,]+,[^,]+,[^,]+,\s*([\d.]+)\s*\)$/i)?.[1];
   if (!alpha) {
-    return 100;
+    return GLASS_MAX_ALPHA;
   }
-  return Math.max(0, Math.min(100, Math.round(Number(alpha) * 100)));
+  return clampGlassAlpha(Number(alpha) * 100);
+}
+
+function glassBlur(alphaPercent: number): number {
+  const progress = (clampGlassAlpha(alphaPercent) - GLASS_MIN_ALPHA) / (GLASS_MAX_ALPHA - GLASS_MIN_ALPHA);
+  return Math.ceil(GLASS_MIN_BLUR + (GLASS_MAX_BLUR - GLASS_MIN_BLUR) * progress);
 }
 
 function rgbaWithAlpha(value: string, alphaPercent: number): string {
@@ -42,7 +56,7 @@ function rgbaWithAlpha(value: string, alphaPercent: number): string {
   const red = parseInt(color.slice(1, 3), 16);
   const green = parseInt(color.slice(3, 5), 16);
   const blue = parseInt(color.slice(5, 7), 16);
-  return `rgba(${red}, ${green}, ${blue}, ${(alphaPercent / 100).toFixed(2)})`;
+  return `rgba(${red}, ${green}, ${blue}, ${(clampGlassAlpha(alphaPercent) / 100).toFixed(2)})`;
 }
 
 export default function ThemePaletteSection({ theme, themeColors, onChange }: ThemePaletteSectionProps) {
@@ -52,7 +66,7 @@ export default function ThemePaletteSection({ theme, themeColors, onChange }: Th
   return (
     <section className="settings-card settings-wide-card">
       <span>主题配色</span>
-      <p>当前主题的颜色草稿会持续保留；只有开启自定义主题后才会真正应用到界面。</p>
+      <p>当前主题的颜色草稿会持续保留；开启自定义主题后才会真正应用到界面。</p>
       <div className="theme-swatch-row">
         {THEME_ZONES.map((zone) => {
           const value = themeColors[theme]?.[zone] ?? DEFAULT_THEME_COLORS[theme][zone];
@@ -81,13 +95,14 @@ export default function ThemePaletteSection({ theme, themeColors, onChange }: Th
         })}
         <label className="theme-opacity-control">
           <span className="theme-color-dot" style={{ background: cardValue }} />
-          <b>卡片背景透明度</b>
-          <small>{cardAlpha}%</small>
+          <b>玻璃强度</b>
+          <small>Alpha {cardAlpha}% / Blur {glassBlur(cardAlpha)}px</small>
           <input
-            aria-label="卡片背景透明度"
-            max="100"
-            min="0"
+            aria-label="玻璃强度"
+            max="70"
+            min="10"
             onChange={(event) => onChange("card_bg", rgbaWithAlpha(cardValue, Number(event.target.value)))}
+            step="1"
             type="range"
             value={cardAlpha}
           />

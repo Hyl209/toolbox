@@ -12,7 +12,7 @@ const browserThemeColors: Record<"dark" | "light", SettingsSnapshot["theme"]["co
   dark: {
     window_bg: "#1b1f25",
     surface_bg: "#1f2329",
-    card_bg: "rgba(44, 50, 59, 0.88)",
+    card_bg: "rgba(44, 50, 59, 0.70)",
     accent: "#6f95c7",
     text_primary: "#eef2f7",
     text_secondary: "#9aa6b5",
@@ -21,7 +21,7 @@ const browserThemeColors: Record<"dark" | "light", SettingsSnapshot["theme"]["co
   light: {
     window_bg: "#e5e9ef",
     surface_bg: "#eef1f5",
-    card_bg: "rgba(255, 255, 255, 0.76)",
+    card_bg: "rgba(255, 255, 255, 0.38)",
     accent: "#e4efff",
     text_primary: "#1f252d",
     text_secondary: "#697586",

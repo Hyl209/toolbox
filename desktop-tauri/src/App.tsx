@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { loadSettingsSnapshot, TOOL_ACTIVITY_EVENT, type SettingsSnapshot, type ToolActivityState, type ToolItem } from "./api/tauri";
 import ToolShell from "./components/ToolShell";
 import SettingsPanel from "./features/settings/SettingsPanel";
-import { firstSelectableTool, themeStyle } from "./features/settings";
+import { firstSelectableTool, themeStyle, themeStyleFromColors, type ThemeColors, type ThemeName } from "./features/settings";
 import { fallbackTools, renderToolPanel, sidebarToolsFromSnapshot } from "./features/tools";
 import "./styles.css";
 
@@ -15,6 +15,7 @@ function App() {
   const [settingsError, setSettingsError] = useState("");
   const [activeToolId, setActiveToolId] = useState(fallbackTools[0].id);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [previewTheme, setPreviewTheme] = useState<{ mode: ThemeName; style: CSSProperties } | null>(null);
   const [toolActivity, setToolActivity] = useState<Record<string, ToolActivityState>>({});
 
   useEffect(() => {
@@ -62,27 +63,43 @@ function App() {
 
   function selectTool(toolId: string) {
     setSettingsOpen(false);
+    setPreviewTheme(null);
     setActiveToolId(toolId);
     setToolActivity((current) => ({ ...current, [toolId]: "ready" }));
   }
 
+  function toggleSettings() {
+    setSettingsOpen((value) => {
+      const next = !value;
+      if (!next) {
+        setPreviewTheme(null);
+      }
+      return next;
+    });
+  }
+
+  const handlePreviewThemeChange = useCallback((mode: ThemeName, colors: ThemeColors) => {
+    setPreviewTheme({ mode, style: themeStyleFromColors(colors) });
+  }, []);
+
   function handleSettingsSaved(nextSnapshot: SettingsSnapshot) {
     const nextSidebarTools = sidebarToolsFromSnapshot(nextSnapshot.tools);
     setSnapshot(nextSnapshot);
+    setPreviewTheme(null);
     if (!nextSidebarTools.some((tool) => tool.id === activeToolId)) {
       setActiveToolId(pickFirstTool(nextSidebarTools).id);
     }
   }
 
   return (
-    <div className="theme-root" style={themeStyle(snapshot)} data-theme-mode={snapshot?.ui.theme ?? "light"}>
+    <div className="theme-root" style={previewTheme?.style ?? themeStyle(snapshot)} data-theme-mode={previewTheme?.mode ?? snapshot?.ui.theme ?? "light"}>
       <ToolShell
         title="Hyl Toolbox"
         tools={sidebarTools}
         toolActivity={toolActivity}
         activeToolId={activeTool.id}
         onSelectTool={selectTool}
-        onOpenSettings={() => setSettingsOpen((value) => !value)}
+        onOpenSettings={toggleSettings}
         settingsOpen={settingsOpen}
       >
         {settingsOpen ? (
@@ -92,6 +109,7 @@ function App() {
             loading={!snapshot && !settingsError}
             error={settingsError}
             onSaved={handleSettingsSaved}
+            onPreviewThemeChange={handlePreviewThemeChange}
           />
         ) : (
           renderToolPanel(activeTool, snapshot)

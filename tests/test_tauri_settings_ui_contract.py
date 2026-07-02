@@ -305,8 +305,95 @@ def test_theme_palette_section_exposes_color_picker_and_card_opacity_slider() ->
     for marker in (
         'type="color"',
         'type="range"',
-        'aria-label="卡片背景透明度"',
+        'aria-label="玻璃强度"',
         'className="theme-opacity-control"',
+    ):
+        assert marker in source
+
+
+def test_glass_material_defaults_follow_selected_light_and_dark_directions() -> None:
+    models_source = SETTINGS_MODELS_TS.read_text(encoding="utf-8")
+    browser_source = BROWSER_FALLBACK_TS.read_text(encoding="utf-8")
+    sidecar_source = (ROOT / "sidecar" / "settings_bridge.py").read_text(encoding="utf-8")
+
+    for source in (models_source, browser_source, sidecar_source):
+        assert "rgba(44, 50, 59, 0.70)" in source
+        assert "rgba(255, 255, 255, 0.38)" in source
+        assert "rgba(44, 50, 59, 0.88)" not in source
+        assert "rgba(255, 255, 255, 0.76)" not in source
+
+
+def test_theme_style_derives_glass_strength_variables_from_card_alpha() -> None:
+    source = SETTINGS_HELPERS_TS.read_text(encoding="utf-8")
+
+    for marker in (
+        "const GLASS_MIN_ALPHA = 10",
+        "const GLASS_MAX_ALPHA = 70",
+        "const GLASS_MIN_BLUR = 4",
+        "const GLASS_MAX_BLUR = 24",
+        "function cardColorAlphaPercent",
+        "function glassBlurPx",
+        "const glassAlphaPercent = cardColorAlphaPercent(colors.card_bg)",
+        '"--glass-alpha"',
+        '"--glass-blur": `${glassBlurPx(glassAlphaPercent)}px`',
+        '"--glass-edge-alpha"',
+        '"--glass-shadow-alpha"',
+        '"--glass-panel-bg"',
+    ):
+        assert marker in source
+
+
+def test_settings_panel_applies_draft_theme_style_for_live_preview() -> None:
+    source = SETTINGS_PANEL_TSX.read_text(encoding="utf-8")
+    app_source = APP_TSX.read_text(encoding="utf-8")
+
+    for marker in (
+        "onPreviewThemeChange",
+        "useEffect(() => {",
+        "drafts.customThemeEnabled ? drafts.themeColors[drafts.theme] : DEFAULT_THEME_COLORS[drafts.theme]",
+        "drafts.themeColors[drafts.theme]",
+    ):
+        assert marker in source
+
+    for marker in (
+        "previewTheme",
+        "themeStyleFromColors",
+        "handlePreviewThemeChange",
+        "setPreviewTheme(null)",
+        "previewTheme?.style ?? themeStyle(snapshot)",
+        'data-theme-mode={previewTheme?.mode ?? snapshot?.ui.theme ?? "light"}',
+    ):
+        assert marker in app_source
+
+
+def test_theme_palette_section_exposes_glass_strength_slider_contract() -> None:
+    source = (ROOT / "desktop-tauri" / "src" / "features" / "settings" / "sections" / "ThemePaletteSection.tsx").read_text(encoding="utf-8")
+
+    for marker in (
+        "玻璃强度",
+        "Alpha",
+        "Blur",
+        "clampGlassAlpha",
+        'min="10"',
+        'max="70"',
+        'step="1"',
+        'aria-label="玻璃强度"',
+    ):
+        assert marker in source
+
+
+def test_styles_use_glass_variables_for_material_layers() -> None:
+    source = STYLES_CSS.read_text(encoding="utf-8")
+
+    for marker in (
+        "repeating-linear-gradient(135deg",
+        "var(--glass-panel-bg)",
+        "blur(var(--glass-window-blur))",
+        "blur(var(--glass-blur)) saturate(var(--glass-saturation))",
+        "var(--glass-card-shadow)",
+        "var(--glass-panel-shadow)",
+        "var(--glass-edge)",
+        "var(--glass-soft-bg)",
     ):
         assert marker in source
 
@@ -456,7 +543,7 @@ def test_new_ui_has_dark_mode_material_overrides() -> None:
 def test_app_keeps_dark_selector_active_when_custom_theme_is_enabled() -> None:
     source = APP_TSX.read_text(encoding="utf-8")
 
-    assert 'data-theme-mode={snapshot?.ui.theme ?? "light"}' in source
+    assert 'data-theme-mode={previewTheme?.mode ?? snapshot?.ui.theme ?? "light"}' in source
     assert 'data-theme-mode={snapshot?.theme.mode ?? "light"}' not in source
 
 

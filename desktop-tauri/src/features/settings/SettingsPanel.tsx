@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import type { SettingsSnapshot, ToolItem } from "../../api/tauri";
-import { pluginConfigKey } from ".";
+import { DEFAULT_THEME_COLORS, pluginConfigKey, type ThemeColors, type ThemeName } from ".";
 import { useSettingsPanelController } from "./useSettingsPanelController";
 import AccountPreferencesSection from "./sections/AccountPreferencesSection";
 import DownloaderSettingsSection from "./sections/DownloaderSettingsSection";
@@ -18,6 +18,7 @@ type SettingsPanelProps = {
   loading: boolean;
   error: string;
   onSaved: (snapshot: SettingsSnapshot) => void;
+  onPreviewThemeChange: (theme: ThemeName, colors: ThemeColors) => void;
 };
 
 const SETTINGS_SECTIONS = [
@@ -38,6 +39,7 @@ export default function SettingsPanel({
   loading,
   error,
   onSaved,
+  onPreviewThemeChange,
 }: SettingsPanelProps) {
   const [activeSection, setActiveSection] = useState<SettingsSectionId>("general");
   const {
@@ -70,10 +72,12 @@ export default function SettingsPanel({
     toolMetadata,
   } = useSettingsPanelController({ snapshot, fallbackTools, onSaved });
 
-  const activeMeta = useMemo(
-    () => SETTINGS_SECTIONS.find((section) => section.id === activeSection) ?? SETTINGS_SECTIONS[0],
-    [activeSection],
-  );
+  const activeMeta = SETTINGS_SECTIONS.find((section) => section.id === activeSection) ?? SETTINGS_SECTIONS[0];
+
+  useEffect(() => {
+    const colors = drafts.customThemeEnabled ? drafts.themeColors[drafts.theme] : DEFAULT_THEME_COLORS[drafts.theme];
+    onPreviewThemeChange(drafts.theme, colors);
+  }, [drafts.customThemeEnabled, drafts.theme, drafts.themeColors, onPreviewThemeChange]);
 
   return (
     <div className="settings-panel settings-shell">

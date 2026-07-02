@@ -2,6 +2,34 @@ import type { CSSProperties } from "react";
 import type { SettingsSnapshot, ToolItem } from "../../api/tauri";
 import { DEFAULT_THEME_COLORS, THEME_ZONES, type ThemeColors, type ThemeZone } from "./models";
 
+const GLASS_MIN_ALPHA = 10;
+const GLASS_MAX_ALPHA = 70;
+const GLASS_MIN_BLUR = 4;
+const GLASS_MAX_BLUR = 24;
+
+function clampGlassAlpha(value: number): number {
+  return Math.max(GLASS_MIN_ALPHA, Math.min(GLASS_MAX_ALPHA, Math.round(value)));
+}
+
+function cardColorAlphaPercent(value: string): number {
+  const hexAlpha = value.trim().match(/^#[0-9a-f]{8}$/i)?.[0];
+  if (hexAlpha) {
+    return clampGlassAlpha((parseInt(hexAlpha.slice(7, 9), 16) / 255) * 100);
+  }
+
+  const rgbaAlpha = value.match(/^rgba\([^,]+,[^,]+,[^,]+,\s*([\d.]+)\s*\)$/i)?.[1];
+  if (rgbaAlpha) {
+    return clampGlassAlpha(Number(rgbaAlpha) * 100);
+  }
+
+  return GLASS_MAX_ALPHA;
+}
+
+function glassBlurPx(alphaPercent: number): number {
+  const progress = (clampGlassAlpha(alphaPercent) - GLASS_MIN_ALPHA) / (GLASS_MAX_ALPHA - GLASS_MIN_ALPHA);
+  return Math.ceil(GLASS_MIN_BLUR + (GLASS_MAX_BLUR - GLASS_MIN_BLUR) * progress);
+}
+
 function validThemeColor(value: unknown): value is string {
   if (typeof value !== "string" || !value.trim()) {
     return false;
@@ -74,14 +102,15 @@ export function toolMetadata(tool: ToolItem): string[] {
   ].filter(Boolean) as string[];
 }
 
-export function themeStyle(snapshot: SettingsSnapshot | null): CSSProperties {
-  if (!snapshot?.theme.colors) {
-    return {};
-  }
-  const colors = Object.fromEntries(THEME_ZONES.map((zone) => [zone, themeColor(snapshot, zone)])) as ThemeColors;
+export function themeStyleFromColors(colors: ThemeColors): CSSProperties {
   const quietBorder = `color-mix(in oklab, ${colors.text_secondary}, transparent 68%)`;
   const visibleScrollThumb = `color-mix(in oklab, ${colors.text_secondary}, transparent 58%)`;
   const activeScrollThumb = `color-mix(in oklab, ${colors.text_secondary}, transparent 38%)`;
+  const glassAlphaPercent = cardColorAlphaPercent(colors.card_bg);
+  const glassProgress = (glassAlphaPercent - GLASS_MIN_ALPHA) / (GLASS_MAX_ALPHA - GLASS_MIN_ALPHA);
+  const glassEdgeAlpha = Math.round(30 + 40 * glassProgress);
+  const glassShadowAlpha = Math.round(5 + 15 * glassProgress);
+  const glassPanelShadowAlpha = Math.max(4, glassShadowAlpha - 4);
 
   return {
     "--ink": colors.text_primary,
@@ -102,5 +131,24 @@ export function themeStyle(snapshot: SettingsSnapshot | null): CSSProperties {
     "--legacy-text-primary": colors.text_primary,
     "--legacy-text-secondary": colors.text_secondary,
     "--legacy-input-bg": colors.input_bg,
+    "--glass-alpha": `${glassAlphaPercent}%`,
+    "--glass-blur": `${glassBlurPx(glassAlphaPercent)}px`,
+    "--glass-window-blur": `${glassBlurPx(glassAlphaPercent) + 20}px`,
+    "--glass-saturation": `${Math.round(118 + 32 * glassProgress)}%`,
+    "--glass-edge-alpha": `${glassEdgeAlpha}%`,
+    "--glass-shadow-alpha": `${glassShadowAlpha}%`,
+    "--glass-edge": `inset 0 1px 0 oklch(100% 0 0 / ${glassEdgeAlpha}%)`,
+    "--glass-card-shadow": `0 18px 46px oklch(24% 0.02 255deg / ${glassShadowAlpha}%)`,
+    "--glass-panel-shadow": `0 10px 24px oklch(26% 0.018 255deg / ${glassPanelShadowAlpha}%)`,
+    "--glass-panel-bg": `color-mix(in oklab, ${colors.card_bg}, transparent ${Math.round(30 - 18 * glassProgress)}%)`,
+    "--glass-soft-bg": `color-mix(in oklab, ${colors.card_bg}, transparent ${Math.round(42 - 24 * glassProgress)}%)`,
   } as CSSProperties;
+}
+
+export function themeStyle(snapshot: SettingsSnapshot | null): CSSProperties {
+  if (!snapshot?.theme.colors) {
+    return {};
+  }
+  const colors = Object.fromEntries(THEME_ZONES.map((zone) => [zone, themeColor(snapshot, zone)])) as ThemeColors;
+  return themeStyleFromColors(colors);
 }
