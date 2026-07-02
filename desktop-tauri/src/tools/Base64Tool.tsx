@@ -1,24 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { pickDirectory, pickFile, type DialogFilter, runTool, type ToolResult } from "../api/tauri";
+import { pickDirectory, pickFile, type DialogFilter, runTool } from "../api/tauri";
+import { ActionBar, RuntimeLogPanel } from "../features/tools/components/CommonToolParts";
+import { errorText, resultPath, resultText } from "../features/tools/utils/toolResult";
 
 type TextMode = "encode" | "decode";
 type WorkMode = "text" | "file";
 type FileMode = "encode_file" | "decode_file";
-
-function resultText(result: ToolResult): string {
-  return result.text ?? result.data?.text ?? JSON.stringify(result, null, 2);
-}
-
-function resultPath(result: ToolResult): string {
-  return result.output_path ?? result.data?.output_path ?? "";
-}
-
-function errorText(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return typeof error === "string" ? error : JSON.stringify(error);
-}
 
 function actionForTextMode(mode: TextMode): string {
   return mode === "encode" ? "encode_text" : "decode_text";
@@ -127,7 +114,7 @@ function Base64Tool({ initialOutputDir = "" }: { initialOutputDir?: string }) {
       return;
     }
     await navigator.clipboard.writeText(outputText);
-    setLogs((items) => ["已复制输出", ...items].slice(0, 5));
+    setLogs((items) => ["已复制", ...items].slice(0, 5));
   }
 
   function clearText() {
@@ -161,7 +148,7 @@ function Base64Tool({ initialOutputDir = "" }: { initialOutputDir?: string }) {
         <div>
           <p className="eyebrow">Base64 converter</p>
           <h2>Base64 编解码</h2>
-          <p>继承旧版文本与文件能力。文本预览可直接运行，文件模式通过本地 sidecar 调用旧 Python converter。</p>
+          <p>文本和文件互转。</p>
         </div>
         <div className="mode-switch" role="group" aria-label="Base64 工作模式">
           <button className={workMode === "text" ? "active" : ""} disabled={running} onClick={() => setWorkMode("text")} type="button">
@@ -177,10 +164,10 @@ function Base64Tool({ initialOutputDir = "" }: { initialOutputDir?: string }) {
         <>
           <div className="mode-switch inline-mode" role="group" aria-label="Base64 文本模式">
             <button className={textMode === "encode" ? "active" : ""} disabled={running} onClick={() => setTextMode("encode")} type="button">
-              Encode
+              编码
             </button>
             <button className={textMode === "decode" ? "active" : ""} disabled={running} onClick={() => setTextMode("decode")} type="button">
-              Decode
+              解码
             </button>
           </div>
 
@@ -202,30 +189,22 @@ function Base64Tool({ initialOutputDir = "" }: { initialOutputDir?: string }) {
             </label>
           </div>
 
-          <div className="actions-row">
-            <div className="action-hint">{textMode === "encode" ? "Plain text → Base64" : "Base64 → Plain text"}</div>
-            <div className="button-cluster">
-              <button className="ghost-button" disabled={running || (!inputText && !outputText)} onClick={clearText} type="button">
-                清空
-              </button>
-              <button className="ghost-button" disabled={!outputText} onClick={copyOutput} type="button">
-                复制输出
-              </button>
-              <button className="primary-button" disabled={!canRunText} onClick={handleRunText} type="button">
-                {running ? "运行中..." : "开始转换"}
-              </button>
-            </div>
-          </div>
+          <ActionBar
+            hint={textMode === "encode" ? "Plain text → Base64" : "Base64 → Plain text"}
+            secondary={<button className="ghost-button" disabled={running || (!inputText && !outputText)} onClick={clearText} type="button">清空</button>}
+            tertiary={<button className="ghost-button" disabled={!outputText} onClick={copyOutput} type="button">复制</button>}
+            primary={<button className="primary-button" disabled={!canRunText} onClick={handleRunText} type="button">{running ? "运行中" : "转换"}</button>}
+          />
         </>
       ) : (
         <>
           <div className="file-mode-card">
             <div className="mode-switch inline-mode" role="group" aria-label="Base64 文件模式">
               <button className={fileMode === "encode_file" ? "active" : ""} disabled={running} onClick={() => setFileMode("encode_file")} type="button">
-                文件转 Base64
+                转码
               </button>
               <button className={fileMode === "decode_file" ? "active" : ""} disabled={running} onClick={() => setFileMode("decode_file")} type="button">
-                Base64 还原文件
+                还原
               </button>
             </div>
             <label className="field-block file-path-field">
@@ -276,41 +255,16 @@ function Base64Tool({ initialOutputDir = "" }: { initialOutputDir?: string }) {
             </div>
           </div>
 
-          <div className="actions-row">
-            <div className="action-hint">{fileActionLabel}</div>
-            <div className="button-cluster">
-              <button className="ghost-button" disabled={running || (!inputText && !outputText && !outputPath)} onClick={clearText} type="button">
-                清空
-              </button>
-              <button className="ghost-button" disabled={!outputText} onClick={copyOutput} type="button">
-                复制 Base64
-              </button>
-              <button className="primary-button" disabled={!canRunFile} onClick={handleRunFile} type="button">
-                {running ? "运行中..." : "开始处理"}
-              </button>
-            </div>
-          </div>
+          <ActionBar
+            hint={fileActionLabel}
+            secondary={<button className="ghost-button" disabled={running || (!inputText && !outputText && !outputPath)} onClick={clearText} type="button">清空</button>}
+            tertiary={<button className="ghost-button" disabled={!outputText} onClick={copyOutput} type="button">复制</button>}
+            primary={<button className="primary-button" disabled={!canRunFile} onClick={handleRunFile} type="button">{running ? "运行中" : "处理"}</button>}
+          />
         </>
       )}
 
-      <section className="log-panel" aria-label="运行日志">
-        <div>
-          <div className="panel-title">Runtime</div>
-          <p className="muted">最近 5 条本地执行记录</p>
-        </div>
-        <div className="log-content">
-          {error ? <div className="error-box">{error}</div> : null}
-          {logs.length ? (
-            <ul>
-              {logs.map((item, index) => (
-                <li key={`${item}-${index}`}>{item}</li>
-              ))}
-            </ul>
-          ) : (
-            <p className="muted">暂无日志</p>
-          )}
-        </div>
-      </section>
+      <RuntimeLogPanel error={error} logs={logs} />
     </div>
   );
 }

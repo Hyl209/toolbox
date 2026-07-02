@@ -1,33 +1,33 @@
 :root {
   color: oklch(18% 0.025 255deg);
   background: transparent;
-  font-family: Inter, "Segoe UI Variable", "SF Pro Display", "Segoe UI", system-ui, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "PingFang SC", "Microsoft YaHei UI", system-ui, sans-serif;
   font-size: 16px;
   line-height: 1.5;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --ink: oklch(17% 0.025 258deg);
-  --ink-muted: oklch(44% 0.028 255deg);
+  --ink: oklch(22% 0.018 255deg);
+  --ink-muted: oklch(46% 0.018 255deg);
   --ink-soft: oklch(60% 0.022 255deg);
-  --surface: oklch(99% 0.006 255deg / 72%);
-  --surface-strong: oklch(100% 0.004 255deg / 82%);
-  --surface-soft: oklch(100% 0.004 255deg / 42%);
-  --hairline: oklch(100% 0 0 / 50%);
-  --accent: oklch(60% 0.12 252deg);
-  --accent-strong: oklch(53% 0.15 254deg);
+  --surface: oklch(99% 0.003 255deg);
+  --surface-strong: oklch(100% 0 0);
+  --surface-soft: oklch(96% 0.006 255deg);
+  --hairline: oklch(88% 0.01 255deg);
+  --accent: oklch(58% 0.16 253deg);
+  --accent-strong: oklch(52% 0.17 253deg);
   --success: oklch(66% 0.13 158deg);
   --danger: oklch(61% 0.2 27deg);
   --scroll-thumb: oklch(62% 0.025 250deg / 24%);
   --scroll-thumb-hover: oklch(55% 0.04 250deg / 46%);
-  --legacy-window-bg: oklch(95% 0.012 276deg / 78%);
-  --legacy-surface-bg: oklch(100% 0.004 255deg / 42%);
-  --legacy-card-bg: oklch(100% 0.005 255deg / 58%);
+  --legacy-window-bg: oklch(95.5% 0.006 255deg);
+  --legacy-surface-bg: var(--surface);
+  --legacy-card-bg: var(--surface-strong);
   --legacy-accent: var(--accent);
   --legacy-text-primary: var(--ink);
   --legacy-text-secondary: var(--ink-muted);
-  --legacy-input-bg: oklch(100% 0.003 255deg / 42%);
+  --legacy-input-bg: oklch(98% 0.004 255deg);
 }
 
 * {
@@ -54,7 +54,8 @@ body {
 
 button,
 textarea,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -680,7 +681,8 @@ input:focus-visible {
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 }
 
-.theme-swatch {
+.theme-swatch,
+.theme-opacity-control {
   align-items: center;
   border-radius: 16px;
   display: grid;
@@ -690,25 +692,40 @@ input:focus-visible {
   background: color-mix(in oklab, var(--legacy-input-bg), transparent 40%);
 }
 
-.theme-swatch i {
+.theme-color-dot {
   border-radius: 999px;
   display: block;
   grid-row: span 2;
   height: 30px;
+  overflow: hidden;
+  position: relative;
   width: 30px;
   box-shadow: inset 0 0 0 1px oklch(100% 0 0 / 34%);
 }
 
-.theme-swatch b {
+.theme-swatch b,
+.theme-opacity-control b {
   color: var(--legacy-text-primary);
   font-size: 12px;
 }
 
-.theme-swatch small {
+.theme-swatch small,
+.theme-opacity-control small {
   color: var(--legacy-text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.theme-color-picker {
+  cursor: pointer;
+  height: 100%;
+  inset: 0;
+  min-height: 0;
+  opacity: 0;
+  padding: 0;
+  position: absolute;
+  width: 100%;
 }
 
 .tool-heading,
@@ -845,7 +862,8 @@ textarea {
   box-shadow: inset 0 1px 0 oklch(100% 0 0 / 66%), inset 0 0 0 1px oklch(100% 0 0 / 20%);
 }
 
-input {
+input,
+select {
   border: 0;
   border-radius: 18px;
   color: var(--legacy-text-primary);
@@ -856,7 +874,8 @@ input {
   box-shadow: inset 0 1px 0 oklch(100% 0 0 / 45%), inset 0 0 0 1px oklch(100% 0 0 / 18%);
 }
 
-input:disabled {
+input:disabled,
+select:disabled {
   opacity: 0.48;
 }
 
@@ -1129,21 +1148,251 @@ button:disabled {
   box-shadow: inset 0 1px 0 oklch(100% 0 0 / 66%);
 }
 
+.settings-shell {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
+  align-items: start;
+}
+
+.settings-nav,
+.settings-content {
+  min-width: 0;
+}
+
+.settings-nav {
+  position: sticky;
+  top: 0;
+  display: grid;
+  gap: 14px;
+}
+
+.settings-nav-overview,
+.settings-nav-list {
+  border-radius: 22px;
+  padding: 16px;
+  background: color-mix(in oklab, var(--legacy-surface-bg), transparent 28%);
+  box-shadow: inset 0 1px 0 oklch(100% 0 0 / 48%);
+}
+
+.settings-nav-overview {
+  display: grid;
+  gap: 4px;
+}
+
+.settings-nav-overview strong {
+  color: var(--legacy-text-primary);
+  font-size: 20px;
+  letter-spacing: -0.03em;
+}
+
+.settings-nav-overview span,
+.settings-nav-overview small {
+  color: var(--legacy-text-secondary);
+}
+
+.settings-nav-list {
+  display: grid;
+  gap: 8px;
+}
+
+.settings-nav-button {
+  width: 100%;
+  border-radius: 18px;
+  padding: 12px 14px;
+  text-align: left;
+  background: transparent;
+  color: var(--legacy-text-primary);
+  display: grid;
+  gap: 2px;
+}
+
+.settings-nav-button span {
+  font-size: 14px;
+  font-weight: 760;
+}
+
+.settings-nav-button small {
+  color: var(--legacy-text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.settings-nav-button:hover {
+  background: oklch(100% 0.004 255deg / 34%);
+  box-shadow: inset 0 1px 0 oklch(100% 0 0 / 45%);
+}
+
+.settings-nav-button.active {
+  background: linear-gradient(135deg, color-mix(in oklab, var(--legacy-card-bg), white 10%), color-mix(in oklab, var(--legacy-accent), transparent 76%));
+  box-shadow: inset 0 1px 0 oklch(100% 0 0 / 60%);
+}
+
+.settings-content {
+  display: grid;
+  gap: 16px;
+}
+
+.settings-section-hero {
+  padding: 20px 22px;
+}
+
+.settings-group-stack {
+  display: grid;
+  gap: 16px;
+}
+
+.settings-group-card {
+  border-radius: 18px;
+  padding: 16px;
+  background: color-mix(in oklab, var(--legacy-input-bg), transparent 26%);
+  box-shadow: inset 0 1px 0 oklch(100% 0 0 / 40%);
+}
+
+.settings-subsection-head {
+  margin-bottom: 14px;
+}
+
+.settings-subsection-head strong {
+  color: var(--legacy-text-primary);
+  font-size: 18px;
+  margin-bottom: 4px;
+}
+
+.settings-subsection-head p {
+  color: var(--legacy-text-secondary);
+  margin: 0;
+}
+
+.settings-two-column-grid,
+.settings-toggle-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.settings-field-card {
+  border-radius: 18px;
+  padding: 12px;
+  background: color-mix(in oklab, var(--legacy-input-bg), transparent 34%);
+}
+
+.setting-field-head {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.field-helper,
+.field-meta {
+  color: var(--legacy-text-secondary);
+}
+
+.field-meta {
+  font-family: "Cascadia Mono", "Consolas", monospace;
+  font-size: 11px;
+}
+
+.settings-mode-row {
+  align-items: stretch;
+}
+
+.settings-mode-toggle {
+  min-width: min(320px, 100%);
+}
+
+.settings-detail-card {
+  border-radius: 16px;
+  background: color-mix(in oklab, var(--legacy-input-bg), transparent 30%);
+  box-shadow: inset 0 1px 0 oklch(100% 0 0 / 35%);
+}
+
+.settings-detail-card summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  color: var(--legacy-text-primary);
+  font-weight: 720;
+}
+
+.settings-detail-card summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings-detail-card summary small {
+  color: var(--legacy-text-secondary);
+  font-weight: 600;
+}
+
+.settings-detail-card > div {
+  padding: 0 16px 16px;
+}
+
+.settings-toggle-row {
+  align-items: flex-start;
+}
+
+.settings-toggle-row .setting-field-head {
+  margin-bottom: 0;
+}
+
+.theme-swatch,
+.theme-opacity-control {
+  align-items: start;
+}
+
+.theme-swatch > input,
+.theme-opacity-control > input {
+  grid-column: 1 / -1;
+}
+
+.settings-save-sticky {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  padding: 12px 14px 12px 18px;
+  border-radius: 18px;
+  background: color-mix(in oklab, var(--legacy-card-bg), transparent 12%);
+  backdrop-filter: blur(16px) saturate(130%);
+  -webkit-backdrop-filter: blur(16px) saturate(130%);
+}
+
 @media (max-width: 980px) {
   .window-surface {
     border-radius: 22px;
   }
 
-  .shell-body,
   .editor-grid,
   .settings-grid {
     grid-template-columns: 1fr;
   }
 
+  .shell-body {
+    grid-template-columns: 188px minmax(0, 1fr);
+  }
+
+  .settings-shell,
+  .settings-two-column-grid,
+  .settings-toggle-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-nav {
+    position: static;
+  }
+
+  .settings-nav-list {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  }
+
   .tool-list {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-    max-height: 220px;
+    display: flex;
+    grid-template-columns: none;
+    max-height: none;
     padding: 8px 10px 12px;
   }
 
@@ -1205,4 +1454,1112 @@ button:disabled {
     scroll-behavior: auto !important;
     transition-duration: 1ms !important;
   }
+}
+
+.window-surface {
+  grid-template-rows: 58px minmax(0, 1fr);
+  border: 1px solid var(--hairline);
+  border-radius: 18px;
+  background:
+    linear-gradient(145deg, oklch(100% 0 0 / 72%), oklch(96% 0.008 255deg / 58%)),
+    radial-gradient(circle at 16% 0%, oklch(100% 0 0 / 70%), transparent 24rem),
+    radial-gradient(circle at 92% 10%, color-mix(in oklab, var(--accent), transparent 84%), transparent 26rem);
+  backdrop-filter: blur(34px) saturate(148%);
+  -webkit-backdrop-filter: blur(34px) saturate(148%);
+  box-shadow:
+    0 24px 60px oklch(20% 0.02 255deg / 12%),
+    inset 0 1px 0 oklch(100% 0 0 / 58%);
+}
+
+.window-surface::before {
+  display: block;
+  background:
+    linear-gradient(120deg, oklch(100% 0 0 / 34%), transparent 42%, oklch(100% 0 0 / 16%)),
+    radial-gradient(circle at 78% 8%, color-mix(in oklab, var(--accent), transparent 88%), transparent 18rem);
+  mix-blend-mode: soft-light;
+}
+
+.shell-header {
+  min-height: 58px;
+  padding: 0 16px;
+  gap: 12px;
+  border-bottom: 1px solid var(--hairline);
+  background: oklch(100% 0 0 / 28%);
+  backdrop-filter: blur(18px) saturate(135%);
+  -webkit-backdrop-filter: blur(18px) saturate(135%);
+}
+
+.window-controls { padding: 0; }
+.window-control { width: 12px; height: 12px; }
+.title-stack h1 { font-size: 15px; font-weight: 650; letter-spacing: -0.01em; }
+.header-actions { gap: 8px; }
+
+.settings-button,
+.settings-mode-pill,
+.path-pick-button,
+.ghost-button,
+.primary-button,
+.mode-switch button,
+.sidebar-order-actions button {
+  min-height: 32px;
+  border-radius: 9px;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: none;
+}
+
+.settings-button,
+.ghost-button,
+.path-pick-button {
+  border: 1px solid var(--hairline);
+  background: var(--surface-strong);
+  color: var(--ink);
+}
+
+.primary-button {
+  background: var(--accent);
+  color: white;
+  box-shadow: none;
+}
+
+.primary-button:hover:not(:disabled),
+.ghost-button:hover:not(:disabled),
+.path-pick-button:hover:not(:disabled),
+.settings-button:hover,
+.settings-button.active {
+  transform: none;
+  filter: none;
+  background: color-mix(in oklab, var(--accent), white 86%);
+}
+
+.primary-button:hover:not(:disabled) { background: var(--accent-strong); }
+
+.shell-body {
+  grid-template-columns: 216px minmax(0, 1fr);
+  padding: 0;
+}
+
+.tool-list {
+  gap: 12px;
+  padding: 14px 10px 14px 12px;
+  border-right: 1px solid var(--hairline);
+  background: oklch(98% 0.004 255deg / 40%);
+  backdrop-filter: blur(18px) saturate(128%);
+  -webkit-backdrop-filter: blur(18px) saturate(128%);
+}
+
+.tool-stack { gap: 2px; }
+.panel-title {
+  margin: 12px 6px 4px;
+  padding: 0;
+  color: var(--ink-muted);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.tool-item {
+  min-height: 34px;
+  border-radius: 8px;
+  padding: 7px 8px;
+  gap: 8px;
+}
+
+.tool-item:hover:not(:disabled),
+.tool-item.active {
+  transform: none;
+  box-shadow: none;
+  background: color-mix(in oklab, var(--accent), white 84%);
+}
+
+.tool-item-main { min-width: 0; }
+.tool-item-main > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 560;
+}
+.tool-dot { width: 6px; height: 6px; opacity: 0.7; }
+.tool-dot.ready { box-shadow: none; }
+.tool-dot.running {
+  opacity: 1;
+  background: oklch(80% 0.16 86deg);
+  box-shadow: none;
+}
+.tool-dot.success {
+  opacity: 1;
+  background: var(--success);
+  box-shadow: none;
+}
+.tool-dot.error {
+  opacity: 1;
+  background: var(--danger);
+  box-shadow: none;
+}
+
+.tool-panel {
+  padding: 16px;
+  background:
+    linear-gradient(145deg, oklch(100% 0 0 / 22%), oklch(96% 0.006 255deg / 34%));
+}
+
+.base64-tool,
+.music-tool,
+.zippng-tool,
+.directdownloader-tool,
+.imageconvert-tool,
+.mp4mp3-tool,
+.pdftools-tool,
+.wordformatter-tool,
+.batchrename-tool,
+.filesorter-tool,
+.same-tool,
+.empty-tool-panel,
+.settings-panel {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  border: 1px solid var(--hairline);
+  border-radius: 14px;
+  padding: 18px;
+  background: oklch(100% 0 0 / 58%);
+  box-shadow: none;
+  backdrop-filter: blur(22px) saturate(132%);
+  -webkit-backdrop-filter: blur(22px) saturate(132%);
+}
+
+.tool-heading {
+  align-items: flex-start;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.tool-heading h2,
+.empty-tool-panel h2 {
+  font-size: 22px;
+  font-weight: 680;
+  letter-spacing: -0.02em;
+}
+
+.tool-heading p:not(.eyebrow),
+.empty-tool-panel p:not(.eyebrow) {
+  margin-top: 6px;
+  max-width: 48ch;
+  color: var(--ink-muted);
+  font-size: 13px;
+}
+
+.eyebrow,
+.empty-orb,
+.status-pill,
+.pulse-dot { display: none; }
+
+.editor-grid { gap: 14px; }
+.file-mode-card,
+.actions-row,
+.result-card,
+.log-panel,
+.settings-card,
+.settings-group-card,
+.settings-nav-overview,
+.settings-nav-list,
+.settings-field-card,
+.table-panel,
+.info-box,
+.error-box {
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  background: oklch(100% 0 0 / 58%);
+  box-shadow: none;
+  backdrop-filter: blur(14px) saturate(118%);
+  -webkit-backdrop-filter: blur(14px) saturate(118%);
+}
+
+.file-mode-card,
+.result-card,
+.settings-card,
+.settings-group-card,
+.settings-field-card,
+.table-panel { padding: 14px; }
+
+.actions-row {
+  padding: 10px 12px;
+  align-items: center;
+}
+.action-hint { font-size: 12px; font-weight: 500; color: var(--ink-muted); }
+.button-cluster { gap: 8px; }
+
+.field-block { gap: 7px; font-size: 13px; font-weight: 600; }
+.field-label,
+.field-block > span { font-size: 13px; font-weight: 600; color: var(--ink); }
+.field-block small { font-size: 12px; font-weight: 500; color: var(--ink-muted); }
+
+input,
+select,
+textarea {
+  border: 1px solid var(--hairline);
+  border-radius: 9px;
+  background: oklch(99% 0.002 255deg);
+  box-shadow: none;
+}
+input, select { min-height: 36px; padding: 0 10px; }
+textarea { min-height: 220px; padding: 12px; }
+textarea:focus,
+input:focus,
+select:focus {
+  background: white;
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent), transparent 82%);
+}
+
+.mode-switch {
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  padding: 3px;
+  background: oklch(95.5% 0.005 255deg);
+  box-shadow: none;
+}
+.mode-switch button.active,
+.settings-panel .mode-switch button.active {
+  color: var(--ink);
+  background: var(--surface-strong);
+  box-shadow: 0 1px 2px oklch(20% 0.02 255deg / 8%);
+}
+
+.log-panel {
+  display: block;
+  min-height: 0;
+  padding: 0;
+}
+.log-panel summary {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+.log-panel summary small { color: var(--ink-muted); font-weight: 500; }
+.log-content { max-width: none; padding: 0 12px 12px; }
+.log-content li { border-radius: 8px; background: var(--surface-soft); }
+
+.direct-advanced-options {
+  display: block;
+  padding: 0;
+}
+
+.direct-advanced-options summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 12px 14px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.direct-advanced-options summary::-webkit-details-marker {
+  display: none;
+}
+
+.direct-advanced-options .tool-result-grid,
+.direct-advanced-options .field-button-row {
+  padding: 0 14px 14px;
+}
+
+.settings-shell {
+  display: grid;
+  grid-template-columns: 176px minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+}
+.settings-nav {
+  align-content: start;
+  align-self: start;
+  gap: 10px;
+  grid-auto-rows: max-content;
+  height: auto;
+}
+.settings-nav-overview { padding: 10px 12px; min-height: 72px; }
+.settings-nav-overview strong { font-size: 17px; }
+.settings-nav-overview span { font-size: 12px; }
+.settings-nav-list {
+  align-content: start;
+  gap: 2px;
+  grid-auto-rows: max-content;
+  padding: 6px;
+}
+.settings-nav-button {
+  border-radius: 8px;
+  min-height: 34px;
+  padding: 7px 10px;
+  color: var(--ink);
+}
+.settings-nav-button span { font-size: 13px; font-weight: 560; }
+.settings-nav-button:hover,
+.settings-nav-button.active {
+  background: color-mix(in oklab, var(--accent), white 84%);
+  box-shadow: none;
+}
+.settings-section-hero strong { font-size: 20px; }
+.settings-section-hero span { display: none; }
+.settings-section-hero p { margin: 6px 0 0; }
+.settings-section-hero { padding: 14px 16px; }
+.settings-content { gap: 10px; }
+.settings-group-stack { gap: 10px; }
+.settings-grid {
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.settings-grid .settings-card {
+  min-height: 0;
+  padding: 12px;
+}
+.settings-grid .settings-card strong {
+  font-size: 17px;
+  margin-bottom: 0;
+}
+.settings-grid .settings-card p { display: none; }
+.settings-wide-card {
+  padding: 12px;
+}
+.settings-wide-card > span,
+.settings-wide-card > p,
+.settings-subsection-head p {
+  display: none;
+}
+.settings-subsection-head {
+  margin-bottom: 8px;
+}
+.settings-subsection-head strong {
+  font-size: 15px;
+}
+.settings-two-column-grid,
+.settings-toggle-grid {
+  gap: 10px;
+}
+.settings-field-card {
+  gap: 7px;
+  min-height: 0;
+  overflow: hidden;
+  padding: 10px;
+}
+.field-block > .setting-field-head {
+  align-items: start;
+  display: grid;
+  gap: 2px;
+  justify-content: normal;
+  margin-bottom: 0;
+  min-width: 0;
+}
+.settings-field-card .field-helper,
+.settings-field-card .field-meta,
+.settings-toggle-row .field-helper,
+.settings-toggle-row .field-meta {
+  display: none;
+}
+.settings-toggle-row {
+  min-height: 42px;
+  padding: 9px 10px;
+}
+.settings-save-sticky {
+  border: 1px solid var(--hairline);
+  background: oklch(100% 0 0 / 92%);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.result-list {
+  display: grid;
+  gap: 8px;
+}
+.result-row {
+  display: grid;
+  gap: 3px;
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  padding: 9px 10px;
+  background: var(--surface-soft);
+}
+.result-row span,
+.result-row strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.result-row span { color: var(--ink-muted); font-size: 12px; }
+.result-row strong { color: var(--ink); font-size: 13px; font-weight: 600; }
+
+@media (max-width: 980px) {
+  .shell-body { grid-template-columns: 188px minmax(0, 1fr); }
+  .tool-list {
+    border-right: 1px solid var(--hairline);
+    border-bottom: 0;
+  }
+}
+
+/* macOS material pass: fewer boxes, more grouping by spacing and translucency */
+.shell-header,
+.tool-list,
+.base64-tool,
+.music-tool,
+.zippng-tool,
+.directdownloader-tool,
+.imageconvert-tool,
+.mp4mp3-tool,
+.pdftools-tool,
+.wordformatter-tool,
+.batchrename-tool,
+.filesorter-tool,
+.same-tool,
+.empty-tool-panel,
+.settings-panel,
+.settings-nav-overview,
+.settings-nav-list,
+.settings-card,
+.settings-group-card,
+.settings-field-card,
+.file-mode-card,
+.actions-row,
+.result-card,
+.log-panel,
+.table-panel,
+.info-box,
+.error-box {
+  border-color: transparent;
+}
+
+.window-surface {
+  border-color: oklch(100% 0 0 / 22%);
+  box-shadow:
+    0 26px 70px oklch(20% 0.02 255deg / 14%),
+    inset 0 1px 0 oklch(100% 0 0 / 46%);
+}
+
+.shell-header {
+  border-bottom-color: oklch(100% 0 0 / 18%);
+}
+
+.tool-list {
+  border-right-color: oklch(100% 0 0 / 16%);
+  background: oklch(96% 0.006 255deg / 30%);
+}
+
+.tool-panel {
+  padding: 14px;
+}
+
+.base64-tool,
+.music-tool,
+.zippng-tool,
+.directdownloader-tool,
+.imageconvert-tool,
+.mp4mp3-tool,
+.pdftools-tool,
+.wordformatter-tool,
+.batchrename-tool,
+.filesorter-tool,
+.same-tool,
+.empty-tool-panel,
+.settings-panel {
+  background: oklch(100% 0 0 / 42%);
+  box-shadow:
+    inset 0 1px 0 oklch(100% 0 0 / 34%),
+    0 14px 34px oklch(24% 0.02 255deg / 5%);
+}
+
+.settings-shell {
+  grid-template-columns: 164px minmax(0, 1fr);
+}
+
+.settings-nav {
+  width: 148px;
+  margin-left: -8px;
+}
+
+.settings-nav-overview,
+.settings-nav-list {
+  background: transparent;
+  box-shadow: none;
+}
+
+.settings-nav-overview {
+  min-height: auto;
+  padding: 4px 10px 12px;
+}
+
+.settings-nav-list {
+  padding: 0;
+  gap: 3px;
+}
+
+.settings-nav-button {
+  border-radius: 8px;
+  background: transparent;
+}
+
+.settings-nav-button:hover {
+  background: oklch(100% 0 0 / 34%);
+}
+
+.settings-nav-button.active {
+  background: color-mix(in oklab, var(--accent), white 82%);
+}
+
+.settings-section-hero,
+.settings-grid .settings-card,
+.settings-wide-card,
+.settings-group-card,
+.settings-field-card,
+.settings-toggle-row,
+.file-mode-card,
+.actions-row,
+.result-card,
+.log-panel,
+.table-panel {
+  background: oklch(100% 0 0 / 36%);
+  box-shadow: none;
+}
+
+.settings-section-hero {
+  padding: 4px 2px 10px;
+  background: transparent;
+}
+
+.settings-grid {
+  gap: 8px;
+}
+
+.settings-grid .settings-card {
+  padding: 10px 12px;
+  border-radius: 12px;
+}
+
+.settings-group-card,
+.settings-wide-card {
+  padding: 10px;
+  border-radius: 14px;
+}
+
+.settings-field-card,
+.settings-toggle-row {
+  padding: 8px 10px;
+  border-radius: 10px;
+}
+
+input,
+select,
+textarea {
+  border-color: oklch(82% 0.012 255deg / 58%);
+  background: oklch(100% 0 0 / 52%);
+}
+
+.tool-heading {
+  border-bottom-color: oklch(88% 0.01 255deg / 42%);
+}
+
+.result-row {
+  border-color: transparent;
+  background: oklch(100% 0 0 / 34%);
+}
+
+.settings-save-sticky {
+  border-color: transparent;
+  background: oklch(100% 0 0 / 52%);
+  box-shadow: 0 -10px 26px oklch(30% 0.02 255deg / 6%);
+}
+
+/* Capsule buttons, short action labels */
+button:not(.window-control),
+.settings-button,
+.settings-mode-pill,
+.path-pick-button,
+.ghost-button,
+.primary-button,
+.mode-switch,
+.mode-switch button,
+.filter-chip,
+.tool-item,
+.settings-nav-button,
+.sidebar-order-actions button {
+  border-radius: 999px;
+}
+
+.settings-button,
+.path-pick-button,
+.ghost-button,
+.primary-button,
+.mode-switch button,
+.sidebar-order-actions button {
+  min-width: 56px;
+  min-height: 32px;
+  padding-inline: 14px;
+  white-space: nowrap;
+}
+
+.button-cluster,
+.field-button-row {
+  gap: 8px;
+}
+
+.mode-switch {
+  padding: 3px;
+}
+
+.tool-item,
+.settings-nav-button {
+  min-height: 34px;
+}
+
+.primary-button {
+  font-weight: 680;
+}
+
+/* Stronger area contrast without outlines */
+.tool-list {
+  background:
+    linear-gradient(180deg, oklch(88% 0.016 255deg / 46%), oklch(94% 0.008 255deg / 28%)),
+    color-mix(in oklab, var(--accent), transparent 94%);
+  box-shadow:
+    inset -18px 0 34px oklch(34% 0.02 255deg / 4%),
+    inset 1px 0 0 oklch(100% 0 0 / 26%);
+}
+
+.tool-panel {
+  background:
+    radial-gradient(circle at 76% 0%, oklch(100% 0 0 / 48%), transparent 22rem),
+    linear-gradient(145deg, oklch(100% 0 0 / 60%), oklch(97% 0.004 255deg / 46%));
+}
+
+.base64-tool,
+.music-tool,
+.zippng-tool,
+.directdownloader-tool,
+.imageconvert-tool,
+.mp4mp3-tool,
+.pdftools-tool,
+.wordformatter-tool,
+.batchrename-tool,
+.filesorter-tool,
+.same-tool,
+.empty-tool-panel {
+  background: oklch(100% 0 0 / 76%);
+  box-shadow:
+    0 18px 46px oklch(24% 0.02 255deg / 8%),
+    inset 0 1px 0 oklch(100% 0 0 / 42%);
+}
+
+.settings-panel {
+  background:
+    linear-gradient(90deg, oklch(88% 0.012 255deg / 34%) 0 176px, transparent 176px),
+    oklch(100% 0 0 / 62%);
+  box-shadow:
+    0 18px 46px oklch(24% 0.02 255deg / 8%),
+    inset 0 1px 0 oklch(100% 0 0 / 40%);
+}
+
+.settings-content {
+  border-radius: 18px;
+  padding: 6px;
+  background:
+    radial-gradient(circle at 80% 0%, oklch(100% 0 0 / 42%), transparent 18rem),
+    oklch(100% 0 0 / 22%);
+}
+
+.settings-section-hero {
+  background: linear-gradient(180deg, oklch(100% 0 0 / 42%), transparent);
+}
+
+.settings-grid .settings-card,
+.settings-wide-card,
+.settings-group-card,
+.settings-field-card,
+.settings-toggle-row,
+.file-mode-card,
+.actions-row,
+.result-card,
+.log-panel,
+.table-panel {
+  background: oklch(100% 0 0 / 52%);
+}
+
+.settings-group-card,
+.file-mode-card,
+.result-card,
+.table-panel {
+  box-shadow: 0 10px 24px oklch(26% 0.018 255deg / 4%);
+}
+
+input,
+select,
+textarea {
+  background: oklch(96% 0.004 255deg / 72%);
+  box-shadow: inset 0 1px 2px oklch(24% 0.015 255deg / 5%);
+}
+
+.settings-save-sticky {
+  background: oklch(100% 0 0 / 76%);
+  box-shadow: 0 -16px 30px oklch(30% 0.02 255deg / 9%);
+}
+
+/* Download manager table */
+.download-table-panel {
+  overflow: hidden;
+  border-radius: 18px;
+  background: oklch(100% 0 0 / 58%);
+  box-shadow: 0 12px 28px oklch(26% 0.018 255deg / 5%);
+  backdrop-filter: blur(16px) saturate(118%);
+  -webkit-backdrop-filter: blur(16px) saturate(118%);
+}
+
+.download-table-head,
+.download-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 2.4fr) minmax(150px, 1.35fr) minmax(96px, 0.75fr) minmax(78px, 0.6fr) minmax(126px, 0.9fr);
+  gap: 18px;
+  align-items: center;
+}
+
+.download-table-head {
+  min-height: 44px;
+  padding: 0 18px;
+  color: var(--ink-muted);
+  font-size: 13px;
+  font-weight: 720;
+  background: linear-gradient(180deg, oklch(94% 0.006 255deg / 72%), oklch(98% 0.003 255deg / 34%));
+}
+
+.download-table-body {
+  display: grid;
+  gap: 4px;
+  padding: 8px;
+}
+
+.download-row {
+  min-height: 74px;
+  border-radius: 16px;
+  padding: 10px;
+  background: transparent;
+}
+
+.download-row:hover {
+  background: oklch(100% 0 0 / 48%);
+}
+
+.download-file-cell {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  min-width: 0;
+}
+
+.download-file-icon {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: end;
+  justify-content: center;
+  width: 42px;
+  height: 48px;
+  border-radius: 13px;
+  padding: 0 5px 5px;
+  color: var(--accent-strong);
+  background: color-mix(in oklab, var(--accent), white 86%);
+}
+
+.download-file-icon::before {
+  content: "";
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  width: 15px;
+  height: 18px;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 2px currentColor;
+}
+
+.download-file-icon small {
+  position: relative;
+  z-index: 1;
+  max-width: 34px;
+  overflow: hidden;
+  border-radius: 5px;
+  padding: 1px 4px;
+  color: white;
+  font-size: 9px;
+  font-weight: 780;
+  letter-spacing: -0.02em;
+  text-overflow: ellipsis;
+  background: var(--accent);
+}
+
+.download-file-text,
+.download-progress-cell {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.download-file-text strong,
+.download-file-text small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.download-file-text strong {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 680;
+}
+
+.download-file-text small,
+.download-progress-cell small,
+.download-eta,
+.download-row-actions small {
+  color: var(--ink-muted);
+  font-size: 13px;
+  font-weight: 560;
+}
+
+.download-progress-track {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: oklch(86% 0.012 255deg / 70%);
+}
+
+.download-progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), var(--accent-strong));
+}
+
+.download-speed-pill {
+  justify-self: start;
+  border-radius: 999px;
+  padding: 7px 12px;
+  color: var(--accent-strong);
+  font-size: 13px;
+  font-weight: 760;
+  background: color-mix(in oklab, var(--accent), white 88%);
+}
+
+.download-eta {
+  color: var(--ink-muted);
+}
+
+.download-row-actions {
+  display: inline-flex;
+  justify-content: flex-start;
+  gap: 7px;
+}
+
+.mini-pill {
+  min-width: 48px;
+  min-height: 30px;
+  padding-inline: 11px;
+}
+
+@media (max-width: 980px) {
+  .download-table-head {
+    display: none;
+  }
+
+  .download-row {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+}
+
+.theme-root[data-theme-mode="dark"] {
+  color-scheme: dark;
+}
+
+.theme-root[data-theme-mode="dark"] .window-surface {
+  border-color: color-mix(in oklab, var(--legacy-text-secondary), transparent 72%);
+  background:
+    linear-gradient(145deg, color-mix(in oklab, var(--legacy-window-bg), black 14%), color-mix(in oklab, var(--legacy-surface-bg), black 18%)),
+    radial-gradient(circle at 16% 0%, color-mix(in oklab, var(--legacy-accent), transparent 90%), transparent 24rem),
+    radial-gradient(circle at 92% 10%, color-mix(in oklab, var(--legacy-accent), transparent 88%), transparent 26rem);
+  box-shadow:
+    0 26px 70px oklch(0% 0 0 / 32%),
+    inset 0 1px 0 oklch(100% 0 0 / 9%);
+}
+
+.theme-root[data-theme-mode="dark"] .window-surface::before {
+  background:
+    linear-gradient(120deg, oklch(100% 0 0 / 6%), transparent 44%, oklch(100% 0 0 / 4%)),
+    radial-gradient(circle at 78% 8%, color-mix(in oklab, var(--legacy-accent), transparent 86%), transparent 18rem);
+  mix-blend-mode: normal;
+}
+
+.theme-root[data-theme-mode="dark"] .shell-header {
+  border-bottom-color: color-mix(in oklab, var(--legacy-text-secondary), transparent 78%);
+  background: color-mix(in oklab, var(--legacy-window-bg), transparent 12%);
+}
+
+.theme-root[data-theme-mode="dark"] .tool-list {
+  border-right-color: color-mix(in oklab, var(--legacy-text-secondary), transparent 82%);
+  background:
+    linear-gradient(180deg, color-mix(in oklab, var(--legacy-surface-bg), black 8%), color-mix(in oklab, var(--legacy-window-bg), black 10%)),
+    color-mix(in oklab, var(--legacy-accent), transparent 94%);
+  box-shadow:
+    inset -18px 0 34px oklch(0% 0 0 / 12%),
+    inset 1px 0 0 oklch(100% 0 0 / 6%);
+}
+
+.theme-root[data-theme-mode="dark"] .tool-panel {
+  background:
+    radial-gradient(circle at 76% 0%, color-mix(in oklab, var(--legacy-accent), transparent 94%), transparent 22rem),
+    linear-gradient(145deg, color-mix(in oklab, var(--legacy-surface-bg), black 18%), color-mix(in oklab, var(--legacy-window-bg), black 22%));
+}
+
+.theme-root[data-theme-mode="dark"] .base64-tool,
+.theme-root[data-theme-mode="dark"] .music-tool,
+.theme-root[data-theme-mode="dark"] .zippng-tool,
+.theme-root[data-theme-mode="dark"] .directdownloader-tool,
+.theme-root[data-theme-mode="dark"] .imageconvert-tool,
+.theme-root[data-theme-mode="dark"] .mp4mp3-tool,
+.theme-root[data-theme-mode="dark"] .pdftools-tool,
+.theme-root[data-theme-mode="dark"] .wordformatter-tool,
+.theme-root[data-theme-mode="dark"] .batchrename-tool,
+.theme-root[data-theme-mode="dark"] .filesorter-tool,
+.theme-root[data-theme-mode="dark"] .same-tool,
+.theme-root[data-theme-mode="dark"] .empty-tool-panel {
+  background: color-mix(in oklab, var(--legacy-card-bg), black 16%);
+  box-shadow:
+    0 18px 46px oklch(0% 0 0 / 20%),
+    inset 0 1px 0 oklch(100% 0 0 / 9%);
+}
+
+.theme-root[data-theme-mode="dark"] .settings-panel {
+  background:
+    linear-gradient(90deg, color-mix(in oklab, var(--legacy-window-bg), black 18%) 0 176px, transparent 176px),
+    color-mix(in oklab, var(--legacy-card-bg), black 14%);
+  box-shadow:
+    0 18px 46px oklch(0% 0 0 / 20%),
+    inset 0 1px 0 oklch(100% 0 0 / 9%);
+}
+
+.theme-root[data-theme-mode="dark"] .settings-content {
+  background:
+    radial-gradient(circle at 80% 0%, color-mix(in oklab, var(--legacy-accent), transparent 94%), transparent 18rem),
+    color-mix(in oklab, var(--legacy-window-bg), black 10%);
+}
+
+.theme-root[data-theme-mode="dark"] .settings-save-sticky {
+  border-color: color-mix(in oklab, var(--legacy-text-secondary), transparent 72%);
+  background: color-mix(in oklab, var(--legacy-card-bg), black 10%);
+  box-shadow: 0 -14px 28px oklch(0% 0 0 / 18%);
+}
+
+.theme-root[data-theme-mode="dark"] .settings-section-hero,
+.theme-root[data-theme-mode="dark"] .settings-card,
+.theme-root[data-theme-mode="dark"] .settings-grid .settings-card,
+.theme-root[data-theme-mode="dark"] .settings-wide-card,
+.theme-root[data-theme-mode="dark"] .settings-group-card,
+.theme-root[data-theme-mode="dark"] .settings-field-card,
+.theme-root[data-theme-mode="dark"] .settings-toggle-row,
+.theme-root[data-theme-mode="dark"] .file-mode-card,
+.theme-root[data-theme-mode="dark"] .actions-row,
+.theme-root[data-theme-mode="dark"] .result-card,
+.theme-root[data-theme-mode="dark"] .log-panel,
+.theme-root[data-theme-mode="dark"] .table-panel,
+.theme-root[data-theme-mode="dark"] .download-table-panel,
+.theme-root[data-theme-mode="dark"] .result-row {
+  background: color-mix(in oklab, var(--legacy-card-bg), black 10%);
+}
+
+.theme-root[data-theme-mode="dark"] .info-box,
+.theme-root[data-theme-mode="dark"] .error-box,
+.theme-root[data-theme-mode="dark"] .mini-list p {
+  color: var(--legacy-text-primary);
+  background: color-mix(in oklab, var(--legacy-input-bg), black 18%);
+  box-shadow: inset 0 1px 0 oklch(100% 0 0 / 8%);
+}
+
+.theme-root[data-theme-mode="dark"] .settings-nav-overview,
+.theme-root[data-theme-mode="dark"] .settings-nav-list {
+  background: color-mix(in oklab, var(--legacy-window-bg), black 8%);
+}
+
+.theme-root[data-theme-mode="dark"] .theme-swatch,
+.theme-root[data-theme-mode="dark"] .theme-opacity-control {
+  border: 1px solid color-mix(in oklab, var(--legacy-text-secondary), transparent 62%);
+  background: color-mix(in oklab, var(--legacy-input-bg), black 18%);
+}
+
+.theme-root[data-theme-mode="dark"] .theme-swatch b,
+.theme-root[data-theme-mode="dark"] .theme-opacity-control b,
+.theme-root[data-theme-mode="dark"] .settings-card > span,
+.theme-root[data-theme-mode="dark"] .settings-nav-button,
+.theme-root[data-theme-mode="dark"] .settings-section-hero strong,
+.theme-root[data-theme-mode="dark"] .settings-subsection-head strong {
+  color: var(--legacy-text-primary);
+}
+
+.theme-root[data-theme-mode="dark"] .theme-swatch small,
+.theme-root[data-theme-mode="dark"] .theme-opacity-control small,
+.theme-root[data-theme-mode="dark"] .settings-card p,
+.theme-root[data-theme-mode="dark"] .settings-nav-overview span,
+.theme-root[data-theme-mode="dark"] .settings-section-hero p,
+.theme-root[data-theme-mode="dark"] .settings-subsection-head p,
+.theme-root[data-theme-mode="dark"] .action-hint {
+  color: color-mix(in oklab, var(--legacy-text-primary), var(--legacy-text-secondary) 38%);
+}
+
+.theme-root[data-theme-mode="dark"] input,
+.theme-root[data-theme-mode="dark"] select,
+.theme-root[data-theme-mode="dark"] textarea {
+  border-color: color-mix(in oklab, var(--legacy-text-secondary), transparent 48%);
+  color: var(--legacy-text-primary);
+  background: color-mix(in oklab, var(--legacy-input-bg), black 20%);
+  box-shadow: inset 0 1px 2px oklch(0% 0 0 / 12%);
+}
+
+.theme-root[data-theme-mode="dark"] textarea:focus,
+.theme-root[data-theme-mode="dark"] input:focus,
+.theme-root[data-theme-mode="dark"] select:focus {
+  background: color-mix(in oklab, var(--legacy-input-bg), black 12%);
+}
+
+.theme-root[data-theme-mode="dark"] .mode-switch,
+.theme-root[data-theme-mode="dark"] .download-table-head,
+.theme-root[data-theme-mode="dark"] .download-progress-track {
+  background: color-mix(in oklab, var(--legacy-input-bg), black 18%);
+}
+
+.theme-root[data-theme-mode="dark"] .mode-switch button.active,
+.theme-root[data-theme-mode="dark"] .settings-panel .mode-switch button.active {
+  background: color-mix(in oklab, var(--legacy-text-primary), transparent 82%);
+}
+
+.theme-root[data-theme-mode="dark"] .tool-item:hover:not(:disabled),
+.theme-root[data-theme-mode="dark"] .tool-item.active,
+.theme-root[data-theme-mode="dark"] .settings-nav-button:hover,
+.theme-root[data-theme-mode="dark"] .settings-nav-button.active {
+  background: color-mix(in oklab, var(--legacy-accent), transparent 78%);
+}
+
+.theme-root[data-theme-mode="dark"] .ghost-button:hover:not(:disabled),
+.theme-root[data-theme-mode="dark"] .path-pick-button:hover:not(:disabled),
+.theme-root[data-theme-mode="dark"] .settings-button:hover,
+.theme-root[data-theme-mode="dark"] .settings-button.active {
+  background: color-mix(in oklab, var(--legacy-accent), transparent 82%);
+}
+
+.theme-root[data-theme-mode="dark"] .download-row:hover,
+.theme-root[data-theme-mode="dark"] .log-content li {
+  color: var(--legacy-text-primary);
+  background: color-mix(in oklab, var(--legacy-input-bg), black 14%);
 }

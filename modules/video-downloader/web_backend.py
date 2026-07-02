@@ -35,6 +35,7 @@ from .progress import (
     _format_progress_percent, _parse_ffmpeg_time,
     _estimate_download_rate, _normalize_progress_text,
     _resolve_web_percent_text, _resolve_web_speed_text,
+    _with_task_index,
 )
 from .source_parser import (
     _check_cancel,
@@ -703,17 +704,18 @@ def _download_web_sequential(
         _check_cancel(token)
         _wait_if_paused(token, progress_cb)
         _emit_task_start(progress_cb, index, total_tasks, task)
+        indexed_progress_cb = _with_task_index(progress_cb, index)
         try:
-            results[index] = _download_web_task(task, output_root, options, progress_cb, token=token)
+            results[index] = _download_web_task(task, output_root, options, indexed_progress_cb, token=token)
         except CancelledError:
             results[index] = _make_result(task, False, [], '下载已取消')
             completed_count += 1
-            _emit_task_done(progress_cb, completed_count, total_tasks)
+            _emit_task_done(progress_cb, completed_count, total_tasks, index=index)
             raise
         except Exception as exc:
             results[index] = _make_result(task, False, [], str(exc))
         completed_count += 1
-        _emit_task_done(progress_cb, completed_count, total_tasks)
+        _emit_task_done(progress_cb, completed_count, total_tasks, index=index)
         remaining -= 1
         if remaining > 0 and _INTER_TASK_DELAY_RANGE[1] > 0:
             delay = uniform(*_INTER_TASK_DELAY_RANGE)
@@ -740,7 +742,7 @@ def _download_web_concurrent(
     future_map: dict[object, int] = {}
     try:
         future_map = {
-            executor.submit(_run_web_task, task, output_root, options, progress_cb, token): index
+            executor.submit(_run_web_task, task, output_root, options, _with_task_index(progress_cb, index), token): index
             for index, task in web_entries
         }
         pending = set(future_map)
@@ -761,7 +763,7 @@ def _download_web_concurrent(
             except Exception as exc:
                 results[index] = _make_result(task_by_index[index], False, [], str(exc))
             completed_count += 1
-            _emit_task_done(progress_cb, completed_count, total_tasks)
+            _emit_task_done(progress_cb, completed_count, total_tasks, index=index)
     except CancelledError:
         cancelled = True
         for future in future_map:
@@ -789,8 +791,9 @@ def _download_web_auto(
     results: dict[int, dict[str, object]] = {}
     completed = initial_completed
     for i in range(sample_count):
-        tracker = _SpeedTracker(progress_cb)
         index, task = web_entries[i]
+        indexed_progress_cb = _with_task_index(progress_cb, index)
+        tracker = _SpeedTracker(indexed_progress_cb)
         _wait_if_paused(token, progress_cb)
         _emit_task_start(progress_cb, index, total_tasks, task)
         try:
@@ -801,7 +804,7 @@ def _download_web_auto(
         except Exception as exc:
             results[index] = _make_result(task, False, [], str(exc))
         completed += 1
-        _emit_task_done(progress_cb, completed, total_tasks)
+        _emit_task_done(progress_cb, completed, total_tasks, index=index)
         if tracker.max_speed > 0:
             probe_speeds.append(tracker.max_speed)
     remaining = web_entries[sample_count:]

@@ -21,7 +21,7 @@ ROOT = project_root(__file__, 1)
 REGISTRY_PATH = ROOT / "toolbox_app" / "tool_registry.py"
 TS_MANIFEST_PATH = ROOT / "desktop-tauri" / "src" / "tools" / "manifest.ts"
 
-READY_TOOL_IDS = {
+TAURI_READY_TOOL_IDS = {
     "base64",
     "batchrename",
     "directdownloader",
@@ -43,6 +43,10 @@ MANIFEST_METADATA_FIELDS = (
     "converter_file",
     "tab_file",
 )
+
+
+def resolve_tauri_status(tool_id: str) -> str:
+    return "ready" if tool_id in TAURI_READY_TOOL_IDS else "pending"
 
 
 def _load_registry_by_import() -> list[Any]:
@@ -119,7 +123,7 @@ def infer_category(tool: dict[str, Any]) -> str:
 def build_manifest(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
     manifest = []
     for tool in tools:
-        ready = tool["id"] in READY_TOOL_IDS
+        status = resolve_tauri_status(str(tool["id"]))
         metadata = {field: tool[field] for field in MANIFEST_METADATA_FIELDS if field in tool}
         metadata["extra_files"] = list(tool.get("extra_files") or ())
         metadata["tab_kwargs"] = dict(tool.get("tab_kwargs") or {})
@@ -128,8 +132,8 @@ def build_manifest(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "id": tool["id"],
                 "title": tool["title"],
                 "category": infer_category(tool),
-                "supported_in_tauri": ready,
-                "status": "ready" if ready else "pending",
+                "supported_in_tauri": status == "ready",
+                "status": status,
                 **metadata,
             }
         )

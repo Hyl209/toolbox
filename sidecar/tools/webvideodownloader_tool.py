@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import importlib.util
 import sys
 from dataclasses import asdict, is_dataclass
@@ -10,8 +11,10 @@ from typing import Any
 
 try:
     from ..runtime_paths import project_root
+    from ..runtime_state import current_download_token, emit_runtime_progress
 except ImportError:  # direct script execution support
     from runtime_paths import project_root
+    from runtime_state import current_download_token, emit_runtime_progress
 
 
 ROOT = project_root(__file__, 2)
@@ -202,8 +205,11 @@ def _run_inspect(payload: dict[str, Any]) -> dict:
     if not urls:
         return _error("INVALID_PAYLOAD", "payload.url, payload.urls, or payload.text must contain at least one URL")
     logs: list[str] = []
+    def _progress(message: str) -> None:
+        logs.append(message)
+        emit_runtime_progress(message)
     try:
-        results = module.inspect_web_media_batch(urls, progress_cb=logs.append, options=_options(payload, module))
+        results = module.inspect_web_media_batch(urls, progress_cb=_progress, options=_options(payload, module))
     except Exception as exc:
         return _error("TOOL_ERROR", str(exc))
     clean_results = _clean(results)
@@ -274,14 +280,19 @@ def _run_download(payload: dict[str, Any]) -> dict:
         return _download_data(errors=validation_errors)
 
     logs: list[str] = []
+    def _progress(message: str) -> None:
+        logs.append(message)
+        emit_runtime_progress(message)
     try:
-        results = module.download_batch(
-            tasks,
-            output_dir,
-            telegram_config=None,
-            options=_options(payload, module),
-            progress_cb=logs.append,
-        )
+        kwargs = {
+            "telegram_config": None,
+            "options": _options(payload, module),
+            "progress_cb": _progress,
+        }
+        signature = inspect.signature(module.download_batch)
+        if "token" in signature.parameters:
+            kwargs["token"] = current_download_token()
+        results = module.download_batch(tasks, output_dir, **kwargs)
     except ValueError as exc:
         return _download_data(logs=logs, errors=[str(exc)])
     except Exception as exc:

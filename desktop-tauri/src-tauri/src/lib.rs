@@ -1,6 +1,6 @@
 pub mod dialogs;
+mod sidecar;
 
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
@@ -10,7 +10,18 @@ fn greet(name: &str) -> String {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet])
+        .manage(sidecar::ToolSessionStore::default())
+        .invoke_handler(tauri::generate_handler![
+            greet,
+            dialogs::pick_path,
+            sidecar::run_tool,
+            sidecar::start_tool_session,
+            sidecar::poll_tool_session,
+            sidecar::control_tool_session,
+            sidecar::cleanup_tool_session,
+            sidecar::load_settings_snapshot,
+            sidecar::save_settings_patch
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

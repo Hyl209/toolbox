@@ -176,9 +176,9 @@ function BatchRenameTool({ initialSettings = {} }: { initialSettings?: ToolSetti
         <div>
           <p className="eyebrow">Legacy batch rename</p>
           <h2>批量命名</h2>
-          <p>复用旧版 batch-rename converter，先预览命名计划，再执行真实重命名。</p>
+          <p>预览后批量重命名。</p>
         </div>
-        <span className="settings-mode-pill">{plan.length ? "已生成预览" : "待预览"}</span>
+        <span className="settings-mode-pill">{plan.length ? "已预览" : "待预览"}</span>
       </div>
 
       <div className="editor-grid">
@@ -236,13 +236,13 @@ function BatchRenameTool({ initialSettings = {} }: { initialSettings?: ToolSetti
         <div className="action-hint">预览不会改动文件；执行前请确认目标名。</div>
         <div className="button-cluster">
           <button className="ghost-button" disabled={running || (!plan.length && !results.length && !error)} onClick={clearAll} type="button">
-            清空结果
+            清空
           </button>
           <button className="ghost-button" disabled={!canPreview} onClick={handlePreview} type="button">
-            生成预览
+            预览
           </button>
           <button className="primary-button" disabled={!canRename} onClick={handleRename} type="button">
-            {running ? "运行中..." : "执行命名"}
+            {running ? "运行中" : "命名"}
           </button>
         </div>
       </div>
@@ -251,7 +251,7 @@ function BatchRenameTool({ initialSettings = {} }: { initialSettings?: ToolSetti
         <div className="result-card">
           <span>文件数量</span>
           <strong>{totalFiles || plan.length || results.length || "等待预览"}</strong>
-          <p>{folderPath || "选择旧版批量命名要处理的目录"}</p>
+          <p>{folderPath || "\u9009\u62e9\u8981\u5904\u7406\u7684\u76ee\u5f55"}</p>
         </div>
         <div className="result-card">
           <span>执行结果</span>

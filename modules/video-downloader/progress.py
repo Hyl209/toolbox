@@ -147,8 +147,11 @@ def _emit_task_start(progress_cb: ProgressCallback | None, index: int, total: in
     _emit(progress_cb, f'__HYL_PROGRESS__|task_start|index={index}|total={total}|url={task.source_url}')
 
 
-def _emit_task_done(progress_cb: ProgressCallback | None, completed: int, total: int) -> None:
-    _emit(progress_cb, f'__HYL_PROGRESS__|task_done|completed={completed}|total={total}')
+def _emit_task_done(progress_cb: ProgressCallback | None, completed: int, total: int, index: int | None = None) -> None:
+    parts = [f'completed={completed}', f'total={total}']
+    if index is not None:
+        parts.insert(0, f'index={index}')
+    _emit(progress_cb, '__HYL_PROGRESS__|task_done|' + '|'.join(parts))
 
 
 def _emit_scan_progress(progress_cb: ProgressCallback | None, scanned: int, matched: int) -> None:
@@ -160,6 +163,22 @@ def _emit_file_select(progress_cb: ProgressCallback | None, file_label: str, ind
     label = Path(parsed.path).name if parsed.path else str(file_label or '')
     clean_label = _s.sanitize_filename_component(label, fallback='media')
     _emit(progress_cb, f'__HYL_PROGRESS__|file|index={index}|name={clean_label}|total={total}')
+
+
+def _with_task_index(progress_cb: ProgressCallback | None, index: int) -> ProgressCallback | None:
+    if progress_cb is None:
+        return None
+
+    marker = f'|index={index}'
+
+    def callback(message: str) -> None:
+        text = str(message or '')
+        if text.startswith('__HYL_PROGRESS__|') and marker not in text:
+            progress_cb(text + marker)
+            return
+        progress_cb(text)
+
+    return callback
 
 
 def _make_result(task: DownloadTask, success: bool, files, error: str) -> dict[str, object]:

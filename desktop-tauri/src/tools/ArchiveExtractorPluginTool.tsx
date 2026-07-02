@@ -13,13 +13,13 @@ type ArchiveResult = {
 };
 
 const actionLabels: Record<ArchiveAction, string> = {
-  detect: "\u8bc6\u522b\u538b\u7f29\u5305",
-  extract: "\u89e3\u538b\u6587\u4ef6",
+  detect: "\u8bc6\u522b",
+  extract: "\u89e3\u538b",
 };
 
 const text = {
   title: "\u538b\u7f29\u5305\u89e3\u538b",
-  desc: "\u590d\u7528\u65e7\u63d2\u4ef6 converter.py \u7684 zip\u3001tar\u30017z \u8bc6\u522b\u548c\u89e3\u538b\u80fd\u529b\uff1bReact \u53ea\u505a\u8f93\u5165\u3001\u72b6\u6001\u548c\u7ed3\u679c\u5c55\u793a\u3002",
+  desc: "识别并解压压缩包。",
   archivePath: "\u538b\u7f29\u5305\u8def\u5f84",
   outputDir: "\u8f93\u51fa\u76ee\u5f55",
   password: "\u5bc6\u7801\uff08\u53ef\u9009\uff09",
@@ -27,14 +27,14 @@ const text = {
   pickArchive: "\u9009\u62e9\u538b\u7f29\u5305",
   pickOutput: "\u9009\u62e9\u89e3\u538b\u8f93\u51fa\u76ee\u5f55",
   current: "\u5f53\u524d\u52a8\u4f5c",
-  run: "\u5f00\u59cb\u8fd0\u884c",
-  running: "\u8fd0\u884c\u4e2d...",
-  start: "\u5f00\u59cb\u8fd0\u884c",
+  run: "\u8fd0\u884c",
+  running: "\u8fd0\u884c\u4e2d",
+  start: "\u8fd0\u884c",
   done: "\u8fd0\u884c\u5b8c\u6210",
   failed: "\u8fd0\u884c\u5931\u8d25",
   clear: "\u6e05\u7a7a",
-  copy: "\u590d\u5236\u8f93\u51fa",
-  copied: "\u5df2\u590d\u5236\u8f93\u51fa",
+  copy: "\u590d\u5236",
+  copied: "\u5df2\u590d\u5236",
   archiveType: "\u538b\u7f29\u5305\u7c7b\u578b",
   supported: "\u652f\u6301\u72b6\u6001",
   supportedYes: "\u5df2\u652f\u6301",

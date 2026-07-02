@@ -1,12 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { pickDirectory, runTool, type ToolResult, type ToolSettings } from "../api/tauri";
-
-type BackendStatus = {
-  available?: boolean;
-  label?: string;
-  message?: string;
-  path?: string;
-};
+import { pickDirectory, runTool, type ToolInput, type ToolResult, type ToolSessionSnapshot, type ToolSettings } from "../api/tauri";
+import { DownloadQueueTable, type DownloadQueueRow } from "../features/tools/components/DownloadQueueTable";
+import { queueRowsFromSession as buildQueueRows } from "../features/tools/downloadQueueState";
+import { useDownloadRuntimeSession } from "../features/tools/hooks/useDownloadRuntimeSession";
 
 type WebTask = {
   source_url: string;
@@ -33,7 +29,6 @@ type DownloadResult = {
 };
 
 type WebVideoResult = ToolResult & {
-  backends?: Record<string, BackendStatus>;
   urls?: string[];
   tasks?: WebTask[];
   url_count?: number;
@@ -55,8 +50,8 @@ function text(error: unknown): string {
   return typeof error === "string" ? error : JSON.stringify(error);
 }
 
-function dataOf(result: ToolResult): WebVideoResult {
-  const direct = result as WebVideoResult;
+function dataOf(result: ToolResult | null | undefined): WebVideoResult {
+  const direct = (result ?? {}) as WebVideoResult;
   return (direct.data ?? direct) as WebVideoResult;
 }
 
@@ -76,9 +71,23 @@ function effectiveProxyUrl(proxyUrl: string, proxyHost: string, proxyPort: strin
   return "";
 }
 
+function queueRowsFromSession(tasks: WebTask[], session: ToolSessionSnapshot | null): DownloadQueueRow[] {
+  return buildQueueRows(tasks, session, {
+    progressKinds: ["file", "web_status", "web_aria2", "web_percent"],
+    applyCompletedResult(row, item) {
+      const result = item as DownloadResult;
+      row.status = result.success ? "success" : "failed";
+      row.fileName = result.files?.[0] ? result.files[0].split(/[\\/]/).pop() || row.fileName : row.fileName;
+      row.percent = result.success ? 100 : row.percent;
+      row.detail = result.success ? `${result.downloaded_count ?? result.files?.length ?? 0} files` : result.error || "failed";
+    },
+  });
+}
+
 function WebVideoDownloaderTool({ initialSettings = {} }: { initialSettings?: ToolSettings }) {
   const outputDirTouchedRef = useRef(false);
   const settingsTouchedRef = useRef(false);
+  const runtime = useDownloadRuntimeSession("webvideodownloader");
   const [urlText, setUrlText] = useState("");
   const [outputDir, setOutputDir] = useState(initialSettings.output_dir ?? "");
   const [proxyHost, setProxyHost] = useState(initialSettings.proxy_host ?? "127.0.0.1");
@@ -88,10 +97,8 @@ function WebVideoDownloaderTool({ initialSettings = {} }: { initialSettings?: To
   const [outputSubdirByTitle, setOutputSubdirByTitle] = useState(initialSettings.output_subdir_by_title ?? false);
   const [concurrent, setConcurrent] = useState(initialSettings.concurrent ?? "1");
   const [inspectAll, setInspectAll] = useState(false);
-  const [backends, setBackends] = useState<Record<string, BackendStatus>>({});
   const [urls, setUrls] = useState<string[]>([]);
   const [tasks, setTasks] = useState<WebTask[]>([]);
-  const [errors, setErrors] = useState<string[]>([]);
   const [inspectRows, setInspectRows] = useState<InspectResult[]>([]);
   const [downloadRows, setDownloadRows] = useState<DownloadResult[]>([]);
   const [downloadedFiles, setDownloadedFiles] = useState<string[]>([]);
@@ -99,8 +106,9 @@ function WebVideoDownloaderTool({ initialSettings = {} }: { initialSettings?: To
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
 
-  const canRun = !running && urlText.trim().length > 0;
-  const backendReady = Boolean(backends.yt_dlp?.available);
+  const busy = running || runtime.active;
+  const paused = runtime.paused;
+  const canRun = !busy && urlText.trim().length > 0;
   const payload = useMemo(
     () => ({
       text: urlText,
@@ -117,6 +125,8 @@ function WebVideoDownloaderTool({ initialSettings = {} }: { initialSettings?: To
     }),
     [concurrent, inspectAll, outputDir, outputSubdirByTitle, overwrite, proxyHost, proxyPort, proxyUrl, urlText],
   );
+  const queueRows = useMemo(() => queueRowsFromSession(tasks, runtime.session), [tasks, runtime.session]);
+  const runtimeLogs = runtime.session?.logs?.length ? runtime.session.logs : logs;
 
   useEffect(() => {
     if (!outputDirTouchedRef.current) {
@@ -133,25 +143,23 @@ function WebVideoDownloaderTool({ initialSettings = {} }: { initialSettings?: To
   }, [initialSettings]);
 
   useEffect(() => {
-    let cancelled = false;
-    runTool("webvideodownloader", { task_id: `webvideo-probe-${Date.now()}`, action: "probe", payload: {} })
-      .then((result) => {
-        if (!cancelled) {
-          setBackends(dataOf(result).backends ?? {});
-        }
-      })
-      .catch((caught) => {
-        if (!cancelled) {
-          setError(text(caught));
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    if (!runtime.session) {
+      return;
+    }
+    if (runtime.session.status === "completed") {
+      const data = dataOf(runtime.session.result);
+      setDownloadRows((data.results ?? []) as DownloadResult[]);
+      setDownloadedFiles(data.files ?? []);
+      setError("");
+    } else if (runtime.session.status === "failed") {
+      setError(runtime.session.error ?? "download failed");
+    } else if (runtime.session.status === "cancelled") {
+      setError("");
+    }
+  }, [runtime.session]);
 
   async function chooseOutputDir() {
-    const path = await pickDirectory({ title: "\u9009\u62e9\u7f51\u9875\u89c6\u9891\u8f93\u51fa\u76ee\u5f55" });
+    const path = await pickDirectory({ title: "选择网页视频输出目录" });
     if (path) {
       outputDirTouchedRef.current = true;
       setOutputDir(path);
@@ -172,12 +180,11 @@ function WebVideoDownloaderTool({ initialSettings = {} }: { initialSettings?: To
       setUrls(parsed.urls ?? []);
       setTasks(parsed.tasks ?? []);
       const checked = dataOf(await runTool("webvideodownloader", { task_id: `webvideo-validate-${Date.now()}`, action: "validate", payload }));
-      setErrors(checked.errors ?? []);
-      setLogs((items) => [`parse=${parsed.url_count ?? 0}; validate=${checked.valid ? "ok" : "bad"}`, ...items].slice(0, 8));
+      setLogs((items) => [`parse=${parsed.url_count ?? 0}; validate=${checked.valid ? "ok" : "bad"}`, ...items].slice(0, 20));
     } catch (caught) {
       const message = text(caught);
       setError(message);
-      setLogs((items) => [`parse/validate failed: ${message}`, ...items].slice(0, 8));
+      setLogs((items) => [`parse/validate failed: ${message}`, ...items].slice(0, 20));
     } finally {
       setRunning(false);
     }
@@ -192,11 +199,11 @@ function WebVideoDownloaderTool({ initialSettings = {} }: { initialSettings?: To
     try {
       const data = dataOf(await runTool("webvideodownloader", { task_id: `webvideo-inspect-${Date.now()}`, action: "inspect", payload }));
       setInspectRows(data.results ?? []);
-      setLogs((items) => [...(data.logs ?? [`inspect success=${data.success_count ?? 0}; fail=${data.fail_count ?? 0}`]), ...items].slice(0, 8));
+      setLogs((items) => [...(data.logs ?? [`inspect success=${data.success_count ?? 0}; fail=${data.fail_count ?? 0}`]), ...items].slice(0, 20));
     } catch (caught) {
       const message = text(caught);
       setError(message);
-      setLogs((items) => [`inspect failed: ${message}`, ...items].slice(0, 8));
+      setLogs((items) => [`inspect failed: ${message}`, ...items].slice(0, 20));
     } finally {
       setRunning(false);
     }
@@ -207,30 +214,28 @@ function WebVideoDownloaderTool({ initialSettings = {} }: { initialSettings?: To
       return;
     }
     if (!outputDir.trim()) {
-      setError("\u8bf7\u5148\u9009\u62e9\u8f93\u51fa\u76ee\u5f55");
+      setError("请先选择输出目录");
       return;
     }
-    setRunning(true);
     setError("");
+    setDownloadRows([]);
+    setDownloadedFiles([]);
+    const input: ToolInput = {
+      task_id: `webvideo-download-${Date.now()}`,
+      action: "download",
+      payload,
+    };
     try {
-      const data = dataOf(await runTool("webvideodownloader", { task_id: `webvideo-download-${Date.now()}`, action: "download", payload }));
-      setDownloadRows((data.results ?? []) as DownloadResult[]);
-      setDownloadedFiles(data.files ?? []);
-      setErrors(data.errors ?? []);
-      setLogs((items) => [...(data.logs ?? [`download success=${data.success_count ?? 0}; fail=${data.fail_count ?? 0}`]), ...items].slice(0, 8));
+      await runtime.start(input);
     } catch (caught) {
-      const message = text(caught);
-      setError(message);
-      setLogs((items) => [`download failed: ${message}`, ...items].slice(0, 8));
-    } finally {
-      setRunning(false);
+      setError(text(caught));
     }
   }
 
-  function clearResults() {
+  async function clearResults() {
+    await runtime.clear();
     setUrls([]);
     setTasks([]);
-    setErrors([]);
     setInspectRows([]);
     setDownloadRows([]);
     setDownloadedFiles([]);
@@ -242,118 +247,95 @@ function WebVideoDownloaderTool({ initialSettings = {} }: { initialSettings?: To
     <div className="base64-tool">
       <div className="tool-heading">
         <div>
-          <p className="eyebrow">Legacy web video downloader</p>
-          <h2>{"\u7f51\u9875\u89c6\u9891\u4e0b\u8f7d"}</h2>
-          <p>{"\u5df2\u63a5\u5165\uff1a\u73af\u5883\u63a2\u6d4b\u3001\u94fe\u63a5\u89e3\u6790\u3001\u4e0b\u8f7d\u8bf7\u6c42\u6821\u9a8c\u3001\u5a92\u4f53\u5019\u9009\u68c0\u67e5\u3001\u4e0b\u8f7d\u6267\u884c\u3002"}</p>
+          <h2>{"网页视频下载"}</h2>
+          <p>下载网页视频。</p>
         </div>
-        <span className={`settings-mode-pill ${backendReady ? "ready-pill" : ""}`}>{backendReady ? "yt-dlp ready" : "probe only"}</span>
-      </div>
-
-      <div className="info-box">
-        {"\u5df2\u63a5\u5165\u4e0b\u8f7d\u6267\u884c\uff1b\u961f\u5217 / \u6682\u505c\u6062\u590d\u6682\u672a\u63a5\u5165\u3002\u672c\u9875\u53ea\u8c03\u7528 sidecar \u5c55\u793a\u8f93\u5165\u3001\u72b6\u6001\u548c\u7ed3\u679c\u3002"}
       </div>
 
       <div className="editor-grid">
         <label className="field-block">
           <span>
-            {"URL / \u5206\u4eab\u6587\u672c"}
+            {"URL / 分享文本"}
             <small>{urls.length ? `${urls.length} parsed` : "multi-line"}</small>
           </span>
-          <textarea disabled={running} onChange={(event) => setUrlText(event.currentTarget.value)} placeholder="https://example.com/video" value={urlText} />
+          <textarea disabled={busy} onChange={(event) => setUrlText(event.currentTarget.value)} placeholder="https://example.com/video" value={urlText} />
         </label>
 
         <div className="file-mode-card compact-card">
           <label className="field-block file-path-field">
-            <span>{"\u8f93\u51fa\u76ee\u5f55"}</span>
+            <span>{"输出目录"}</span>
             <div className="path-input-row">
-              <input disabled={running} onChange={(event) => { outputDirTouchedRef.current = true; setOutputDir(event.currentTarget.value); }} placeholder="E:\\downloads" value={outputDir} />
-              <button className="path-pick-button" disabled={running} onClick={chooseOutputDir} type="button">
-                {"\u9009\u62e9"}
+              <input disabled={busy} onChange={(event) => { outputDirTouchedRef.current = true; setOutputDir(event.currentTarget.value); }} placeholder="E:\\downloads" value={outputDir} />
+              <button className="path-pick-button" disabled={busy} onClick={chooseOutputDir} type="button">
+                {"选择"}
               </button>
             </div>
           </label>
           <label className="field-block file-path-field">
             <span>{"Proxy Host"}</span>
-            <input disabled={running} onChange={(event) => { settingsTouchedRef.current = true; setProxyHost(event.currentTarget.value); }} placeholder="127.0.0.1" value={proxyHost} />
+            <input disabled={busy} onChange={(event) => { settingsTouchedRef.current = true; setProxyHost(event.currentTarget.value); }} placeholder="127.0.0.1" value={proxyHost} />
           </label>
           <label className="field-block file-path-field">
             <span>{"Proxy Port"}</span>
-            <input disabled={running} onChange={(event) => { settingsTouchedRef.current = true; setProxyPort(event.currentTarget.value); }} placeholder="7890" value={proxyPort} />
+            <input disabled={busy} onChange={(event) => { settingsTouchedRef.current = true; setProxyPort(event.currentTarget.value); }} placeholder="7890" value={proxyPort} />
           </label>
           <label className="field-block file-path-field">
-            <span>{"Legacy Proxy URL"}</span>
-            <input disabled={running} onChange={(event) => { settingsTouchedRef.current = true; setProxyUrl(event.currentTarget.value); }} placeholder="http://127.0.0.1:7890" value={proxyUrl} />
+            <span>{"代理 URL"}</span>
+            <input disabled={busy} onChange={(event) => { settingsTouchedRef.current = true; setProxyUrl(event.currentTarget.value); }} placeholder="http://127.0.0.1:7890" value={proxyUrl} />
           </label>
           <label className="field-block file-path-field">
             <span>{"Concurrent"}</span>
-            <select disabled={running} onChange={(event) => { settingsTouchedRef.current = true; setConcurrent(event.currentTarget.value); }} value={concurrent}>
+            <select disabled={busy} onChange={(event) => { settingsTouchedRef.current = true; setConcurrent(event.currentTarget.value); }} value={concurrent}>
               {["0", "1", "2", "3", "4", "5"].map((value) => (
                 <option key={value} value={value}>{value === "0" ? "auto" : value}</option>
               ))}
             </select>
           </label>
           <label className="check-row">
-            <input checked={overwrite} disabled={running} onChange={(event) => { settingsTouchedRef.current = true; setOverwrite(event.currentTarget.checked); }} type="checkbox" />
+            <input checked={overwrite} disabled={busy} onChange={(event) => { settingsTouchedRef.current = true; setOverwrite(event.currentTarget.checked); }} type="checkbox" />
             {"overwrite"}
           </label>
           <label className="check-row">
-            <input checked={outputSubdirByTitle} disabled={running} onChange={(event) => { settingsTouchedRef.current = true; setOutputSubdirByTitle(event.currentTarget.checked); }} type="checkbox" />
+            <input checked={outputSubdirByTitle} disabled={busy} onChange={(event) => { settingsTouchedRef.current = true; setOutputSubdirByTitle(event.currentTarget.checked); }} type="checkbox" />
             {"output_subdir_by_title"}
           </label>
           <label className="check-row">
-            <input checked={inspectAll} disabled={running} onChange={(event) => setInspectAll(event.currentTarget.checked)} type="checkbox" />
-            {"\u5019\u9009\u68c0\u67e5\u65f6\u4f20\u9012 all candidates \u9009\u9879"}
+            <input checked={inspectAll} disabled={busy} onChange={(event) => setInspectAll(event.currentTarget.checked)} type="checkbox" />
+            {"候选检查时传递 all candidates 选项"}
           </label>
-        </div>
-      </div>
-
-      <div className="settings-card">
-        <span>{"\u540e\u7aef\u63a2\u6d4b"}</span>
-        <div className="tool-result-grid">
-          {Object.entries(backends).map(([key, item]) => (
-            <div className="result-card" key={key}>
-              <span>{key}</span>
-              <strong>{item.available ? "available" : "missing"}</strong>
-              <p>{item.path || item.message || item.label || "-"}</p>
-            </div>
-          ))}
         </div>
       </div>
 
       <div className="actions-row">
-        <div className="action-hint">{"React \u4ec5\u6536\u96c6\u8f93\u5165\u5e76\u5c55\u793a\u7ed3\u679c\uff0c\u4e0d\u590d\u5236\u89e3\u6790 / \u4e0b\u8f7d\u903b\u8f91\u3002"}</div>
         <div className="button-cluster">
-          <button className="ghost-button" disabled={running || (!urls.length && !inspectRows.length && !downloadRows.length && !logs.length && !error)} onClick={clearResults} type="button">
-            {"\u6e05\u7a7a\u7ed3\u679c"}
+          <button className="ghost-button" disabled={busy || (!urls.length && !inspectRows.length && !downloadRows.length && !runtimeLogs.length && !error)} onClick={() => void clearResults()} type="button">
+            {"清空"}
           </button>
           <button className="ghost-button" disabled={!canRun} onClick={handleParseValidate} type="button">
-            {running ? "running..." : "\u89e3\u6790 / \u6821\u9a8c"}
+            {"校验"}
           </button>
           <button className="primary-button" disabled={!canRun} onClick={handleInspect} type="button">
-            {running ? "running..." : "\u68c0\u67e5\u5a92\u4f53\u5019\u9009"}
+            {"媒体"}
           </button>
           <button className="primary-button" disabled={!canRun || !outputDir.trim()} onClick={handleDownload} type="button">
-            {running ? "running..." : "\u5f00\u59cb\u4e0b\u8f7d"}
+            {"下载"}
           </button>
+
         </div>
       </div>
 
-      <div className="editor-grid file-editor-grid">
-        <div className="result-card">
-          <span>{"\u89e3\u6790\u7ed3\u679c"}</span>
-          <strong>{tasks.length ? `${tasks.length} tasks` : "waiting"}</strong>
-          <p>{tasks[0]?.target_title || urls[0] || "-"}</p>
-        </div>
-        <div className="result-card">
-          <span>{"\u6821\u9a8c\u7ed3\u679c"}</span>
-          <strong>{errors.length ? `${errors.length} issues` : "no issues"}</strong>
-          <p>{errors[0] || "-"}</p>
-        </div>
-      </div>
+<DownloadQueueTable
+        active={runtime.active}
+        onCancel={() => void runtime.control("cancel")}
+        onPause={() => void runtime.control("pause")}
+        onResume={() => void runtime.control("resume")}
+        paused={paused}
+        rows={queueRows}
+      />
 
       {inspectRows.length ? (
         <section className="table-panel">
-          <div className="panel-title">{"\u5a92\u4f53\u5019\u9009"}</div>
+          <div className="panel-title">{"媒体候选"}</div>
           <div className="result-list">
             {inspectRows.map((row, index) => (
               <div className="result-row" key={`${row.source_url}-${index}`}>
@@ -367,7 +349,7 @@ function WebVideoDownloaderTool({ initialSettings = {} }: { initialSettings?: To
 
       {downloadRows.length || downloadedFiles.length ? (
         <section className="table-panel">
-          <div className="panel-title">{"\u4e0b\u8f7d\u7ed3\u679c"}</div>
+          <div className="panel-title">{"下载结果"}</div>
           <div className="result-list">
             {downloadRows.map((row, index) => (
               <div className="result-row" key={`${row.source_url}-${index}`}>
@@ -388,18 +370,18 @@ function WebVideoDownloaderTool({ initialSettings = {} }: { initialSettings?: To
       <section className="log-panel" aria-label="Runtime">
         <div>
           <div className="panel-title">Runtime</div>
-          <p className="muted">{"\u6700\u8fd1\u7684\u89e3\u6790\u3001\u6821\u9a8c\u3001\u5019\u9009\u68c0\u67e5\u6216\u4e0b\u8f7d\u8bb0\u5f55"}</p>
+          <p className="muted">{"最近的解析、校验、候选检查或下载记录"}</p>
         </div>
         <div className="log-content">
           {error ? <div className="error-box">{error}</div> : null}
-          {logs.length ? (
+          {runtimeLogs.length ? (
             <ul>
-              {logs.map((item, index) => (
+              {runtimeLogs.slice(-50).map((item, index) => (
                 <li key={`${item}-${index}`}>{item}</li>
               ))}
             </ul>
           ) : (
-            <p className="muted">{"\u6682\u65e0\u65e5\u5fd7"}</p>
+            <p className="muted">{"暂无日志"}</p>
           )}
         </div>
       </section>

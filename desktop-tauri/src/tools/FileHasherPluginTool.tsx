@@ -7,16 +7,16 @@ type HashAlgorithm = "md5" | "sha1" | "sha256";
 const algorithms: HashAlgorithm[] = ["md5", "sha1", "sha256"];
 
 const actionLabels: Record<FileHasherAction, string> = {
-  calculate: "\u8ba1\u7b97\u54c8\u5e0c",
-  verify: "\u6821\u9a8c\u54c8\u5e0c",
+  calculate: "\u8ba1\u7b97",
+  verify: "\u6821\u9a8c",
 };
 
 const text = {
   title: "\u6587\u4ef6\u54c8\u5e0c\u6821\u9a8c",
-  desc: "\u590d\u7528\u65e7\u63d2\u4ef6 converter.py \u7684 MD5\u3001SHA1\u3001SHA256 \u8ba1\u7b97\u548c\u6821\u9a8c\u80fd\u529b\uff1bReact \u53ea\u505a\u8f93\u5165\u3001\u72b6\u6001\u548c\u7ed3\u679c\u5c55\u793a\u3002",
+  desc: "计算并校验。",
   path: "\u6587\u4ef6\u8def\u5f84",
   browse: "\u6d4f\u89c8",
-  pickTitle: "\u9009\u62e9\u8981\u8ba1\u7b97\u54c8\u5e0c\u7684\u6587\u4ef6",
+  pickTitle: "\u9009\u62e9\u6587\u4ef6",
   algorithms: "\u8ba1\u7b97\u7b97\u6cd5",
   verifyAlgorithm: "\u6821\u9a8c\u7b97\u6cd5",
   expected: "\u671f\u671b\u6821\u9a8c\u503c",
@@ -25,13 +25,13 @@ const text = {
   outputHint: "\u8fd0\u884c\u540e\u5728\u8fd9\u91cc\u663e\u793a\u7ed3\u679c",
   current: "\u5f53\u524d\u52a8\u4f5c",
   clear: "\u6e05\u7a7a",
-  copy: "\u590d\u5236\u8f93\u51fa",
-  running: "\u8fd0\u884c\u4e2d...",
-  run: "\u5f00\u59cb\u8fd0\u884c",
-  start: "\u5f00\u59cb\u8fd0\u884c",
+  copy: "\u590d\u5236",
+  running: "\u8fd0\u884c\u4e2d",
+  run: "\u8fd0\u884c",
+  start: "\u8fd0\u884c",
   done: "\u8fd0\u884c\u5b8c\u6210",
   failed: "\u8fd0\u884c\u5931\u8d25",
-  copied: "\u5df2\u590d\u5236\u8f93\u51fa",
+  copied: "\u5df2\u590d\u5236",
   log: "\u8fd0\u884c\u65e5\u5fd7",
   recent: "\u6700\u8fd1 5 \u6761\u672c\u5730\u6267\u884c\u8bb0\u5f55",
   emptyLog: "\u6682\u65e0\u65e5\u5fd7",

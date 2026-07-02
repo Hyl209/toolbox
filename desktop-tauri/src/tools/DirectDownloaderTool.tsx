@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { pickDirectory, runTool, type ToolResult, type ToolSettings } from "../api/tauri";
+import { ActionBar, DirectoryPickerRow, RuntimeLogPanel, ToolHeading } from "../features/tools/components/CommonToolParts";
 
 type DirectRequest = {
   url: string;
@@ -9,23 +10,17 @@ type DirectRequest = {
   guess_filename: string;
 };
 
-type CommandPreview = {
-  request: DirectRequest;
-  command: string[];
-};
-
 type DirectResult = ToolResult & {
   available?: boolean;
   path?: string;
   default_connections?: number;
   requests?: DirectRequest[];
-  count?: number;
   valid?: boolean;
   errors?: string[];
-  commands?: CommandPreview[];
-  aria2_available?: boolean;
-  aria2_path?: string;
   logs?: string[];
+  success_count?: number;
+  fail_count?: number;
+  results?: Array<Record<string, unknown>>;
   data?: DirectResult;
 };
 
@@ -46,17 +41,6 @@ function headerLines(text: string): string[] {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean);
-}
-
-function quoteCommand(command: string[]): string {
-  return command
-    .map((part) => {
-      if (!/[\s"']/.test(part)) {
-        return part;
-      }
-      return `"${part.replace(/"/g, '\\"')}"`;
-    })
-    .join(" ");
 }
 
 function splitProxyUrl(value: unknown): { host: string; port: string } {
@@ -97,11 +81,7 @@ function DirectDownloaderTool({ initialOutputDir = "", initialSettings = {} }: {
   const [extraHeaders, setExtraHeaders] = useState("");
   const [overwrite, setOverwrite] = useState(initialSettings.overwrite ?? false);
   const [outputSubdirByFilename, setOutputSubdirByFilename] = useState(initialSettings.output_subdir_by_filename ?? false);
-  const [available, setAvailable] = useState<boolean | null>(null);
-  const [aria2Path, setAria2Path] = useState("");
   const [requests, setRequests] = useState<DirectRequest[]>([]);
-  const [commands, setCommands] = useState<CommandPreview[]>([]);
-  const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [downloadRows, setDownloadRows] = useState<Array<Record<string, unknown>>>([]);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
@@ -110,7 +90,6 @@ function DirectDownloaderTool({ initialOutputDir = "", initialSettings = {} }: {
   const parsedHeaders = useMemo(() => headerLines(extraHeaders), [extraHeaders]);
   const canInspect = !running && urlText.trim().length > 0;
   const canBuild = canInspect && outputDir.trim().length > 0;
-  const backendLabel = available === null ? "检测中" : available ? "aria2 可用" : "缺少 aria2";
 
   useEffect(() => {
     if (!initialOutputDir) {
@@ -157,18 +136,14 @@ function DirectDownloaderTool({ initialOutputDir = "", initialSettings = {} }: {
           return;
         }
         const data = dataOf(result);
-        setAvailable(Boolean(data.available));
-        setAria2Path(String(data.path ?? ""));
         if (data.default_connections) {
           setConnections((current) => current || String(data.default_connections));
         }
       })
       .catch((caught) => {
-        if (cancelled) {
-          return;
+        if (!cancelled) {
+          setError(errorText(caught));
         }
-        setAvailable(false);
-        setError(errorText(caught));
       });
     return () => {
       cancelled = true;
@@ -188,38 +163,17 @@ function DirectDownloaderTool({ initialOutputDir = "", initialSettings = {} }: {
     }
     setRunning(true);
     setError("");
-    setCommands([]);
     setDownloadRows([]);
     try {
       const parsed = dataOf(await runTool("directdownloader", { task_id: `direct-parse-${Date.now()}`, action: "parse", payload: { url_text: urlText } }));
       setRequests(parsed.requests ?? []);
       const checked = dataOf(await runTool("directdownloader", { task_id: `direct-validate-${Date.now()}`, action: "validate", payload }));
-      setValidationErrors(checked.errors ?? []);
-      setLogs((items) => [`解析 ${parsed.requests?.length ?? 0} 条，校验${checked.valid ? "通过" : "有问题"}`, ...items].slice(0, 8));
+      const issueCount = checked.errors?.length ?? 0;
+      setLogs((items) => [`解析 ${parsed.requests?.length ?? 0} 条，校验${issueCount ? `发现 ${issueCount} 个问题` : "通过"}`, ...items].slice(0, 8));
     } catch (caught) {
       const message = errorText(caught);
       setError(message);
-      setLogs((items) => [`解析/校验失败：${message}`, ...items].slice(0, 8));
-    } finally {
-      setRunning(false);
-    }
-  }
-
-  async function handleBuildCommands() {
-    if (!canBuild) {
-      return;
-    }
-    setRunning(true);
-    setError("");
-    setDownloadRows([]);
-    try {
-      const data = dataOf(await runTool("directdownloader", { task_id: `direct-build-${Date.now()}`, action: "build_commands", payload }));
-      setCommands(data.commands ?? []);
-      setLogs((items) => [`已构建 ${data.commands?.length ?? 0} 条 aria2 命令`, ...items].slice(0, 8));
-    } catch (caught) {
-      const message = errorText(caught);
-      setError(message);
-      setLogs((items) => [`构建失败：${message}`, ...items].slice(0, 8));
+      setLogs((items) => [`校验失败：${message}`, ...items].slice(0, 8));
     } finally {
       setRunning(false);
     }
@@ -247,8 +201,6 @@ function DirectDownloaderTool({ initialOutputDir = "", initialSettings = {} }: {
 
   function clearResults() {
     setRequests([]);
-    setCommands([]);
-    setValidationErrors([]);
     setDownloadRows([]);
     setError("");
     setLogs([]);
@@ -256,16 +208,12 @@ function DirectDownloaderTool({ initialOutputDir = "", initialSettings = {} }: {
 
   return (
     <div className="directdownloader-tool">
-      <div className="tool-heading">
-        <div>
-          <p className="eyebrow">Legacy direct downloader</p>
-          <h2>直链下载</h2>
-          <p>复用旧版 direct-downloader converter 解析与构建 aria2 命令；前端只传结构化参数，不执行任意 shell。</p>
-        </div>
-        <span className={`settings-mode-pill ${available ? "ready-pill" : ""}`}>{backendLabel}</span>
-      </div>
-
-      <div className={available ? "info-box" : "error-box"}>{available ? `aria2：${aria2Path}` : "未检测到 aria2，仍可预览 aria2c 占位命令。"}</div>
+      <ToolHeading
+        eyebrow="Legacy direct downloader"
+        title="直链下载"
+        description="粘贴真实直链，先校验，再直接下载。"
+        statusLabel=""
+      />
 
       <div className="editor-grid">
         <label className="field-block">
@@ -282,28 +230,21 @@ function DirectDownloaderTool({ initialOutputDir = "", initialSettings = {} }: {
         </label>
 
         <div className="file-mode-card compact-card">
-          <label className="field-block file-path-field">
-            <span>输出目录</span>
-            <div className="path-input-row">
-              <input disabled={running} onChange={(event) => setOutputDir(event.currentTarget.value)} placeholder="E:\\downloads" value={outputDir} />
-              <button className="path-pick-button" disabled={running} onClick={chooseOutputDir} type="button">
-                选择
-              </button>
-            </div>
-          </label>
+          <DirectoryPickerRow label="输出目录" value={outputDir} disabled={running} onChange={setOutputDir} onPick={chooseOutputDir} placeholder="E:\\downloads" />
           <label className="field-block file-path-field">
             <span>单文件名（多 URL 留空）</span>
             <input disabled={running} onChange={(event) => setOutputName(event.currentTarget.value)} placeholder="archive.zip" value={outputName} />
           </label>
+        </div>
+      </div>
+
+      <details className="file-mode-card direct-advanced-options">
+        <summary>高级选项</summary>
+        <div className="tool-result-grid">
           <label className="field-block file-path-field">
             <span>连接数</span>
             <input disabled={running} onChange={(event) => setConnections(event.currentTarget.value)} placeholder="16" value={connections} />
           </label>
-        </div>
-      </div>
-
-      <div className="file-mode-card">
-        <div className="tool-result-grid">
           <label className="field-block file-path-field">
             <span>代理 Host</span>
             <input disabled={running} onChange={(event) => setProxyHost(event.currentTarget.value)} placeholder="127.0.0.1" value={proxyHost} />
@@ -331,52 +272,14 @@ function DirectDownloaderTool({ initialOutputDir = "", initialSettings = {} }: {
             按文件名建文件夹
           </label>
         </div>
-      </div>
+      </details>
 
-      <div className="actions-row">
-        <div className="action-hint">建议先解析、构建命令，确认无误后再开始下载。</div>
-        <div className="button-cluster">
-          <button className="ghost-button" disabled={running || (!requests.length && !commands.length && !error && !logs.length)} onClick={clearResults} type="button">
-            清空结果
-          </button>
-          <button className="ghost-button" disabled={!canInspect} onClick={handleParseValidate} type="button">
-            解析/校验
-          </button>
-          <button className="ghost-button" disabled={!canBuild} onClick={handleBuildCommands} type="button">
-            构建命令
-          </button>
-          <button className="primary-button" disabled={!canBuild} onClick={handleDownload} type="button">
-            {running ? "运行中..." : "开始下载"}
-          </button>
-        </div>
-      </div>
-
-      <div className="editor-grid file-editor-grid">
-        <div className="result-card">
-          <span>解析结果</span>
-          <strong>{requests.length ? `${requests.length} 条请求` : "等待解析"}</strong>
-          <p>{requests[0]?.guess_filename || "显示 URL、输出名、Header 与 Referer"}</p>
-        </div>
-        <div className="result-card">
-          <span>校验结果</span>
-          <strong>{validationErrors.length ? `${validationErrors.length} 个问题` : "未发现问题"}</strong>
-          <p>{validationErrors[0] || "输出目录、连接数、单文件名规则"}</p>
-        </div>
-      </div>
-
-      {commands.length ? (
-        <section className="table-panel">
-          <div className="panel-title">命令预览</div>
-          <div className="result-list">
-            {commands.map((item, index) => (
-              <div className="result-row" key={`${item.request.url}-${index}`}>
-                <span>{item.request.guess_filename}</span>
-                <strong>{quoteCommand(item.command)}</strong>
-              </div>
-            ))}
-          </div>
-        </section>
-      ) : null}
+      <ActionBar
+        hint="先校验，再下载。"
+        secondary={<button className="ghost-button" disabled={running || (!requests.length && !downloadRows.length && !error && !logs.length)} onClick={clearResults} type="button">清空</button>}
+        tertiary={<button className="ghost-button" disabled={!canInspect} onClick={handleParseValidate} type="button">校验</button>}
+        primary={<button className="primary-button" disabled={!canBuild} onClick={handleDownload} type="button">{running ? "运行中" : "下载"}</button>}
+      />
 
       {downloadRows.length ? (
         <section className="table-panel">
@@ -392,24 +295,7 @@ function DirectDownloaderTool({ initialOutputDir = "", initialSettings = {} }: {
         </section>
       ) : null}
 
-      <section className="log-panel" aria-label="运行日志">
-        <div>
-          <div className="panel-title">Runtime</div>
-          <p className="muted">最近 8 条解析、命令或下载记录</p>
-        </div>
-        <div className="log-content">
-          {error ? <div className="error-box">{error}</div> : null}
-          {logs.length ? (
-            <ul>
-              {logs.map((item, index) => (
-                <li key={`${item}-${index}`}>{item}</li>
-              ))}
-            </ul>
-          ) : (
-            <p className="muted">暂无日志</p>
-          )}
-        </div>
-      </section>
+      <RuntimeLogPanel error={error} logs={logs} />
     </div>
   );
 }

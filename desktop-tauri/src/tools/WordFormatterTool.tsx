@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { pickDirectory, pickFiles, type DialogFilter, runTool, type ToolResult, type ToolSettings } from "../api/tauri";
+import { ActionBar, DirectoryPickerRow, MultiPathInput, ResultCards, RuntimeLogPanel, ToolHeading } from "../features/tools/components/CommonToolParts";
 
 type OutputRow = { source: string; output: string };
 type WordConfig = {
@@ -203,28 +204,26 @@ function WordFormatterTool({ initialSettings = {} }: { initialSettings?: ToolSet
 
   return (
     <div className="wordformatter-tool">
-      <div className="tool-heading">
-        <div>
-          <p className="eyebrow">Legacy Word formatter</p>
-          <h2>Word 排版统一</h2>
-          <p>复用旧版 word-formatter converter：支持 .docx 批量排版，也支持用 Markdown 标题文本生成 Word。</p>
-        </div>
-        <span className="settings-mode-pill">{outputMode === "overwrite" ? "原地覆盖" : "另存副本"}</span>
-      </div>
+      <ToolHeading
+        eyebrow="Legacy Word formatter"
+        title="Word 排版统一"
+        description="统一 Word 文档排版。"
+        statusLabel={outputMode === "overwrite" ? "原地覆盖" : "另存副本"}
+      />
 
       <div className="editor-grid">
         <div className="file-mode-card compact-card">
-          <label className="field-block file-path-field">
-            <span>Word 输入路径</span>
-            <textarea disabled={running} onChange={(event) => setInputText(event.currentTarget.value)} placeholder="每行一个 .docx 或目录" value={inputText} />
-          </label>
+          <MultiPathInput
+            label="Word 输入路径"
+            countLabel={`${paths.length} paths`}
+            value={inputText}
+            disabled={running}
+            placeholder="每行一个 .docx 或目录"
+            onChange={setInputText}
+          />
           <div className="button-cluster">
-            <button className="ghost-button" disabled={running} onClick={chooseFiles} type="button">
-              选择文件
-            </button>
-            <button className="ghost-button" disabled={!canList} onClick={handleList} type="button">
-              扫描
-            </button>
+            <button className="ghost-button" disabled={running} onClick={chooseFiles} type="button">文件</button>
+            <button className="ghost-button" disabled={!canList} onClick={handleList} type="button">扫描</button>
           </div>
         </div>
 
@@ -245,22 +244,16 @@ function WordFormatterTool({ initialSettings = {} }: { initialSettings?: ToolSet
               <option value="overwrite">原地覆盖</option>
             </select>
           </label>
-          <label className="field-block file-path-field">
-            <span>输出目录</span>
-            <div className="path-input-row">
-              <input
-                disabled={running || outputMode === "overwrite"}
-                onChange={(event) => {
-                  outputDirTouchedRef.current = true;
-                  setOutputDir(event.currentTarget.value);
-                }}
-                value={outputDir}
-              />
-              <button className="path-pick-button" disabled={running || outputMode === "overwrite"} onClick={chooseOutputDir} type="button">
-                选择
-              </button>
-            </div>
-          </label>
+          <DirectoryPickerRow
+            label="输出目录"
+            value={outputDir}
+            disabled={running || outputMode === "overwrite"}
+            onChange={(value) => {
+              outputDirTouchedRef.current = true;
+              setOutputDir(value);
+            }}
+            onPick={chooseOutputDir}
+          />
         </div>
 
         <div className="file-mode-card compact-card">
@@ -305,30 +298,26 @@ function WordFormatterTool({ initialSettings = {} }: { initialSettings?: ToolSet
         </div>
       </div>
 
-      <div className="actions-row">
-        <div className="action-hint">原地覆盖会真实改写源文件；另存副本需要输出目录。</div>
-        <div className="button-cluster">
-          <button className="ghost-button" disabled={running || (!files.length && !results.length && !error)} onClick={clearAll} type="button">
-            清空结果
-          </button>
-          <button className="primary-button" disabled={!canFormat} onClick={handleFormat} type="button">
-            {running ? "运行中..." : "执行排版"}
-          </button>
-        </div>
-      </div>
+      <ActionBar
+        hint="选择文档和输出方式。"
+        secondary={<button className="ghost-button" disabled={running || (!files.length && !results.length && !error)} onClick={clearAll} type="button">清空</button>}
+        primary={<button className="primary-button" disabled={!canFormat} onClick={handleFormat} type="button">{running ? "运行中" : "排版"}</button>}
+      />
 
-      <div className="editor-grid file-editor-grid">
-        <div className="result-card">
-          <span>已识别文档</span>
-          <strong>{files.length ? `${files.length} 个` : "等待扫描"}</strong>
-          <p>{files[0]?.name || "可直接执行，sidecar 会再次按旧规则收集 .docx"}</p>
-        </div>
-        <div className="result-card">
-          <span>输出结果</span>
-          <strong>{results.length ? `${results.length} 个` : "暂无"}</strong>
-          <p>{results[0]?.output || "输出路径会显示在这里"}</p>
-        </div>
-      </div>
+      <ResultCards
+        cards={[
+          {
+            label: "已识别文档",
+            value: files.length ? `${files.length} 个` : "等待扫描",
+            detail: String(files[0]?.name ?? "可直接执行，sidecar 会再次按旧规则收集 .docx"),
+          },
+          {
+            label: "输出结果",
+            value: results.length ? `${results.length} 个` : "暂无",
+            detail: results[0]?.output || "输出路径会显示在这里",
+          },
+        ]}
+      />
 
       {results.length ? (
         <section className="table-panel">
@@ -344,24 +333,7 @@ function WordFormatterTool({ initialSettings = {} }: { initialSettings?: ToolSet
         </section>
       ) : null}
 
-      <section className="log-panel" aria-label="运行日志">
-        <div>
-          <div className="panel-title">Runtime</div>
-          <p className="muted">最近 5 条本地执行记录</p>
-        </div>
-        <div className="log-content">
-          {error ? <div className="error-box">{error}</div> : null}
-          {logs.length ? (
-            <ul>
-              {logs.map((item, index) => (
-                <li key={`${item}-${index}`}>{item}</li>
-              ))}
-            </ul>
-          ) : (
-            <p className="muted">暂无日志</p>
-          )}
-        </div>
-      </section>
+      <RuntimeLogPanel error={error} logs={logs} />
     </div>
   );
 }

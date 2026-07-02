@@ -1,4 +1,4 @@
-﻿# Python cache
+# Python cache
 __pycache__/
 *.pyc
 *.pyo
@@ -35,11 +35,14 @@ hyl_toolbox.ini
 users.json
 .claude/
 .hermes/
-娴嬭瘯/
+测试/
 AGENTS.md
 docs/
 .planning/
 */.planning/
+task_plan.md
+findings.md
+progress.md
 
 # Logs / temp files
 .codex-review-registry-tmp/
@@ -49,6 +52,8 @@ archive_*.txt
 *.tmp
 *.temp
 desktop-tauri/test-results/
+tests/pytest-tmp/
+.codex-pytest-tmp/
 
 # Media / archives
 *.mp3

@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { pickDirectory, runTool, type ToolResult, type ToolSettings } from "../api/tauri";
+import { pickDirectory, runTool, type ToolSettings } from "../api/tauri";
+import { ActionBar, DirectoryPickerRow, ResultCards, RuntimeLogPanel } from "../features/tools/components/CommonToolParts";
+import { dataOf, errorText, rowsOf, summaryOf } from "../features/tools/utils/toolResult";
 
 const categoryOptions = ["图片", "视频", "音频", "文档", "压缩包", "程序", "其他"];
 const resolutionCategories = ["图片", "视频"];
 const legacyModes: Record<string, string> = {
-  "\u6309\u5927\u7c7b\u5206\u7c7b": "category",
-  "\u6309\u5206\u8fa8\u7387\u5206\u7c7b": "resolution",
+  "按大类分类": "category",
+  "按分辨率分类": "resolution",
 };
 
 function initialMode(value: unknown): string {
@@ -19,32 +21,13 @@ function categoriesFromSettings(settings: ToolSettings["categories"] | undefined
   return categoryOptions.filter((category) => settings?.[category] ?? true);
 }
 
-function errorText(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return typeof error === "string" ? error : JSON.stringify(error);
-}
-
-function dataOf(result: ToolResult): ToolResult {
-  return result.data ?? result;
-}
-
-function rowsOf(result: ToolResult): Array<Record<string, string | number | boolean>> {
-  return dataOf(result).results ?? [];
-}
-
-function summaryOf(result: ToolResult): ToolResult {
-  return dataOf(result).summary ?? dataOf(result);
-}
-
 function FileSorterTool({ initialSettings = {} }: { initialSettings?: ToolSettings }) {
   const didApplyInitial = useRef(false);
   const userTouchedRef = useRef(false);
   const [folderPath, setFolderPath] = useState(initialSettings.input_dir ?? "");
   const [mode, setMode] = useState(initialMode(initialSettings.mode));
   const [selectedCategories, setSelectedCategories] = useState<string[]>(() => categoriesFromSettings(initialSettings.categories));
-  const [summary, setSummary] = useState<ToolResult | null>(null);
+  const [summary, setSummary] = useState<ReturnType<typeof summaryOf> | null>(null);
   const [results, setResults] = useState<Array<Record<string, string | number | boolean>>>([]);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
@@ -75,7 +58,7 @@ function FileSorterTool({ initialSettings = {} }: { initialSettings?: ToolSettin
   }
 
   async function chooseFolder() {
-    const path = await pickDirectory({ title: "选择文件分类目录" });
+    const path = await pickDirectory({ title: "文件分类目录" });
     if (path) {
       userTouchedRef.current = true;
       setFolderPath(path);
@@ -163,30 +146,21 @@ function FileSorterTool({ initialSettings = {} }: { initialSettings?: ToolSettin
         <div>
           <p className="eyebrow">Legacy file sorter</p>
           <h2>文件分类</h2>
-          <p>复用旧版 file-sorter converter：先扫描目录第一层，再按大类或分辨率移动到对应文件夹。</p>
+          <p>按类别整理文件。</p>
         </div>
         <span className="settings-mode-pill">{mode === "resolution" ? "按分辨率" : "按大类"}</span>
       </div>
 
       <div className="editor-grid">
         <div className="file-mode-card compact-card">
-          <label className="field-block file-path-field">
-            <span>文件夹</span>
-            <div className="path-input-row">
-              <input
-                disabled={running}
-                onChange={(event) => {
-                  userTouchedRef.current = true;
-                  setFolderPath(event.currentTarget.value);
-                }}
-                placeholder="E:\\files"
-                value={folderPath}
-              />
-              <button className="path-pick-button" disabled={running} onClick={chooseFolder} type="button">
-                选择
-              </button>
-            </div>
-          </label>
+          <DirectoryPickerRow
+            label="文件夹"
+            value={folderPath}
+            disabled={running}
+            placeholder="E:\\files"
+            onChange={(value) => { userTouchedRef.current = true; setFolderPath(value); }}
+            onPick={chooseFolder}
+          />
           <label className="field-block">
             <span>分类模式</span>
             <select disabled={running} onChange={(event) => handleMode(event.currentTarget.value)} value={mode}>
@@ -215,33 +189,27 @@ function FileSorterTool({ initialSettings = {} }: { initialSettings?: ToolSettin
         </div>
       </div>
 
-      <div className="actions-row">
-        <div className="action-hint">预览只读取摘要；执行会创建分类目录并移动文件。</div>
-        <div className="button-cluster">
-          <button className="ghost-button" disabled={running || (!summary && !results.length && !error)} onClick={clearAll} type="button">
-            清空结果
-          </button>
-          <button className="ghost-button" disabled={!canRun} onClick={handlePreview} type="button">
-            扫描预览
-          </button>
-          <button className="primary-button" disabled={!canRun} onClick={handleSort} type="button">
-            {running ? "运行中..." : "执行分类"}
-          </button>
-        </div>
-      </div>
+      <ActionBar
+        hint="预览只读取摘要；执行会创建分类目录并移动文件。"
+        secondary={<button className="ghost-button" disabled={running || (!summary && !results.length && !error)} onClick={clearAll} type="button">清空</button>}
+        tertiary={<button className="ghost-button" disabled={!canRun} onClick={handlePreview} type="button">预览</button>}
+        primary={<button className="primary-button" disabled={!canRun} onClick={handleSort} type="button">{running ? "运行中" : "分类"}</button>}
+      />
 
-      <div className="editor-grid file-editor-grid">
-        <div className="result-card">
-          <span>目录文件</span>
-          <strong>{summary ? `${selectedTotal} / ${totalFiles}` : "等待扫描"}</strong>
-          <p>{folderPath || "选择旧版文件分类要处理的目录"}</p>
-        </div>
-        <div className="result-card">
-          <span>分类结果</span>
-          <strong>{results.length ? `${results.length} 条记录` : "暂无"}</strong>
-          <p>{results[0]?.target_name || "结果会显示目标分类目录和文件名"}</p>
-        </div>
-      </div>
+      <ResultCards
+        cards={[
+          {
+            label: "目录文件",
+            value: summary ? `${selectedTotal} / ${totalFiles}` : "等待扫描",
+            detail: folderPath || "选择要整理的目录",
+          },
+          {
+            label: "分类结果",
+            value: results.length ? `${results.length} 条记录` : "暂无",
+            detail: String(results[0]?.target_name ?? "结果会显示目标分类目录和文件名"),
+          },
+        ]}
+      />
 
       {countRows.length ? (
         <section className="table-panel">
@@ -271,24 +239,7 @@ function FileSorterTool({ initialSettings = {} }: { initialSettings?: ToolSettin
         </section>
       ) : null}
 
-      <section className="log-panel" aria-label="运行日志">
-        <div>
-          <div className="panel-title">Runtime</div>
-          <p className="muted">最近 5 条本地执行记录</p>
-        </div>
-        <div className="log-content">
-          {error ? <div className="error-box">{error}</div> : null}
-          {logs.length ? (
-            <ul>
-              {logs.map((item, index) => (
-                <li key={`${item}-${index}`}>{item}</li>
-              ))}
-            </ul>
-          ) : (
-            <p className="muted">暂无日志</p>
-          )}
-        </div>
-      </section>
+      <RuntimeLogPanel error={error} logs={logs} />
     </div>
   );
 }

@@ -5,14 +5,14 @@ type UuidAction = "generate" | "normalize" | "validate" | "describe";
 
 const actionLabels: Record<UuidAction, string> = {
   generate: "\u751f\u6210",
-  normalize: "\u89c4\u8303\u5316",
+  normalize: "\u89c4\u8303",
   validate: "\u6821\u9a8c",
   describe: "\u63cf\u8ff0",
 };
 
 const ui = {
   title: "UUID \u5de5\u5177",
-  subtitle: "\u751f\u6210\u3001\u89c4\u8303\u5316\u3001\u6821\u9a8c\u548c\u63cf\u8ff0 UUID\uff1b\u6838\u5fc3\u903b\u8f91\u6765\u81ea\u65e7\u63d2\u4ef6 converter.py\u3002",
+  subtitle: "生成和校验 UUID。",
   actionAria: "UUID \u52a8\u4f5c",
   count: "\u751f\u6210\u6570\u91cf",
   uppercase: "\u5927\u5199",
@@ -25,13 +25,13 @@ const ui = {
   outputPlaceholder: "\u7ed3\u679c\u663e\u793a\u5728\u8fd9\u91cc",
   currentAction: "\u5f53\u524d\u52a8\u4f5c",
   clear: "\u6e05\u7a7a",
-  copy: "\u590d\u5236\u8f93\u51fa",
+  copy: "\u590d\u5236",
   run: "\u8fd0\u884c",
-  running: "\u8fd0\u884c\u4e2d...",
-  start: "\u5f00\u59cb\u8fd0\u884c",
+  running: "\u8fd0\u884c\u4e2d",
+  start: "\u8fd0\u884c",
   done: "\u8fd0\u884c\u5b8c\u6210",
   failed: "\u8fd0\u884c\u5931\u8d25",
-  copied: "\u5df2\u590d\u5236\u8f93\u51fa",
+  copied: "\u5df2\u590d\u5236",
   logAria: "\u8fd0\u884c\u65e5\u5fd7",
   recentLogs: "\u6700\u8fd1 5 \u6761\u672c\u5730\u6267\u884c\u8bb0\u5f55",
   noLogs: "\u6682\u65e0\u65e5\u5fd7",

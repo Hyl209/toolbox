@@ -142,7 +142,7 @@ function SameTool({ initialSettings = {} }: { initialSettings?: ToolSettings }) 
         <div>
           <p className="eyebrow">Legacy duplicate finder</p>
           <h2>重复文件</h2>
-          <p>复用旧版 duplicate-finder：普通文件精确判重，视频在 ffmpeg/ffprobe 可用时沿用旧的 95% 相似度判重。</p>
+          <p>查找重复文件。</p>
         </div>
         <span className="settings-mode-pill">{recursive ? "递归扫描" : "仅第一层"}</span>
       </div>
@@ -177,13 +177,13 @@ function SameTool({ initialSettings = {} }: { initialSettings?: ToolSettings }) 
         <div className="action-hint">重复结果以旧 converter 的 keeper / duplicates 为准。</div>
         <div className="button-cluster">
           <button className="ghost-button" disabled={running || (!scanResult && !results.length && !error)} onClick={clearAll} type="button">
-            清空结果
+            清空
           </button>
           <button className="ghost-button" disabled={!canScan} onClick={handleScan} type="button">
-            开始检测
+            检测
           </button>
           <button className="primary-button" disabled={!canMove} onClick={handleMove} type="button">
-            {running ? "运行中..." : "移动重复件"}
+            {running ? "运行中" : "移动重复件"}
           </button>
         </div>
       </div>
@@ -192,7 +192,7 @@ function SameTool({ initialSettings = {} }: { initialSettings?: ToolSettings }) 
         <div className="result-card">
           <span>扫描结果</span>
           <strong>{scanResult ? `${scanResult.duplicate_group_count ?? 0} 组` : "等待扫描"}</strong>
-          <p>{scanResult ? `共扫描 ${scanResult.scanned_files ?? 0} 个文件` : folderPath || "选择旧版重复文件检测目录"}</p>
+          <p>{scanResult ? `??? ${scanResult.scanned_files ?? 0} ???` : folderPath || "\u9009\u62e9\u8981\u68c0\u6d4b\u7684\u76ee\u5f55"}</p>
         </div>
         <div className="result-card">
           <span>待移动</span>

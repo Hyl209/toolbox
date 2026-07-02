@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import importlib.util
 import sys
 from dataclasses import asdict, is_dataclass
@@ -10,8 +11,10 @@ from typing import Any
 
 try:
     from ..runtime_paths import project_root
+    from ..runtime_state import current_download_token, emit_runtime_progress
 except ImportError:  # direct script execution support
     from runtime_paths import project_root
+    from runtime_state import current_download_token, emit_runtime_progress
 
 
 ROOT = project_root(__file__, 2)
@@ -275,6 +278,9 @@ def _download_data(results: list[Any] | None = None, logs: list[str] | None = No
 def _run_download(payload: dict[str, Any]) -> dict:
     module = _load_converter_module()
     logs: list[str] = []
+    def _progress(message: str) -> None:
+        logs.append(message)
+        emit_runtime_progress(message)
     try:
         urls = _urls_from_payload(payload, module)
         tasks, input_errors = _telegram_tasks(urls, module)
@@ -283,13 +289,15 @@ def _run_download(payload: dict[str, Any]) -> dict:
         if errors:
             return {"ok": True, "data": _download_data(logs=logs, errors=errors)}
         options = _download_options(payload, module)
-        results = module.download_batch(
-            tasks,
-            _payload_str(payload, "output_dir"),
-            telegram_config=_config(payload, module),
-            options=options,
-            progress_cb=logs.append,
-        )
+        kwargs = {
+            "telegram_config": _config(payload, module),
+            "options": options,
+            "progress_cb": _progress,
+        }
+        signature = inspect.signature(module.download_batch)
+        if "token" in signature.parameters:
+            kwargs["token"] = current_download_token()
+        results = module.download_batch(tasks, _payload_str(payload, "output_dir"), **kwargs)
         return {"ok": True, "data": _download_data(results=results, logs=logs)}
     except ValueError as exc:
         return {"ok": True, "data": _download_data(logs=logs, errors=[str(exc)])}

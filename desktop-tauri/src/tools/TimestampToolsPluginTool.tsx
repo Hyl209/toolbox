@@ -5,14 +5,14 @@ type TimestampAction = "to_datetime" | "to_timestamp" | "current_time";
 type TimestampData = Record<string, string | number | boolean | null>;
 
 const actionLabels: Record<TimestampAction, string> = {
-  to_datetime: "\u65f6\u95f4\u6233\u8f6c\u65f6\u95f4",
-  to_timestamp: "\u65f6\u95f4\u8f6c\u65f6\u95f4\u6233",
-  current_time: "\u5f53\u524d\u65f6\u95f4",
+  to_datetime: "\u8f6c\u65f6\u95f4",
+  to_timestamp: "\u8f6c\u65f6\u6233",
+  current_time: "\u5f53\u524d",
 };
 
 const text = {
   title: "\u65f6\u95f4\u6233\u5de5\u5177",
-  desc: "\u590d\u7528\u65e7\u63d2\u4ef6 converter.py \u7684\u65f6\u95f4\u6233\u4e0e\u65f6\u533a\u8f6c\u6362\u80fd\u529b\uff1bReact \u53ea\u505a\u8f93\u5165\u3001\u8f93\u51fa\u548c\u72b6\u6001\u3002",
+  desc: "转换时间和时间戳。",
   input: "\u8f93\u5165",
   inputHint: "\u8f93\u5165\u65f6\u95f4\u6233\u6216\u65f6\u95f4\u6587\u672c",
   timezone: "\u65f6\u533a\u504f\u79fb",
@@ -21,13 +21,13 @@ const text = {
   outputHint: "\u7ed3\u679c\u663e\u793a\u5728\u8fd9\u91cc",
   current: "\u5f53\u524d\u52a8\u4f5c",
   clear: "\u6e05\u7a7a",
-  copy: "\u590d\u5236\u8f93\u51fa",
-  running: "\u8fd0\u884c\u4e2d...",
-  run: "\u5f00\u59cb\u8fd0\u884c",
-  start: "\u5f00\u59cb\u8fd0\u884c",
+  copy: "\u590d\u5236",
+  running: "\u8fd0\u884c\u4e2d",
+  run: "\u8fd0\u884c",
+  start: "\u8fd0\u884c",
   done: "\u8fd0\u884c\u5b8c\u6210",
   failed: "\u8fd0\u884c\u5931\u8d25",
-  copied: "\u5df2\u590d\u5236\u8f93\u51fa",
+  copied: "\u5df2\u590d\u5236",
   log: "\u8fd0\u884c\u65e5\u5fd7",
   recent: "\u6700\u8fd1 5 \u6761\u672c\u5730\u6267\u884c\u8bb0\u5f55",
   emptyLog: "\u6682\u65e0\u65e5\u5fd7",

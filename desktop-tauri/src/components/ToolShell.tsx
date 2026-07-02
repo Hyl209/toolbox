@@ -1,10 +1,13 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Fragment, type ReactNode } from "react";
-import type { ToolItem } from "../api/tauri";
+import type { ToolActivityState, ToolItem } from "../api/tauri";
+import { CAPABILITY_NOTES } from "../features/tools";
+import { ToolErrorBoundary } from "../features/tools/components/ToolErrorBoundary";
 
 type ToolShellProps = {
   title: string;
   tools: readonly ToolItem[];
+  toolActivity: Record<string, ToolActivityState>;
   activeToolId: string;
   onSelectTool: (toolId: string) => void;
   onOpenSettings: () => void;
@@ -13,24 +16,19 @@ type ToolShellProps = {
 };
 
 const categoryLabels: Record<string, string> = {
-  audio: "\u97f3\u9891",
-  document: "\u6587\u6863",
-  download: "\u4e0b\u8f7d",
-  file: "\u6587\u4ef6",
-  image: "\u56fe\u7247",
-  plugin: "\u63d2\u4ef6",
-  text: "\u6587\u672c",
+  audio: "音频",
+  document: "文档",
+  download: "下载",
+  file: "文件",
+  image: "图片",
+  plugin: "插件",
+  text: "文本",
 };
 
 const statusLabels: Record<ToolItem["status"], string> = {
-  planned: "\u8ba1\u5212\u4e2d",
-  pending: "\u6682\u672a\u63a5\u5165",
-  ready: "\u5df2\u63a5\u5165\u5165\u53e3",
-};
-
-const capabilityNotes: Record<string, string> = {
-  tgdownloader: "\u90e8\u5206\u53ef\u7528 \u00b7 \u4e0b\u8f7d/\u767b\u5f55",
-  webvideodownloader: "\u90e8\u5206\u53ef\u7528 \u00b7 \u4e0b\u8f7d/\u9884\u68c0",
+  planned: "计划中",
+  pending: "暂未接入",
+  ready: "已接入入口",
 };
 
 const windowActions = {
@@ -48,18 +46,25 @@ function runWindowAction(action: keyof typeof windowActions) {
 
 function toolStatusText(tool: ToolItem): string {
   if (tool.enabled === false) {
-    return "\u5df2\u7981\u7528";
+    return "已禁用";
   }
-  const statusText = capabilityNotes[tool.id] ?? statusLabels[tool.status];
+  const statusText = CAPABILITY_NOTES[tool.id] ?? statusLabels[tool.status];
   if (tool.source === "plugin") {
-    return `${statusText} \u00b7 \u63d2\u4ef6`;
+    return `${statusText} · 插件`;
   }
   return statusText;
 }
 
+function toolTitle(tool: ToolItem | undefined, settingsOpen: boolean): string {
+  if (settingsOpen) {
+    return "设置";
+  }
+  return tool?.sidebar_label ?? tool?.title ?? "工具";
+}
+
 function ToolShell({
-  title,
   tools,
+  toolActivity,
   activeToolId,
   onSelectTool,
   onOpenSettings,
@@ -67,43 +72,29 @@ function ToolShell({
   children,
 }: ToolShellProps) {
   const activeTool = tools.find((tool) => tool.id === activeToolId) ?? tools[0];
-  const readyCount = tools.filter((tool) => tool.status === "ready" && tool.enabled !== false).length;
-  const enabledCount = tools.filter((tool) => tool.enabled !== false).length;
-  const activeCategory = settingsOpen ? "\u8bbe\u7f6e" : categoryLabels[activeTool?.category ?? ""] ?? activeTool?.category ?? "\u5de5\u5177";
-  const activeName = settingsOpen ? "\u8bbe\u7f6e" : activeTool?.sidebar_label ?? activeTool?.title ?? "\u5de5\u5177";
+  const activeName = toolTitle(activeTool, settingsOpen);
 
   return (
     <main className="app-shell">
       <section className="window-surface">
         <header className="shell-header" data-tauri-drag-region onDoubleClick={() => runWindowAction("maximize")}>
-          <div className="window-controls" aria-label="\u7a97\u53e3\u63a7\u5236" onDoubleClick={(event) => event.stopPropagation()}>
-            <button aria-label="\u5173\u95ed\u7a97\u53e3" className="window-control close" onClick={() => runWindowAction("close")} title="\u5173\u95ed" type="button" />
-            <button aria-label="\u6700\u5c0f\u5316\u7a97\u53e3" className="window-control minimize" onClick={() => runWindowAction("minimize")} title="\u6700\u5c0f\u5316" type="button" />
-            <button aria-label="\u6700\u5927\u5316\u6216\u8fd8\u539f\u7a97\u53e3" className="window-control maximize" onClick={() => runWindowAction("maximize")} title="\u6700\u5927\u5316/\u8fd8\u539f" type="button" />
+          <div className="window-controls" aria-label="窗口控制" onDoubleClick={(event) => event.stopPropagation()}>
+            <button aria-label="关闭窗口" className="window-control close" onClick={() => runWindowAction("close")} title="关闭" type="button" />
+            <button aria-label="最小化窗口" className="window-control minimize" onClick={() => runWindowAction("minimize")} title="最小化" type="button" />
+            <button aria-label="最大化或还原窗口" className="window-control maximize" onClick={() => runWindowAction("maximize")} title="最大化/还原" type="button" />
           </div>
           <div className="title-stack" data-tauri-drag-region>
-            <p className="eyebrow">Desktop utility studio</p>
-            <h1>{title}</h1>
+            <h1>{activeName}</h1>
           </div>
           <div className="header-actions" onDoubleClick={(event) => event.stopPropagation()}>
-            <div className="status-pill" aria-label={`${readyCount} \u4e2a\u5df2\u63a5\u5165\u5165\u53e3`}>
-              <span className="pulse-dot" />
-              {readyCount}/{enabledCount} {"\u5df2\u63a5\u5165\u5165\u53e3"}
-            </div>
             <button className={settingsOpen ? "settings-button active" : "settings-button"} onClick={onOpenSettings} type="button">
-              {"\u8bbe\u7f6e"}
+              设置
             </button>
           </div>
         </header>
 
         <div className="shell-body">
-          <aside className="tool-list" aria-label="\u5de5\u5177\u5217\u8868">
-            <div className="sidebar-intro">
-              <span>Workspace</span>
-              <strong>{activeName}</strong>
-              <small>{activeCategory}</small>
-            </div>
-
+          <aside className="tool-list" aria-label="工具列表">
             <div className="tool-stack">
               {tools.map((tool, index) => {
                 const active = !settingsOpen && tool.id === activeToolId;
@@ -111,7 +102,18 @@ function ToolShell({
                 const category = categoryLabels[tool.category] ?? tool.category;
                 const previousCategory = index > 0 ? categoryLabels[tools[index - 1].category] ?? tools[index - 1].category : "";
                 const label = tool.sidebar_label ?? tool.title;
-                const detail = label === tool.title ? toolStatusText(tool) : `${tool.title} \u00b7 ${toolStatusText(tool)}`;
+                const detail = label === tool.title ? toolStatusText(tool) : `${tool.title} · ${toolStatusText(tool)}`;
+                const dotState = disabled
+                  ? "tool-dot"
+                  : toolActivity[tool.id] === "running"
+                    ? "tool-dot running"
+                    : toolActivity[tool.id] === "success"
+                      ? "tool-dot success"
+                      : toolActivity[tool.id] === "error"
+                        ? "tool-dot error"
+                        : tool.supported_in_tauri
+                          ? "tool-dot ready"
+                          : "tool-dot";
                 return (
                   <Fragment key={tool.id}>
                     {category !== previousCategory ? <div className="panel-title">{category}</div> : null}
@@ -122,13 +124,13 @@ function ToolShell({
                         .join(" ")}
                       disabled={active || disabled}
                       onClick={() => onSelectTool(tool.id)}
+                      title={detail}
                       type="button"
                     >
                       <span className="tool-item-main">
                         <span>{label}</span>
-                        <small>{detail}</small>
                       </span>
-                      <span className={tool.supported_in_tauri && !disabled ? "tool-dot ready" : "tool-dot"} />
+                      <span className={dotState} />
                     </button>
                   </Fragment>
                 );
@@ -136,8 +138,10 @@ function ToolShell({
             </div>
           </aside>
 
-          <section className="tool-panel" aria-label="\u5f53\u524d\u5de5\u5177\u8868\u5355">
-            {children}
+          <section className="tool-panel" aria-label="当前工具表单">
+            <ToolErrorBoundary key={activeToolId}>
+              {children}
+            </ToolErrorBoundary>
           </section>
         </div>
       </section>

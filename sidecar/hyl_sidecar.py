@@ -9,6 +9,7 @@ from pathlib import Path
 
 try:
     from .protocol import emit_error, emit_progress, emit_result
+    from .runtime_state import bind_download_control, bind_progress_emitter
     from .settings_bridge import (
         DEFAULT_PLUGINS_DIR,
         DEFAULT_SETTINGS,
@@ -40,6 +41,7 @@ try:
     from .tools.zipandpng_tool import run_zipandpng
 except ImportError:  # direct script execution: python sidecar\hyl_sidecar.py
     from protocol import emit_error, emit_progress, emit_result
+    from runtime_state import bind_download_control, bind_progress_emitter
     from settings_bridge import (
         DEFAULT_PLUGINS_DIR,
         DEFAULT_SETTINGS,
@@ -85,6 +87,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     run = subparsers.add_parser("run")
     run.add_argument("--tool", required=True)
     run.add_argument("--input", required=True)
+    run.add_argument("--control")
     settings = subparsers.add_parser("settings")
     mode = settings.add_mutually_exclusive_group(required=True)
     mode.add_argument("--snapshot", action="store_true")
@@ -107,7 +110,7 @@ def load_task(path: Path) -> dict:
     return task
 
 
-def run_tool(tool_id: str, input_path: Path) -> int:
+def run_tool(tool_id: str, input_path: Path, control_path: Path | None = None) -> int:
     task = load_task(input_path)
     task_id = task.get("task_id")
     runners = {
@@ -139,7 +142,9 @@ def run_tool(tool_id: str, input_path: Path) -> int:
         emit_error(task_id, "UNKNOWN_TOOL", f"unknown tool: {tool_id}")
         return 1
     emit_progress(task_id, "started", 0)
-    result = runner(task)
+    with bind_download_control(control_path):
+        with bind_progress_emitter(lambda message, percent=0: emit_progress(task_id, message, percent)):
+            result = runner(task)
     if result.get("ok") is False:
         emit_error(task_id, result.get("code", "TOOL_ERROR"), result.get("message", "tool failed"))
         return 1
@@ -172,7 +177,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         args = parse_args(argv if argv is not None else sys.argv[1:])
         if args.command == "run":
-            return run_tool(args.tool, Path(args.input))
+            return run_tool(args.tool, Path(args.input), Path(args.control) if args.control else None)
         if args.command == "settings":
             settings_path = Path(args.settings)
             plugins_dir = Path(args.plugins_dir)

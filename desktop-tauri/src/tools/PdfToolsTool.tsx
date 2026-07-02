@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { pickDirectory, pickFiles, type DialogFilter, runTool, type ToolResult } from "../api/tauri";
+import { ActionBar, DirectoryPickerRow, MultiPathInput, ResultCards, RuntimeLogPanel, ToolHeading } from "../features/tools/components/CommonToolParts";
 
 type OutputRow = { source: string; output: string };
 
@@ -166,28 +167,26 @@ function PdfToolsTool({ initialOutputDir = "" }: { initialOutputDir?: string }) 
 
   return (
     <div className="pdftools-tool">
-      <div className="tool-heading">
-        <div>
-          <p className="eyebrow">Legacy PDF tools</p>
-          <h2>PDF 工具</h2>
-          <p>复用旧版 pdf-tools converter：支持合并、拆分、转图片、导出 TXT / DOCX；OCR 作为可选外部依赖。</p>
-        </div>
-        <span className="settings-mode-pill">{actionOptions.find((item) => item.value === action)?.label}</span>
-      </div>
+      <ToolHeading
+        eyebrow="Legacy PDF tools"
+        title="PDF 工具"
+        description="合并、拆分和导出 PDF。"
+        statusLabel={actionOptions.find((item) => item.value === action)?.label ?? action}
+      />
 
       <div className="editor-grid">
         <div className="file-mode-card compact-card">
-          <label className="field-block file-path-field">
-            <span>PDF 输入路径</span>
-            <textarea disabled={running} onChange={(event) => setInputText(event.currentTarget.value)} placeholder="每行一个 .pdf 或目录" value={inputText} />
-          </label>
+          <MultiPathInput
+            label="PDF 输入路径"
+            countLabel={`${paths.length} paths`}
+            value={inputText}
+            disabled={running}
+            placeholder="每行一个 .pdf 或目录"
+            onChange={setInputText}
+          />
           <div className="button-cluster">
-            <button className="ghost-button" disabled={running} onClick={chooseFiles} type="button">
-              选择文件
-            </button>
-            <button className="ghost-button" disabled={!canList} onClick={handleList} type="button">
-              扫描
-            </button>
+            <button className="ghost-button" disabled={running} onClick={chooseFiles} type="button">文件</button>
+            <button className="ghost-button" disabled={!canList} onClick={handleList} type="button">扫描</button>
           </div>
         </div>
 
@@ -196,21 +195,11 @@ function PdfToolsTool({ initialOutputDir = "" }: { initialOutputDir?: string }) 
             <span>操作</span>
             <select disabled={running} onChange={(event) => setAction(event.currentTarget.value)} value={action}>
               {actionOptions.map((item) => (
-                <option key={item.value} value={item.value}>
-                  {item.label}
-                </option>
+                <option key={item.value} value={item.value}>{item.label}</option>
               ))}
             </select>
           </label>
-          <label className="field-block file-path-field">
-            <span>输出目录</span>
-            <div className="path-input-row">
-              <input disabled={running} onChange={(event) => setOutputDir(event.currentTarget.value)} value={outputDir} />
-              <button className="path-pick-button" disabled={running} onClick={chooseOutputDir} type="button">
-                选择
-              </button>
-            </div>
-          </label>
+          <DirectoryPickerRow label="输出目录" value={outputDir} disabled={running} onChange={setOutputDir} onPick={chooseOutputDir} />
         </div>
       </div>
 
@@ -256,30 +245,26 @@ function PdfToolsTool({ initialOutputDir = "" }: { initialOutputDir?: string }) 
         </div>
       </div>
 
-      <div className="actions-row">
-        <div className="action-hint">合并需要至少两个 PDF；拆分、转图、提取文本只处理单个 PDF。</div>
-        <div className="button-cluster">
-          <button className="ghost-button" disabled={running || (!files.length && !results.length && !error)} onClick={clearAll} type="button">
-            清空结果
-          </button>
-          <button className="primary-button" disabled={!canRun} onClick={handleRun} type="button">
-            {running ? "运行中..." : "开始处理"}
-          </button>
-        </div>
-      </div>
+      <ActionBar
+        hint="按当前模式处理 PDF。"
+        secondary={<button className="ghost-button" disabled={running || (!files.length && !results.length && !error)} onClick={clearAll} type="button">清空</button>}
+        primary={<button className="primary-button" disabled={!canRun} onClick={handleRun} type="button">{running ? "运行中" : "处理"}</button>}
+      />
 
-      <div className="editor-grid file-editor-grid">
-        <div className="result-card">
-          <span>已识别 PDF</span>
-          <strong>{files.length ? `${files.length} 个` : "等待扫描"}</strong>
-          <p>{files[0]?.name || "可直接执行，sidecar 会再次按旧规则收集 PDF"}</p>
-        </div>
-        <div className="result-card">
-          <span>输出结果</span>
-          <strong>{results.length ? `${results.length} 个` : "暂无"}</strong>
-          <p>{results[0]?.output || "输出路径会显示在这里"}</p>
-        </div>
-      </div>
+      <ResultCards
+        cards={[
+          {
+            label: "已识别 PDF",
+            value: files.length ? `${files.length} 个` : "等待扫描",
+            detail: String(files[0]?.name ?? "可直接执行，sidecar 会再次按旧规则收集 PDF"),
+          },
+          {
+            label: "输出结果",
+            value: results.length ? `${results.length} 个` : "暂无",
+            detail: results[0]?.output || "输出路径会显示在这里",
+          },
+        ]}
+      />
 
       {results.length ? (
         <section className="table-panel">
@@ -295,24 +280,7 @@ function PdfToolsTool({ initialOutputDir = "" }: { initialOutputDir?: string }) 
         </section>
       ) : null}
 
-      <section className="log-panel" aria-label="运行日志">
-        <div>
-          <div className="panel-title">Runtime</div>
-          <p className="muted">最近 5 条本地执行记录</p>
-        </div>
-        <div className="log-content">
-          {error ? <div className="error-box">{error}</div> : null}
-          {logs.length ? (
-            <ul>
-              {logs.map((item, index) => (
-                <li key={`${item}-${index}`}>{item}</li>
-              ))}
-            </ul>
-          ) : (
-            <p className="muted">暂无日志</p>
-          )}
-        </div>
-      </section>
+      <RuntimeLogPanel error={error} logs={logs} />
     </div>
   );
 }

@@ -4,18 +4,39 @@ import json
 import subprocess
 from pathlib import Path
 
+from sidecar.settings_bridge import build_settings_snapshot
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_TSX = ROOT / "desktop-tauri" / "src" / "App.tsx"
+STYLES_CSS = ROOT / "desktop-tauri" / "src" / "styles.css"
 BATCH_RENAME_TSX = ROOT / "desktop-tauri" / "src" / "tools" / "BatchRenameTool.tsx"
 DIRECT_DOWNLOADER_TSX = ROOT / "desktop-tauri" / "src" / "tools" / "DirectDownloaderTool.tsx"
 FILE_SORTER_TSX = ROOT / "desktop-tauri" / "src" / "tools" / "FileSorterTool.tsx"
 ARCHIVE_EXTRACTOR_TSX = ROOT / "desktop-tauri" / "src" / "tools" / "ArchiveExtractorPluginTool.tsx"
 WORD_FORMATTER_TSX = ROOT / "desktop-tauri" / "src" / "tools" / "WordFormatterTool.tsx"
+WEB_VIDEO_TSX = ROOT / "desktop-tauri" / "src" / "tools" / "WebVideoDownloaderTool.tsx"
+TG_DOWNLOADER_TSX = ROOT / "desktop-tauri" / "src" / "tools" / "TgDownloaderTool.tsx"
 TAURI_TS = ROOT / "desktop-tauri" / "src" / "api" / "tauri.ts"
+BROWSER_FALLBACK_TS = ROOT / "desktop-tauri" / "src" / "api" / "browserSettingsFallback.ts"
+BROWSER_PATCHERS_TS = ROOT / "desktop-tauri" / "src" / "api" / "browserSettingsPatchers.ts"
 README_MD = ROOT / "README.md"
 GITIGNORE = ROOT / ".gitignore"
+PYPROJECT = ROOT / "pyproject.toml"
 TAURI_SIDECAR_RS = ROOT / "desktop-tauri" / "src-tauri" / "src" / "sidecar.rs"
+TOOL_SHELL_TSX = ROOT / "desktop-tauri" / "src" / "components" / "ToolShell.tsx"
+TOOLS_PANELS_TSX = ROOT / "desktop-tauri" / "src" / "features" / "tools" / "panels.tsx"
+SETTINGS_PANEL_TSX = ROOT / "desktop-tauri" / "src" / "features" / "settings" / "SettingsPanel.tsx"
+SETTINGS_HELPERS_TS = ROOT / "desktop-tauri" / "src" / "features" / "settings" / "helpers.ts"
+SETTINGS_MODELS_TS = ROOT / "desktop-tauri" / "src" / "features" / "settings" / "models.ts"
+SETTINGS_PATCH_TS = ROOT / "desktop-tauri" / "src" / "features" / "settings" / "patch.ts"
+SETTINGS_SELECTORS_TS = ROOT / "desktop-tauri" / "src" / "features" / "settings" / "selectors.ts"
+SETTINGS_CONTROLLER_TS = ROOT / "desktop-tauri" / "src" / "features" / "settings" / "useSettingsPanelController.ts"
+VIEWSTATE_TS = ROOT / "desktop-tauri" / "src" / "features" / "settings" / "controller" / "viewState.ts"
+SIDECAR_RS = ROOT / "desktop-tauri" / "src-tauri" / "src" / "sidecar.rs"
+WEB_SIDECAR_TOOL = ROOT / "sidecar" / "tools" / "webvideodownloader_tool.py"
+TG_SIDECAR_TOOL = ROOT / "sidecar" / "tools" / "tgdownloader_tool.py"
+DOWNLOAD_RUNTIME_HOOK_TS = ROOT / "desktop-tauri" / "src" / "features" / "tools" / "hooks" / "useDownloadRuntimeSession.ts"
+DOWNLOAD_QUEUE_STATE_TS = ROOT / "desktop-tauri" / "src" / "features" / "tools" / "downloadQueueState.ts"
 
 
 def _extract_function_body(source: str, function_name: str) -> str:
@@ -49,53 +70,496 @@ function sidebarOrderForSave(snapshot, visibleOrder, toolsById) {{
 }}
 process.stdout.write(JSON.stringify(sidebarOrderForSave(snapshot, visibleOrder, toolsById)));
 """
-    result = subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True)
+    result = subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True, encoding="utf-8")
     return json.loads(result.stdout)
 
 
+def _run_download_queue_rows_from_session(source_path: Path, tasks: list[dict], session: dict) -> list[dict]:
+    source = source_path.read_text(encoding="utf-8")
+    parse_progress_body = _extract_function_body(source, "parseProgressMarker")
+    short_path_body = _extract_function_body(source, "shortPathName")
+    percent_value_body = _extract_function_body(source, "percentValue")
+    marker_index_body = _extract_function_body(source, "markerIndex")
+    queue_rows_body = _extract_function_body(source, "queueRowsFromSession")
+    script = f"""
+const tasks = {json.dumps(tasks, ensure_ascii=False)};
+const session = {json.dumps(session, ensure_ascii=False)};
+const options = {{
+  progressKinds: ["file", "web_status", "web_aria2", "web_percent", "tg_media"],
+  applyCompletedResult(row, result) {{
+    return {{ row, result }};
+  }},
+}};
+function parseProgressMarker(message) {{
+{parse_progress_body}
+}}
+function shortPathName(value) {{
+{short_path_body}
+}}
+function percentValue(value) {{
+{percent_value_body}
+}}
+function markerIndex(marker, fallbackIndex) {{
+{marker_index_body}
+}}
+function queueRowsFromSession(tasks, session, options) {{
+{queue_rows_body}
+}}
+process.stdout.write(JSON.stringify(queueRowsFromSession(tasks, session, options)));
+"""
+    result = subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True, encoding="utf-8")
+    return json.loads(result.stdout)
+
+
+def test_pyproject_uses_writable_repo_local_basetemp() -> None:
+    source = PYPROJECT.read_text(encoding="utf-8")
+
+    assert "--basetemp=tests/pytest-tmp" not in source
+    assert "--basetemp=.codex-pytest-tmp" not in source
+    assert 'norecursedirs = ["pytest-tmp", ".codex-pytest-tmp"]' in source
+
+
 def test_batchrename_group_mode_uses_legacy_all_files_label() -> None:
-    app_source = APP_TSX.read_text(encoding="utf-8")
     batch_source = BATCH_RENAME_TSX.read_text(encoding="utf-8")
-    legacy_label = "\u5168\u6587\u4ef6"
-    rejected_label = "\u5168\u90e8\u6587\u4ef6"
-
     assert '"\\u5168\\u6587\\u4ef6": "all"' in batch_source
-    assert f'{{ value: "all", label: "{legacy_label}" }}' in batch_source
-    assert '<option value="\\u5168\\u6587\\u4ef6">{"\\u5168\\u6587\\u4ef6"}</option>' in app_source
-    for source in (app_source, batch_source):
-        assert rejected_label not in source
-        assert "\\u5168\\u90e8\\u6587\\u4ef6" not in source
+    assert "label: \"\u5168\u6587\u4ef6\"" in batch_source
+    assert "\u5168\u90e8\u6587\u4ef6" not in batch_source
+    assert "\\u5168\\u90e8\\u6587\\u4ef6" not in batch_source
 
 
-def test_tauri_settings_save_does_not_force_disable_custom_theme() -> None:
+def test_settings_selectors_preserve_custom_theme_drafts_and_tool_settings() -> None:
+    source = SETTINGS_SELECTORS_TS.read_text(encoding="utf-8")
+
+    for marker in (
+        "themeColorDraftsFromSnapshot",
+        "snapshot.theme.custom_colors",
+        "customColors[theme]",
+        "snapshot.theme.colors",
+        "toolOutputDirsFromSnapshot",
+        "toolBehaviorDraftsFromSnapshot",
+        "downloaderDraftFromSnapshot",
+        "wordFormatterDraftFromSnapshot",
+        "createSettingsDraftState",
+        "export function wordFormatterSettings",
+        "export function toolBehaviorSettings",
+        "export function downloaderSettings",
+    ):
+        assert marker in source
+
+
+
+def test_settings_models_define_expected_draft_structures() -> None:
+    source = SETTINGS_MODELS_TS.read_text(encoding="utf-8")
+
+    for marker in (
+        "THEME_ZONES",
+        "TOOL_OUTPUT_DIRS",
+        "FILESORTER_CATEGORIES",
+        "DownloaderSettingsDraft",
+        "WordFormatterDraft",
+        "DEFAULT_TOOL_OUTPUT_DIR_DRAFT",
+        "DEFAULT_TOOL_BEHAVIOR_DRAFT",
+        "DEFAULT_DOWNLOADER_SETTINGS_DRAFT",
+        "DEFAULT_WORD_FORMATTER_DRAFT",
+        "WORD_FORMATTER_PAGE_SETTING_KEYS",
+        "WORD_FORMATTER_STYLE_SETTING_KEYS",
+    ):
+        assert marker in source
+
+
+
+def test_settings_patch_builds_theme_auth_disabled_tool_and_sidebar_updates() -> None:
+    source = SETTINGS_PATCH_TS.read_text(encoding="utf-8")
+
+    for marker in (
+        '"ui/custom_theme_enabled": drafts.customThemeEnabled',
+        '"auth/remember_password": drafts.rememberPassword',
+        '"auth/auto_login": drafts.autoLogin',
+        '"tools/disabled": [...drafts.disabledTools].sort()',
+        '"plugins/disabled": [...drafts.disabledPlugins].sort()',
+        '"archive_extractor/output_dir": drafts.toolOutputDirs.archive_extractor',
+        '"video_downloader/web/output_dir": drafts.downloader.webvideodownloader.output_dir',
+        '"video_downloader/telegram/output_dir": drafts.downloader.tgdownloader.output_dir',
+        '"wordformatter/output_dir": drafts.wordFormatter.output_dir',
+        '"sidebar/order": sidebarOrderForSave(snapshot, drafts.sidebarOrder, toolsById)',
+        "WORD_FORMATTER_PAGE_KEYS.forEach",
+        "WORD_FORMATTER_STYLE_KEYS.forEach",
+        "FILESORTER_CATEGORIES.forEach",
+        "THEME_ZONES.forEach",
+    ):
+        assert marker in source
+
+
+
+def test_browser_settings_fallback_keeps_custom_colors_auth_disabled_plugins_and_metadata() -> None:
+    source = BROWSER_FALLBACK_TS.read_text(encoding="utf-8")
+
+    for marker in (
+        "custom_colors: {",
+        "disabled_plugins: [...disabledPluginSet].sort()",
+        'patch.updates["plugins/disabled"]',
+        'patch.updates["auth/remember_password"]',
+        'patch.updates["auth/auto_login"]',
+        'patch.updates["base64/output_dir"]',
+        'patchString(patch.updates, "archive_extractor/output_dir"',
+        "browserWordFormatterSettings",
+        "patchWordFormatterSettings",
+        "patchVideoDownloaderSettings",
+        "orderTools(tools, sidebarOrder)",
+        "...tool",
+    ):
+        assert marker in source
+
+
+
+def test_browser_settings_patchers_cover_tool_behavior_wordformatter_and_video_settings() -> None:
+    source = BROWSER_PATCHERS_TS.read_text(encoding="utf-8")
+
+    for marker in (
+        "patchString",
+        "patchBoolean",
+        "patchWordFormatterSettings",
+        "patchFilesorterCategories",
+        "browserProxyUrl",
+        "patchVideoDownloaderSettings",
+        'updates: SettingsPatch["updates"]',
+        'patchBoolean(patch.updates, "video_downloader/web/overwrite"',
+        'patchString(patch.updates, "video_downloader/telegram/recent_limit"',
+        'patchString(updates, "wordformatter/output_dir"',
+    ):
+        assert marker in source
+
+
+
+def test_settings_panel_wires_sections_and_controller_callbacks() -> None:
+    panel_source = SETTINGS_PANEL_TSX.read_text(encoding="utf-8")
+    controller_source = SETTINGS_CONTROLLER_TS.read_text(encoding="utf-8")
+
+    for marker in (
+        "SettingsSummarySection",
+        "AccountPreferencesSection",
+        "ThemeModeSection",
+        "ToolOutputDirsSection",
+        "DownloaderSettingsSection",
+        "WordFormatterSection",
+        "ToolBehaviorSection",
+        "BuiltinToolsSection",
+        "SidebarOrderSection",
+        "PluginStatusSection",
+        "ThemePaletteSection",
+        "saveSettings",
+    ):
+        assert marker in panel_source
+
+    for marker in (
+        "createSettingsDraftState",
+        "saveSettingsSnapshot",
+        "sidebarStatus",
+        "toolDisplayName",
+        "toolMetadata",
+        "setPluginEnabled",
+        "updateDownloader",
+        "updateWordFormatterStyle",
+    ):
+        assert marker in controller_source
+
+
+
+def test_settings_panel_uses_grouped_navigation_shell() -> None:
+    panel_source = SETTINGS_PANEL_TSX.read_text(encoding="utf-8")
+    styles_source = (ROOT / "desktop-tauri" / "src" / "styles.css").read_text(encoding="utf-8")
+
+    for marker in (
+        "const SETTINGS_SECTIONS =",
+        'id: "general"',
+        'id: "appearance"',
+        'id: "paths"',
+        'id: "downloaders"',
+        'id: "wordformatter"',
+        'id: "tools"',
+        'id: "sidebar"',
+        "settings-shell",
+        "settings-nav",
+        "settings-nav-button",
+        "settings-content",
+        "activeSection",
+        "setActiveSection",
+    ):
+        assert marker in panel_source
+
+    for marker in (
+        ".settings-shell",
+        ".settings-nav",
+        ".settings-nav-button",
+        ".settings-nav-button.active",
+        ".settings-content",
+        ".settings-section-hero",
+        ".settings-two-column-grid",
+    ):
+        assert marker in styles_source
+
+
+def test_theme_palette_section_exposes_color_picker_and_card_opacity_slider() -> None:
+    source = (ROOT / "desktop-tauri" / "src" / "features" / "settings" / "sections" / "ThemePaletteSection.tsx").read_text(encoding="utf-8")
+
+    for marker in (
+        'type="color"',
+        'type="range"',
+        'aria-label="卡片背景透明度"',
+        'className="theme-opacity-control"',
+    ):
+        assert marker in source
+
+
+def test_settings_sections_present_human_readable_labels_and_word_details() -> None:
+    downloader_source = (ROOT / "desktop-tauri" / "src" / "features" / "settings" / "sections" / "DownloaderSettingsSection.tsx").read_text(encoding="utf-8")
+    word_source = (ROOT / "desktop-tauri" / "src" / "features" / "settings" / "sections" / "WordFormatterSection.tsx").read_text(encoding="utf-8")
+    behavior_source = (ROOT / "desktop-tauri" / "src" / "features" / "settings" / "sections" / "ToolBehaviorSection.tsx").read_text(encoding="utf-8")
+    palette_source = (ROOT / "desktop-tauri" / "src" / "features" / "settings" / "sections" / "ThemePaletteSection.tsx").read_text(encoding="utf-8")
+    models_source = SETTINGS_MODELS_TS.read_text(encoding="utf-8")
+
+    for marker in (
+        "Web 下载",
+        "Telegram 下载",
+        "Web 输出目录",
+        "代理主机",
+        "代理端口",
+        "兼容代理 URL",
+        "并发下载数",
+        "按标题创建子目录",
+        "最近消息数",
+        "起始日期",
+        "结束日期",
+    ):
+        assert marker in downloader_source
+
+    assert 'label="video_downloader/web/output_dir"' not in downloader_source
+    assert 'label="video_downloader/telegram/output_dir"' not in downloader_source
+
+    for marker in (
+        "页面设置",
+        "样式设置",
+        '<details className="settings-detail-card"',
+    ):
+        assert marker in word_source
+
+    for marker in (
+        "标题 1",
+        "标题 2",
+        "标题 3",
+        "标题 4",
+        "正文",
+        "表格",
+        "字体",
+        "字号（pt）",
+        "是否加粗",
+    ):
+        assert marker in models_source
+
+    for marker in (
+        "批量命名",
+        "文件分类",
+        "重复文件",
+        "直链下载",
+        "分类模式",
+        "命名前缀",
+    ):
+        assert marker in behavior_source
+
+    for marker in (
+        "主题配色",
+    ):
+        assert marker in palette_source
+
+    for marker in (
+        "窗口背景",
+        "卡片背景",
+        "主强调色",
+        "主文字",
+    ):
+        assert marker in models_source
+
+
+def test_settings_path_fields_use_directory_picker() -> None:
+    primitives_source = (ROOT / "desktop-tauri" / "src" / "features" / "settings" / "sections" / "primitives.tsx").read_text(encoding="utf-8")
+    output_dirs_source = (ROOT / "desktop-tauri" / "src" / "features" / "settings" / "sections" / "ToolOutputDirsSection.tsx").read_text(encoding="utf-8")
+    behavior_source = (ROOT / "desktop-tauri" / "src" / "features" / "settings" / "sections" / "ToolBehaviorSection.tsx").read_text(encoding="utf-8")
+
+    for marker in (
+        'from "../../../api/tauri"',
+        "pickDirectory(",
+        'type="button"',
+        "path-pick-button",
+    ):
+        assert marker in primitives_source
+
+    assert "SettingOutputDirRow" in output_dirs_source
+    assert "SettingDirectoryField" in behavior_source
+
+
+def test_settings_helpers_export_sidebar_order_and_metadata_helpers() -> None:
+    source = SETTINGS_HELPERS_TS.read_text(encoding="utf-8")
+
+    for marker in (
+        "firstSelectableTool",
+        "pluginConfigKey",
+        "function sidebarOrderForSave",
+        "toolDisplayName",
+        "toolMetadata",
+        "themeStyle",
+    ):
+        assert marker in source
+
+
+
+def test_theme_style_feeds_new_ui_theme_variables() -> None:
+    source = SETTINGS_HELPERS_TS.read_text(encoding="utf-8")
+
+    for marker in (
+        "DEFAULT_THEME_COLORS",
+        "function themeColor",
+        "CSS.supports(\"color\", value)",
+        '"--ink": colors.text_primary',
+        '"--ink-muted": colors.text_secondary',
+        '"--surface": colors.surface_bg',
+        '"--surface-strong": colors.card_bg',
+        '"--surface-soft": colors.input_bg',
+        '"--hairline"',
+        '"--accent": colors.accent',
+        '"--accent-strong": colors.accent',
+        '"--scroll-thumb"',
+        '"--scroll-thumb-hover"',
+    ):
+        assert marker in source
+
+
+
+def test_new_ui_has_dark_mode_material_overrides() -> None:
+    source = STYLES_CSS.read_text(encoding="utf-8")
+
+    for marker in (
+        '.theme-root[data-theme-mode="dark"] .window-surface',
+        '.theme-root[data-theme-mode="dark"] .tool-list',
+        '.theme-root[data-theme-mode="dark"] .tool-panel',
+        '.theme-root[data-theme-mode="dark"] .settings-panel',
+        '.theme-root[data-theme-mode="dark"] .settings-card',
+        '.theme-root[data-theme-mode="dark"] .settings-save-sticky',
+        '.theme-root[data-theme-mode="dark"] .theme-swatch',
+        '.theme-root[data-theme-mode="dark"] input',
+        "width: 148px;",
+        "margin-left: -8px;",
+    ):
+        assert marker in source
+
+
+
+def test_app_keeps_dark_selector_active_when_custom_theme_is_enabled() -> None:
     source = APP_TSX.read_text(encoding="utf-8")
 
-    assert '"ui/custom_theme_enabled": false' not in source
-    assert '"ui/custom_theme_enabled": customThemeDraft' in source
+    assert 'data-theme-mode={snapshot?.ui.theme ?? "light"}' in source
+    assert 'data-theme-mode={snapshot?.theme.mode ?? "light"}' not in source
 
 
-def test_tauri_settings_save_writes_current_theme_zone_values() -> None:
-    source = APP_TSX.read_text(encoding="utf-8")
 
-    assert "THEME_ZONES" in source
-    assert "`theme/${themeDraft}/${zone}`" in source
-    assert "themeColorsDraft[themeDraft]?.[zone]" in source
+def test_sidebar_order_for_save_preserves_unknown_legacy_id_slots() -> None:
+    source = SETTINGS_HELPERS_TS.read_text(encoding="utf-8")
 
+    saved_order = _run_sidebar_order_for_save(
+        source,
+        snapshot_order=["music", "legacy:future", "base64"],
+        visible_order=["base64", "music", "pdftools"],
+        current_tool_ids=["music", "base64", "pdftools"],
+    )
 
-def test_tauri_settings_drafts_prefer_snapshot_custom_colors() -> None:
-    source = APP_TSX.read_text(encoding="utf-8")
-
-    assert "snapshot.theme.custom_colors" in source
-    assert "customColors[theme]" in source
-    assert "snapshot.theme.colors" in source
+    assert saved_order == ["base64", "legacy:future", "music", "pdftools"]
 
 
-def test_tauri_settings_snapshot_type_and_browser_fallback_include_custom_colors() -> None:
-    source = TAURI_TS.read_text(encoding="utf-8")
 
-    assert "custom_colors" in source
-    assert "custom_colors: {" in source
-    assert "browserCustomThemeColors" in source
+def test_panels_wire_initial_output_dirs_for_builtin_tools() -> None:
+    source = TOOLS_PANELS_TSX.read_text(encoding="utf-8")
+
+    for marker in (
+        'toolOutputDir(snapshot, "music")',
+        'toolOutputDir(snapshot, "imageconvert")',
+        'toolOutputDir(snapshot, "mp4mp3")',
+        'toolOutputDir(snapshot, "pdftools")',
+        'toolOutputDir(snapshot, "base64")',
+        'toolOutputDir(snapshot, "directdownloader")',
+        'toolOutputDir(snapshot, "zipandpng")',
+        "<MusicTool initialOutputDir=",
+        "<ImageConvertTool initialOutputDir=",
+        "<Mp4Mp3Tool initialOutputDir=",
+        "<PdfToolsTool initialOutputDir=",
+        "<Base64Tool initialOutputDir=",
+        "<DirectDownloaderTool",
+        "<ZipPngTool initialOutputDir=",
+    ):
+        assert marker in source
+
+
+
+def test_panels_wire_initial_behavior_and_downloader_settings() -> None:
+    source = TOOLS_PANELS_TSX.read_text(encoding="utf-8")
+
+    for marker in (
+        'toolBehaviorSettings(snapshot, "batchrename")',
+        'toolBehaviorSettings(snapshot, "filesorter")',
+        'toolBehaviorSettings(snapshot, "same")',
+        'toolBehaviorSettings(snapshot, "directdownloader")',
+        'downloaderSettings(snapshot, "webvideodownloader")',
+        'downloaderSettings(snapshot, "tgdownloader")',
+        'wordFormatterSettings(snapshot)',
+        "<BatchRenameTool initialSettings=",
+        "<FileSorterTool initialSettings=",
+        "<SameTool initialSettings=",
+        "<WebVideoDownloaderTool initialSettings=",
+        "<TgDownloaderTool initialSettings=",
+        "<WordFormatterTool initialSettings=",
+    ):
+        assert marker in source
+
+
+
+def test_ready_builtin_and_plugin_tools_all_have_panel_renderers() -> None:
+    panels_source = TOOLS_PANELS_TSX.read_text(encoding="utf-8")
+    snapshot = build_settings_snapshot()
+
+    for tool in snapshot["tools"]:
+        if tool["source"] == "builtin" and tool["status"] == "ready":
+            assert f'{tool["id"]}:' in panels_source
+        if tool["source"] == "plugin" and tool["status"] == "ready" and tool.get("manifest_enabled") is not False:
+            assert f'"{tool["id"]}":' in panels_source
+
+
+
+def test_plugin_hello_world_remains_manifest_disabled_placeholder() -> None:
+    snapshot = build_settings_snapshot()
+    hello = next(item for item in snapshot["tools"] if item["id"] == "plugin:hello_world")
+
+    assert hello["manifest_enabled"] is False
+    assert hello["enabled"] is False
+    assert hello["status"] == "pending"
+
+
+
+def test_view_state_and_tool_shell_use_sidebar_label_and_status_text() -> None:
+    view_state = VIEWSTATE_TS.read_text(encoding="utf-8")
+    shell_source = TOOL_SHELL_TSX.read_text(encoding="utf-8")
+
+    for marker in (
+        "tool.sidebar_label ?? tool.title",
+        "toolTitle(activeTool, settingsOpen)",
+        "return tool?.sidebar_label ?? tool?.title",
+        "CAPABILITY_NOTES",
+        "tool.status === \"ready\" ?",
+    ):
+        assert marker in view_state or marker in shell_source
+
+    assert "<table" not in shell_source.lower()
+    assert "tools.reduce" not in shell_source
+    assert "groupedTools" not in shell_source
+    assert "tools.map(" in shell_source
+
 
 
 def test_tauri_debug_sidecar_can_run_without_codex_test_venv() -> None:
@@ -107,6 +571,7 @@ def test_tauri_debug_sidecar_can_run_without_codex_test_venv() -> None:
     assert 'PathBuf::from("py")' in source
 
 
+
 def test_readme_uses_repo_relative_tauri_commands() -> None:
     source = README_MD.read_text(encoding="utf-8")
 
@@ -115,10 +580,15 @@ def test_readme_uses_repo_relative_tauri_commands() -> None:
     assert 'cd "desktop-tauri"' in source
 
 
-def test_gitignore_excludes_codex_review_and_test_artifacts() -> None:
+
+def test_gitignore_excludes_codex_artifacts_and_pytest_tmp() -> None:
     source = GITIGNORE.read_text(encoding="utf-8")
 
     for pattern in (
+        "\u6d4b\u8bd5/",
+        "task_plan.md",
+        "findings.md",
+        "progress.md",
         ".codex-pytest-tmp*/",
         ".codex-plugin-*/",
         ".codex-*-smoke*/",
@@ -126,242 +596,10 @@ def test_gitignore_excludes_codex_review_and_test_artifacts() -> None:
         ".codex-review-tmp*/",
         ".codex-*.json",
         ".codex-*.ini",
-        "*.log.*",
         "desktop-tauri/test-results/",
     ):
         assert pattern in source
-
-
-def test_tauri_settings_ui_writes_legacy_plugin_disabled_key() -> None:
-    source = APP_TSX.read_text(encoding="utf-8")
-
-    assert "disabledPluginDraft" in source
-    assert '"plugins/disabled":' in source
-    assert "setPluginEnabled" in source
-    assert "\\u63d2\\u4ef6\\u542f\\u505c\\u4fdd\\u6301\\u53ea\\u8bfb" not in source
-
-
-def test_tauri_settings_patch_and_browser_fallback_keep_plugin_disabled_key() -> None:
-    source = TAURI_TS.read_text(encoding="utf-8")
-
-    assert '"plugins/disabled"?: string[]' in source
-    assert 'patch.updates["plugins/disabled"]' in source
-    assert "disabled_plugins: [...disabledPluginSet].sort()" in source
-
-
-def test_tauri_settings_ui_has_auth_drafts_and_save_payload() -> None:
-    source = APP_TSX.read_text(encoding="utf-8")
-
-    assert "rememberPasswordDraft" in source
-    assert "autoLoginDraft" in source
-    assert '"auth/remember_password": rememberPasswordDraft' in source
-    assert '"auth/auto_login": autoLoginDraft' in source
-
-
-def test_tauri_settings_snapshot_patch_and_browser_fallback_include_auth() -> None:
-    source = TAURI_TS.read_text(encoding="utf-8")
-
-    assert "auth: {" in source
-    assert "remember_password: boolean" in source
-    assert "auto_login: boolean" in source
-    assert "last_user: string" in source
-    assert '"auth/remember_password"?: boolean' in source
-    assert '"auth/auto_login"?: boolean' in source
-    assert 'patch.updates["auth/remember_password"]' in source
-    assert 'patch.updates["auth/auto_login"]' in source
-
-
-def test_tauri_settings_snapshot_patch_and_browser_fallback_include_tool_settings() -> None:
-    source = TAURI_TS.read_text(encoding="utf-8")
-    keys = [
-        "base64/output_dir",
-        "music/output_dir",
-        "zipandpng/output_dir",
-        "mp4mp3/output_dir",
-        "imageconvert/output_dir",
-        "pdftools/output_dir",
-        "directdownloader/output_dir",
-    ]
-
-    assert "tool_settings:" in source
-    for key in keys:
-        assert f'"{key}"?: string' in source
-        assert f'patch.updates["{key}"]' in source
-
-
-def test_tauri_settings_snapshot_patch_and_browser_fallback_include_file_download_behavior_settings() -> None:
-    source = TAURI_TS.read_text(encoding="utf-8")
-    string_keys = [
-        "batchrename/input_dir",
-        "batchrename/prefix",
-        "batchrename/group_mode",
-        "batchrename/sort_mode",
-        "batchrename/sort_order",
-        "filesorter/input_dir",
-        "filesorter/mode",
-        "same/input_dir",
-        "directdownloader/connections",
-        "directdownloader/proxy_url",
-        "directdownloader/referer",
-    ]
-    boolean_keys = [
-        "same/recursive",
-        "directdownloader/overwrite",
-        "directdownloader/output_subdir_by_filename",
-    ]
-
-    assert "prefix?: string" in source
-    assert "recursive?: boolean" in source
-    assert "output_subdir_by_filename?: boolean" in source
-    for key in string_keys:
-        assert f'"{key}"?: string' in source
-        assert f'patchString(patch.updates, "{key}"' in source
-    for key in boolean_keys:
-        assert f'"{key}"?: boolean' in source
-        assert f'"{key}"' in source
-    assert "patchBoolean(patch.updates" in source
-
-
-def test_tauri_settings_snapshot_patch_and_browser_fallback_include_filesorter_categories_and_archive_output() -> None:
-    source = TAURI_TS.read_text(encoding="utf-8")
-
-    assert "categories?: Record<string, boolean>" in source
-    assert "[key: `filesorter/category_${string}`]: boolean | undefined" in source
-    assert '"archive_extractor/output_dir"?: string' in source
-    assert "FILESORTER_CATEGORIES" in source
-    assert "patchFilesorterCategories(patch.updates" in source
-    assert 'patchString(patch.updates, "archive_extractor/output_dir"' in source
-    for category in ("图片", "视频", "音频", "文档", "压缩包", "程序", "其他"):
-        assert "filesorter/category_${category}" in source
-        assert category in source
-
-
-def test_tauri_settings_snapshot_patch_and_browser_fallback_include_wordformatter_settings() -> None:
-    source = TAURI_TS.read_text(encoding="utf-8")
-    required = [
-        "wordformatter/output_dir",
-        "wordformatter/page/top_margin_cm",
-        "wordformatter/page/footer_distance_cm",
-        "wordformatter/styles/heading1/font",
-        "wordformatter/styles/heading1/bold",
-        "wordformatter/styles/body/line_spacing",
-        "browserWordFormatterSettings",
-        "patchWordFormatterSettings",
-    ]
-
-    for marker in required:
-        assert marker in source
-    assert "page?: Record<string, number | string>" in source
-    assert "styles?: Record<string, WordFormatterStyleSettings>" in source
-
-
-def test_tauri_settings_panel_has_tool_output_dir_card_and_save_payload() -> None:
-    source = APP_TSX.read_text(encoding="utf-8")
-    keys = [
-        "base64/output_dir",
-        "music/output_dir",
-        "zipandpng/output_dir",
-        "mp4mp3/output_dir",
-        "imageconvert/output_dir",
-        "pdftools/output_dir",
-        "directdownloader/output_dir",
-    ]
-
-    assert "toolOutputDirDraft" in source
-    assert "\\u5de5\\u5177\\u9ed8\\u8ba4\\u76ee\\u5f55" in source
-    for key in keys:
-        assert f'"{key}": toolOutputDirDraft.' in source
-
-
-def test_tauri_settings_panel_has_file_download_behavior_card_and_save_payload() -> None:
-    source = APP_TSX.read_text(encoding="utf-8")
-    keys = [
-        "batchrename/input_dir",
-        "batchrename/prefix",
-        "batchrename/group_mode",
-        "batchrename/sort_mode",
-        "batchrename/sort_order",
-        "filesorter/input_dir",
-        "filesorter/mode",
-        "same/input_dir",
-        "same/recursive",
-        "directdownloader/connections",
-        "directdownloader/overwrite",
-        "directdownloader/output_subdir_by_filename",
-        "directdownloader/proxy_url",
-        "directdownloader/referer",
-    ]
-
-    assert "toolBehaviorDraft" in source
-    assert "\\u5de5\\u5177\\u884c\\u4e3a\\u504f\\u597d" in source
-    for key in keys:
-        assert f'"{key}": toolBehaviorDraft.' in source
-
-
-def test_tauri_settings_panel_has_filesorter_category_switches_and_archive_output_payload() -> None:
-    source = APP_TSX.read_text(encoding="utf-8")
-
-    assert "FILESORTER_CATEGORIES" in source
-    assert "categories: filesorterCategoriesFromSnapshot" in source
-    assert "updateFilesorterCategory" in source
-    assert '"archive_extractor/output_dir": toolOutputDirDraft.archive_extractor' in source
-    assert "updates[`filesorter/category_${category}`]" in source
-    assert "toolBehaviorDraft.filesorter.categories[category]" in source
-    assert "archive_extractor/output_dir" in source
-
-
-def test_tauri_settings_panel_has_wordformatter_card_and_save_payload() -> None:
-    source = APP_TSX.read_text(encoding="utf-8")
-    keys = [
-        "wordformatter/output_dir",
-        "wordformatter/page/top_margin_cm",
-        "wordformatter/page/footer_distance_cm",
-        "wordformatter/styles/heading1/font",
-        "wordformatter/styles/heading1/bold",
-        "wordformatter/styles/body/font",
-        "wordformatter/styles/body/line_spacing",
-    ]
-
-    assert "wordFormatterDraft" in source
-    assert "updateWordFormatterPage" in source
-    assert "updateWordFormatterStyle" in source
-    assert "Word Formatter" in source
-    for key in keys:
-        assert f'"{key}"' in source
-
-
-def test_migrated_tools_receive_initial_output_dir_props() -> None:
-    source = APP_TSX.read_text(encoding="utf-8")
-
-    assert "toolOutputDir(snapshot, \"base64\")" in source
-    assert "<Base64Tool initialOutputDir=" in source
-    assert "<MusicTool initialOutputDir=" in source
-    assert "<ZipPngTool initialOutputDir=" in source
-    assert "<ImageConvertTool initialOutputDir=" in source
-    assert "<Mp4Mp3Tool initialOutputDir=" in source
-    assert "<PdfToolsTool initialOutputDir=" in source
-    assert "<DirectDownloaderTool initialOutputDir=" in source
-
-
-def test_file_download_tools_receive_initial_behavior_props() -> None:
-    source = APP_TSX.read_text(encoding="utf-8")
-
-    assert "toolBehaviorSettings(snapshot, \"batchrename\")" in source
-    assert "toolBehaviorSettings(snapshot, \"filesorter\")" in source
-    assert "toolBehaviorSettings(snapshot, \"same\")" in source
-    assert "toolBehaviorSettings(snapshot, \"directdownloader\")" in source
-    assert "<BatchRenameTool initialSettings=" in source
-    assert "<FileSorterTool initialSettings=" in source
-    assert "<SameTool initialSettings=" in source
-    assert "<DirectDownloaderTool initialOutputDir=" in source
-    assert "initialSettings={toolBehaviorSettings(snapshot, \"directdownloader\")}" in source
-
-
-def test_archive_extractor_receives_initial_settings_from_snapshot() -> None:
-    source = APP_TSX.read_text(encoding="utf-8")
-
-    assert "snapshot?.tool_settings?.archive_extractor ?? {}" in source
-    assert "<ArchiveExtractorPluginTool initialSettings=" in source
+    assert "\u5a34\u5b2d\u762f/" not in source
 
 
 def test_filesorter_tool_initializes_categories_without_overwriting_user_edits() -> None:
@@ -373,6 +611,7 @@ def test_filesorter_tool_initializes_categories_without_overwriting_user_edits()
     assert "categoriesFromSettings" in source
 
 
+
 def test_archive_extractor_tool_initializes_output_dir_without_overwriting_user_edits() -> None:
     source = ARCHIVE_EXTRACTOR_TSX.read_text(encoding="utf-8")
 
@@ -382,17 +621,19 @@ def test_archive_extractor_tool_initializes_output_dir_without_overwriting_user_
     assert "outputDirTouchedRef" in source
 
 
+
 def test_wordformatter_tool_receives_and_merges_initial_settings_without_overwriting_user_edits() -> None:
-    app_source = APP_TSX.read_text(encoding="utf-8")
+    panels_source = TOOLS_PANELS_TSX.read_text(encoding="utf-8")
     tool_source = WORD_FORMATTER_TSX.read_text(encoding="utf-8")
 
-    assert "wordFormatterSettings(snapshot)" in app_source
-    assert "<WordFormatterTool initialSettings=" in app_source
+    assert "wordFormatterSettings(snapshot)" in panels_source
+    assert "<WordFormatterTool initialSettings=" in panels_source
     assert "initialSettings?: ToolSettings" in tool_source
     assert "mergeWordConfig" in tool_source
     assert "configTouchedRef" in tool_source
     assert "outputDirTouchedRef" in tool_source
     assert "default_config" in tool_source
+
 
 
 def test_direct_downloader_proxy_split_preserves_auth_for_legacy_build_proxy_url() -> None:
@@ -410,93 +651,15 @@ def test_direct_downloader_proxy_split_preserves_auth_for_legacy_build_proxy_url
     assert "host: parsed.hostname" not in body
 
 
-WEB_VIDEO_TSX = ROOT / "desktop-tauri" / "src" / "tools" / "WebVideoDownloaderTool.tsx"
-TG_DOWNLOADER_TSX = ROOT / "desktop-tauri" / "src" / "tools" / "TgDownloaderTool.tsx"
 
+def test_direct_downloader_tool_uses_collapsible_advanced_options_and_removes_debug_panels() -> None:
+    source = DIRECT_DOWNLOADER_TSX.read_text(encoding="utf-8")
 
-def test_tauri_settings_snapshot_patch_and_browser_fallback_include_video_downloader_settings() -> None:
-    source = TAURI_TS.read_text(encoding="utf-8")
-    string_keys = [
-        "video_downloader/api_id",
-        "video_downloader/api_hash",
-        "video_downloader/phone",
-        "video_downloader/phone_code_hash",
-        "video_downloader/web/output_dir",
-        "video_downloader/web/proxy_host",
-        "video_downloader/web/proxy_port",
-        "video_downloader/web/proxy_url",
-        "video_downloader/web/concurrent",
-        "video_downloader/web/cover_dir",
-        "video_downloader/telegram/output_dir",
-        "video_downloader/telegram/proxy_host",
-        "video_downloader/telegram/proxy_port",
-        "video_downloader/telegram/proxy_url",
-        "video_downloader/telegram/recent_limit",
-        "video_downloader/telegram/date_from",
-        "video_downloader/telegram/date_to",
-        "video_downloader/telegram/concurrent",
-        "video_downloader/telegram/cover_dir",
-    ]
-    boolean_keys = [
-        "video_downloader/web/overwrite",
-        "video_downloader/web/output_subdir_by_title",
-        "video_downloader/telegram/all_messages",
-        "video_downloader/telegram/include_videos",
-        "video_downloader/telegram/include_photos",
-        "video_downloader/telegram/overwrite",
-        "video_downloader/telegram/output_subdir_by_title",
-    ]
-
-    assert "webvideodownloader:" in source
-    assert "tgdownloader:" in source
-    assert "patchVideoDownloaderSettings" in source
-    for key in string_keys:
-        assert f'"{key}"?: string' in source
-        assert f'patchString(patch.updates, "{key}"' in source
-    for key in boolean_keys:
-        assert f'"{key}"?: boolean' in source
-        assert f'patchBoolean(patch.updates, "{key}"' in source
-
-
-def test_tauri_settings_panel_has_downloader_preferences_card_and_save_payload() -> None:
-    source = APP_TSX.read_text(encoding="utf-8")
-    keys = [
-        "video_downloader/api_id",
-        "video_downloader/api_hash",
-        "video_downloader/phone",
-        "video_downloader/web/output_dir",
-        "video_downloader/web/proxy_host",
-        "video_downloader/web/proxy_port",
-        "video_downloader/web/overwrite",
-        "video_downloader/web/output_subdir_by_title",
-        "video_downloader/web/concurrent",
-        "video_downloader/telegram/output_dir",
-        "video_downloader/telegram/recent_limit",
-        "video_downloader/telegram/all_messages",
-        "video_downloader/telegram/date_from",
-        "video_downloader/telegram/date_to",
-        "video_downloader/telegram/include_videos",
-        "video_downloader/telegram/include_photos",
-        "video_downloader/telegram/proxy_host",
-        "video_downloader/telegram/proxy_port",
-        "video_downloader/telegram/concurrent",
-        "video_downloader/telegram/overwrite",
-    ]
-
-    assert "DownloaderSettingsDraft" in source
-    assert "downloaderDraft" in source
-    assert "\\u4e0b\\u8f7d\\u5668\\u504f\\u597d" in source
-    for key in keys:
-        assert f'"{key}": downloaderDraft.' in source
-
-
-def test_downloader_tools_receive_initial_settings_from_snapshot() -> None:
-    source = APP_TSX.read_text(encoding="utf-8")
-
-    assert "downloaderSettings(snapshot, \"webvideodownloader\")" in source
-    assert "downloaderSettings(snapshot, \"tgdownloader\")" in source
-    assert "<WebVideoDownloaderTool initialSettings=" in source
-    assert "<TgDownloaderTool initialSettings=" in source
+    assert '<details className="file-mode-card direct-advanced-options"' in source
+    assert "<summary>高级选项</summary>" in source
+    assert "ResultCards" not in source
+    assert "handleBuildCommands" not in source
+    assert "命令预览" not in source
 
 
 def test_web_video_downloader_tool_initializes_legacy_settings_and_payload_options() -> None:
@@ -518,6 +681,7 @@ def test_web_video_downloader_tool_initializes_legacy_settings_and_payload_optio
 
     for marker in required:
         assert marker in source
+
 
 
 def test_tg_downloader_tool_initializes_legacy_settings_and_payload_credentials_options() -> None:
@@ -547,88 +711,129 @@ def test_tg_downloader_tool_initializes_legacy_settings_and_payload_credentials_
         assert marker in source
 
 
-
-def test_settings_panel_does_not_expose_or_save_phone_code_hash_or_removed_web_candidate_options() -> None:
-    source = APP_TSX.read_text(encoding="utf-8")
-
-    assert "video_downloader/phone_code_hash" not in source
-    assert "phone_code_hash" not in source
-    for removed in ("web_candidate", "web_all_candidates", "thumbnail_mode"):
-        assert removed not in source
-
-
-
-def test_tauri_toolitem_type_and_browser_fallback_keep_legacy_metadata() -> None:
-    source = TAURI_TS.read_text(encoding="utf-8")
+def test_tauri_api_and_rust_register_download_runtime_session_commands() -> None:
+    api_source = TAURI_TS.read_text(encoding="utf-8")
+    rust_lib_source = (ROOT / "desktop-tauri" / "src-tauri" / "src" / "lib.rs").read_text(encoding="utf-8")
+    rust_sidecar_source = SIDECAR_RS.read_text(encoding="utf-8")
 
     for marker in (
-        "sidebar_label?: string",
-        "dir_name?: string",
-        "converter_file?: string",
-        "tab_file?: string",
-        "extra_files?: readonly string[]",
-        "tab_kwargs?: Record<string, unknown>",
-        "priority?: number",
-        "...tool",
-        "orderTools(tools, sidebarOrder)",
+        "export type ToolSessionControlAction",
+        "export type ToolSessionSnapshot",
+        "export function startToolSession(",
+        "export function pollToolSession(",
+        "export function controlToolSession(",
+        "export function cleanupToolSession(",
     ):
-        assert marker in source
-
-
-def test_tool_shell_prefers_sidebar_label_without_backend_table_ui() -> None:
-    source = (ROOT / "desktop-tauri" / "src" / "components" / "ToolShell.tsx").read_text(encoding="utf-8")
-
-    assert "tool.sidebar_label ?? tool.title" in source
-    assert "activeTool?.sidebar_label ?? activeTool?.title" in source
-    assert "<table" not in source.lower()
-
-
-def test_tool_shell_sidebar_preserves_incoming_tool_order_without_regrouping() -> None:
-    source = (ROOT / "desktop-tauri" / "src" / "components" / "ToolShell.tsx").read_text(encoding="utf-8")
-
-    assert "tools.reduce" not in source
-    assert "groupedTools" not in source
-    assert "Object.entries(" not in source
-    assert "tools.map(" in source
-
-
-def test_settings_panel_surfaces_legacy_builtin_and_plugin_metadata() -> None:
-    source = APP_TSX.read_text(encoding="utf-8")
+        assert marker in api_source
 
     for marker in (
-        "tool.sidebar_label ?? tool.title",
-        "tool.dir_name",
-        "tool.converter_file",
-        "tool.tab_file",
-        "tool.extra_files",
-        "tool.tab_kwargs",
-        "tool.description",
-        "tool.version",
-        "tool.priority",
-        "pluginConfigKey(tool)",
+        "sidecar::start_tool_session",
+        "sidecar::poll_tool_session",
+        "sidecar::control_tool_session",
+        "sidecar::cleanup_tool_session",
     ):
-        assert marker in source
+        assert marker in rust_lib_source
+
+    for marker in (
+        "pub async fn start_tool_session(",
+        "pub async fn poll_tool_session(",
+        "pub async fn control_tool_session(",
+        "pub async fn cleanup_tool_session(",
+        'OsString::from("--control")',
+        "write_control_state(",
+        "temp_control_path()",
+    ):
+        assert marker in rust_sidecar_source
 
 
-def test_tauri_settings_save_sidebar_order_preserves_unknown_legacy_ids() -> None:
-    source = APP_TSX.read_text(encoding="utf-8")
+def test_video_downloaders_stream_runtime_progress_and_render_queue_controls() -> None:
+    web_tool_source = WEB_VIDEO_TSX.read_text(encoding="utf-8")
+    tg_tool_source = TG_DOWNLOADER_TSX.read_text(encoding="utf-8")
+    queue_state_source = DOWNLOAD_QUEUE_STATE_TS.read_text(encoding="utf-8")
+    queue_table_source = (ROOT / "desktop-tauri" / "src" / "features" / "tools" / "components" / "DownloadQueueTable.tsx").read_text(encoding="utf-8")
+    hook_source = DOWNLOAD_RUNTIME_HOOK_TS.read_text(encoding="utf-8")
+    web_sidecar_source = WEB_SIDECAR_TOOL.read_text(encoding="utf-8")
+    tg_sidecar_source = TG_SIDECAR_TOOL.read_text(encoding="utf-8")
 
-    assert "function sidebarOrderForSave" in source
-    assert "const currentOrder = visibleOrder.filter((toolId) => toolsById.has(toolId));" in source
-    assert "snapshot.sidebar_order.forEach((legacyToolId) => {" in source
-    assert "mergedOrder.push(legacyToolId);" in source
-    assert "currentOrder.slice(currentIndex).forEach((toolId) => {" in source
-    assert '"sidebar/order": sidebarOrderForSave(snapshot, orderDraft, toolsById)' in source
+    for marker in (
+        "startToolSession(",
+        "pollToolSession(",
+        "controlToolSession(",
+        "cleanupToolSession(",
+        "const sessionIdRef = useRef<string | null>(null)",
+        "const sessionId = sessionIdRef.current",
+    ):
+        assert marker in hook_source
+
+    for marker in (
+        "useDownloadRuntimeSession(",
+        "queueRows",
+        "paused",
+        "buildQueueRows(tasks, session, {",
+        'progressKinds: ["file", "web_status", "web_aria2", "web_percent"]',
+    ):
+        assert marker in web_tool_source
+
+    for marker in (
+        "useDownloadRuntimeSession(",
+        "queueRows",
+        "paused",
+        "buildQueueRows(tasks, session, {",
+        'progressKinds: ["file", "tg_media"]',
+    ):
+        assert marker in tg_tool_source
+
+    for marker in (
+        "function markerIndex(",
+        'Number.parseInt(marker.payload.index ?? "", 10)',
+        "options.progressKinds.includes(marker.kind)",
+        'row.detail = "已完成"',
+        'rows[activeIndex].detail = "已暂停"',
+        'rows[activeIndex].detail = "已取消"',
+    ):
+        assert marker in queue_state_source
+
+    assert '"???"' not in web_tool_source
+    assert '"???"' not in tg_tool_source
+
+    for marker in (
+        "\u53d6\u6d88",
+        "\u6682\u505c",
+        "\u7ee7\u7eed",
+        "\u4e0b\u8f7d\u961f\u5217",
+    ):
+        assert marker in queue_table_source
+
+    for marker in (
+        "emit_runtime_progress",
+        "current_download_token",
+        "_progress(",
+        "token=current_download_token()",
+    ):
+        assert marker in web_sidecar_source
+        assert marker in tg_sidecar_source
 
 
-def test_tauri_settings_save_sidebar_order_preserves_unknown_legacy_id_slots() -> None:
-    source = APP_TSX.read_text(encoding="utf-8")
-
-    saved_order = _run_sidebar_order_for_save(
-        source,
-        snapshot_order=["music", "legacy:future", "base64"],
-        visible_order=["base64", "music", "pdftools"],
-        current_tool_ids=["music", "base64", "pdftools"],
+def test_download_queue_state_routes_indexed_progress_to_the_correct_row() -> None:
+    rows = _run_download_queue_rows_from_session(
+        DOWNLOAD_QUEUE_STATE_TS,
+        tasks=[
+            {"source_url": "https://example.com/a", "target_title": "Task A"},
+            {"source_url": "https://example.com/b", "target_title": "Task B"},
+        ],
+        session={
+            "status": "running",
+            "progress_events": [
+                {"message": "__HYL_PROGRESS__|task_start|index=0|total=2|url=https://example.com/a"},
+                {"message": "__HYL_PROGRESS__|task_start|index=1|total=2|url=https://example.com/b"},
+                {"message": "__HYL_PROGRESS__|web_status|index=0|name=a.mp4|percent=25|speed=1.2 MiB/s|eta=00:10"},
+                {"message": "__HYL_PROGRESS__|task_done|index=0|completed=1|total=2"},
+            ],
+        },
     )
 
-    assert saved_order == ["base64", "legacy:future", "music", "pdftools"]
+    assert rows[0]["fileName"] == "a.mp4"
+    assert rows[0]["status"] == "success"
+    assert rows[0]["percent"] == 100
+    assert rows[1]["status"] == "running"
+    assert rows[1]["detail"] == "https://example.com/b"

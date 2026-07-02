@@ -13,7 +13,7 @@ from .models import (
 from . import _shared as _s
 from .progress import (
     _emit, _emit_scan_progress, _emit_task_done, _emit_task_start,
-    _make_telegram_progress_callback, _make_result,
+    _make_telegram_progress_callback, _make_result, _with_task_index,
 )
 from .source_parser import _check_cancel, _current_token
 
@@ -143,7 +143,7 @@ async def _download_telegram_entries(
         for index, task in entries:
             _emit_task_start(progress_cb, index, total_tasks, task)
             results[index] = _make_result(task, False, [], 'Telegram 配置缺失')
-            _emit_task_done(progress_cb, len(results), total_tasks)
+            _emit_task_done(progress_cb, len(results), total_tasks, index=index)
         return results
     try:
         client = await _create_telegram_client(config)
@@ -153,7 +153,7 @@ async def _download_telegram_entries(
             for index, task in entries:
                 _emit_task_start(progress_cb, index, total_tasks, task)
                 results[index] = _make_result(task, False, [], message)
-                _emit_task_done(progress_cb, len(results), total_tasks)
+                _emit_task_done(progress_cb, len(results), total_tasks, index=index)
             return results
         token = _current_token()
         for index, task in entries:
@@ -166,14 +166,15 @@ async def _download_telegram_entries(
                         await asyncio.sleep(0.2)
                     _emit(progress_cb, '下载已恢复')
             _emit_task_start(progress_cb, index, total_tasks, task)
+            indexed_progress_cb = _with_task_index(progress_cb, index)
             try:
-                results[index] = await _download_single_telegram_task(client, task, output_root, options, progress_cb)
+                results[index] = await _download_single_telegram_task(client, task, output_root, options, indexed_progress_cb)
             except CancelledError:
                 results[index] = _make_result(task, False, [], '下载已取消')
                 raise
             except Exception as exc:
                 results[index] = _make_result(task, False, [], str(exc))
-            _emit_task_done(progress_cb, len(results), total_tasks)
+            _emit_task_done(progress_cb, len(results), total_tasks, index=index)
         return results
     finally:
         if 'client' in locals():
