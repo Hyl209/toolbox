@@ -161,6 +161,122 @@ def _emit_aria2_progress(progress_cb: ProgressCallback | None, file_name: str, r
     _emit(progress_cb, _build_download_log_message(clean_name, speed, '', eta))
 
 
+def _emit_aria2_file_progress(
+    progress_cb: ProgressCallback | None,
+    file_name: str,
+    *,
+    downloaded_bytes: int,
+    total_bytes: int,
+    elapsed: float,
+) -> None:
+    if progress_cb is None or downloaded_bytes <= 0 or elapsed <= 0:
+        return
+    speed_text = _format_byte_rate(downloaded_bytes / elapsed)
+    percent_text = ''
+    eta_text = ''
+    if total_bytes > 0:
+        percent = min(downloaded_bytes * 100.0 / total_bytes, 99.9)
+        percent_text = _format_progress_percent(percent)
+        if downloaded_bytes < total_bytes:
+            remaining = total_bytes - downloaded_bytes
+            eta_text = _format_eta_seconds(int(remaining / max(downloaded_bytes / elapsed, 1e-6)))
+    clean_name = _s.sanitize_filename_component(file_name or 'video', fallback='video')
+    parts = [f'name={clean_name}', f'speed={speed_text}']
+    if percent_text:
+        parts.append(f'percent={percent_text.replace("%", "")}')
+    if eta_text:
+        parts.append(f'eta={eta_text}')
+    _emit(progress_cb, '__HYL_PROGRESS__|web_aria2|' + '|'.join(parts))
+    _emit(progress_cb, _build_download_log_message(clean_name, speed_text, percent_text, eta_text))
+
+
+def _extract_ytdlp_total_bytes(info: dict[str, object]) -> int:
+    for key in ('filesize', 'filesize_approx', 'total_bytes', 'total_bytes_estimate'):
+        try:
+            value = int(info.get(key) or 0)
+        except (TypeError, ValueError):
+            value = 0
+        if value > 0:
+            return value
+    requested = info.get('requested_formats') or info.get('requested_downloads')
+    if isinstance(requested, list):
+        total = 0
+        for item in requested:
+            if not isinstance(item, dict):
+                continue
+            try:
+                total += int(item.get('filesize') or item.get('filesize_approx') or 0)
+            except (TypeError, ValueError):
+                pass
+        if total > 0:
+            return total
+    return 0
+
+
+def _largest_active_download_size(output_root: Path, unique_stem: str) -> int:
+    try:
+        candidates = [
+            path
+            for path in output_root.glob(f'{unique_stem}*')
+            if path.is_file() and path.suffix.lower() != '.aria2'
+        ]
+    except OSError:
+        return 0
+    sizes = []
+    for path in candidates:
+        try:
+            sizes.append(path.stat().st_size)
+        except OSError:
+            pass
+    return max(sizes, default=0)
+
+
+@contextmanager
+def _monitor_aria2_file_progress(
+    progress_cb: ProgressCallback | None,
+    output_root: Path,
+    unique_stem: str,
+    file_name: str,
+    total_bytes: int,
+    token: Token | None = None,
+):
+    if progress_cb is None:
+        yield
+        return
+    stop = Event()
+
+    def worker() -> None:
+        transfer_started: float | None = None
+        last_size = 0
+        last_emit = monotonic()
+        while not stop.wait(0.5):
+            if token and token.cancel.is_set():
+                break
+            size = _largest_active_download_size(output_root, unique_stem)
+            now = monotonic()
+            if size <= 0 or size == last_size or now - last_emit < 0.5:
+                continue
+            if transfer_started is None:
+                transfer_started = now
+            _emit_aria2_file_progress(
+                progress_cb,
+                file_name,
+                downloaded_bytes=size,
+                total_bytes=total_bytes,
+                elapsed=max(now - transfer_started, 1e-6),
+            )
+            last_size = size
+            last_emit = now
+
+    thread = _threading.Thread(target=worker, daemon=True)
+    thread.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        thread.join(timeout=1)
+
+
 def _normalize_aria2_speed(text: str) -> str:
     speed = str(text or '').strip()
     if not speed:
@@ -194,6 +310,37 @@ def _require_web_backend() -> None:
 
 def _options_proxy_url(options: DownloadOptions | None) -> str:
     return normalize_proxy_url(getattr(options, 'proxy_url', '') if options is not None else '')
+
+
+def _is_loopback_url(url: str) -> bool:
+    host = urlparse(str(url or '')).hostname or ''
+    return host.lower() in {'localhost', '127.0.0.1', '::1'}
+
+
+_loopback_no_proxy_lock = Lock()
+
+
+@contextmanager
+def _loopback_no_proxy(url: str):
+    if not _is_loopback_url(url):
+        yield
+        return
+    keys = ('NO_PROXY', 'no_proxy')
+    loopback = 'localhost,127.0.0.1,::1'
+    with _loopback_no_proxy_lock:
+        original = {key: os.environ.get(key) for key in keys}
+        for key in keys:
+            current = os.environ.get(key, '')
+            os.environ[key] = f'{current},{loopback}' if current else loopback
+    try:
+        yield
+    finally:
+        with _loopback_no_proxy_lock:
+            for key, value in original.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
 
 
 def _urlopen_with_proxy(request: Request, timeout: int, proxy_url: str = ''):
@@ -1336,12 +1483,13 @@ def _download_url_with_ytdlp(
         probe_opts['proxy'] = proxy_url
     if _should_use_browser_cookies(source_url, options):
         probe_opts['cookiesfrombrowser'] = ('chrome',)
-    info = _run_ytdlp_with_cookie_retry(
-        source_url,
-        probe_opts,
-        progress_cb,
-        lambda opts: YoutubeDL(opts).extract_info(source_url, download=False),
-    )
+    with _loopback_no_proxy(source_url):
+        info = _run_ytdlp_with_cookie_retry(
+            source_url,
+            probe_opts,
+            progress_cb,
+            lambda opts: YoutubeDL(opts).extract_info(source_url, download=False),
+        )
     title = _s.sanitize_filename_component(str(title_hint or info.get('title') or 'video'))
     media_id = _s.sanitize_filename_component(str(info.get('id') or 'video'))
     if title_hint:
@@ -1354,6 +1502,7 @@ def _download_url_with_ytdlp(
             .replace('.%(ext)s', '')
         )
     unique_stem = _s.ensure_unique_stem(output_root, base_stem)
+    total_bytes = _extract_ytdlp_total_bytes(info)
     ydl_opts = {
         'format': 'bv*+ba/b',
         'merge_output_format': 'mp4',
@@ -1409,6 +1558,7 @@ def _download_url_with_ytdlp(
             '--min-split-size=1M',
             '--disk-cache=64M',
             '--auto-file-renaming=false',
+            '--no-proxy=localhost,127.0.0.1,::1',
             '--allow-overwrite=true',
         ]
         if proxy_url:
@@ -1425,21 +1575,30 @@ def _download_url_with_ytdlp(
     max_reconnects = 3
     reconnect_count = 0
     capture_aria2_progress = bool(aria2c and progress_cb and options.max_concurrent_downloads <= 1)
+    monitor_aria2_file_progress = bool(aria2c and progress_cb and options.max_concurrent_downloads > 1)
     while True:
         try:
             # aria2 console capture redirects process-level stdout/stderr; in
             # concurrent mode that would serialize all active downloads.
-            capture_context = (
-                _capture_aria2_console_progress(progress_cb, unique_stem)
-                if capture_aria2_progress
-                else nullcontext()
-            )
-            with capture_context:
+            progress_context = nullcontext()
+            if capture_aria2_progress:
+                progress_context = _capture_aria2_console_progress(progress_cb, unique_stem)
+            elif monitor_aria2_file_progress:
+                progress_context = _monitor_aria2_file_progress(
+                    progress_cb,
+                    output_root,
+                    unique_stem,
+                    unique_stem,
+                    total_bytes,
+                    token=token,
+                )
+            with progress_context:
                 def _download_once(run_opts: dict[str, object]):
                     with YoutubeDL(run_opts) as ydl:
                         return ydl.extract_info(source_url, download=True)
 
-                _run_ytdlp_with_cookie_retry(source_url, ydl_opts, progress_cb, _download_once)
+                with _loopback_no_proxy(source_url):
+                    _run_ytdlp_with_cookie_retry(source_url, ydl_opts, progress_cb, _download_once)
         except _PausedDownload:
             _wait_if_paused(token, progress_cb)
             continue

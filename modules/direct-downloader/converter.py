@@ -13,6 +13,11 @@ from urllib.parse import unquote, urlparse
 DEFAULT_CONNECTIONS = 16
 URL_RE = re.compile(r'https?://[^\s\'"<>]+', re.IGNORECASE)
 ARIA2_PROGRESS_RE = re.compile(r'^\[[#0-9a-fA-F]+(?:\s|$)')
+ARIA2_PROGRESS_DETAIL_RE = re.compile(
+    r'\((?P<percent>\d+(?:\.\d+)?)%\).*?\bDL:(?P<speed>[^\s\]]+)(?:.*?\bETA:(?P<eta>[^\s\]]+))?',
+    re.IGNORECASE,
+)
+ARIA2_ETA_RE = re.compile(r'(\d+)([hms])', re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -188,6 +193,54 @@ def is_aria2_progress_text(text: str) -> bool:
     )
 
 
+def _normalize_aria2_speed(text: str) -> str:
+    speed = str(text or '').strip()
+    if not speed:
+        return ''
+    return speed if speed.endswith('/s') else f'{speed}/s'
+
+
+def _normalize_aria2_eta(text: str) -> str:
+    value = str(text or '').strip()
+    if not value:
+        return ''
+    total = 0
+    for amount, unit in ARIA2_ETA_RE.findall(value):
+        number = int(amount)
+        unit = unit.lower()
+        if unit == 'h':
+            total += number * 3600
+        elif unit == 'm':
+            total += number * 60
+        else:
+            total += number
+    if total <= 0:
+        return value
+    hours, remainder = divmod(total, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    if hours:
+        return f'{hours}:{minutes:02d}:{seconds:02d}'
+    return f'{minutes:02d}:{seconds:02d}'
+
+
+def parse_aria2_progress_event(text: str, index: int = 0, name: str = '') -> str:
+    match = ARIA2_PROGRESS_DETAIL_RE.search(str(text or '').strip())
+    if not match:
+        return ''
+    raw_percent = match.group('percent') or ''
+    try:
+        percent = f'{float(raw_percent):.6g}'
+    except ValueError:
+        percent = raw_percent
+    speed = _normalize_aria2_speed(match.group('speed') or '')
+    eta = _normalize_aria2_eta(match.group('eta') or '')
+    clean_name = sanitize_folder_name(name or 'download')
+    parts = [f'index={max(0, int(index or 0))}', f'name={clean_name}', f'percent={percent}', f'speed={speed}']
+    if eta:
+        parts.append(f'eta={eta}')
+    return '__HYL_PROGRESS__|direct_aria2|' + '|'.join(parts)
+
+
 def validate_download_form(url_text: str, output_dir: str, connections: str | int, output_name: str = '') -> list[str]:
     errors: list[str] = []
     requests = parse_download_requests(url_text)
@@ -235,6 +288,7 @@ def build_aria2_command(url: str, options: DirectDownloadOptions, aria2c_path: s
         '--summary-interval=1',
         '--console-log-level=notice',
         '--auto-file-renaming=false',
+        '--no-proxy=localhost,127.0.0.1,::1',
         f'--allow-overwrite={str(bool(options.overwrite)).lower()}',
         '-x', str(connections),
         '-s', str(connections),
@@ -317,6 +371,7 @@ def iter_download_urls(
     root: str | Path | None = None,
     process_cb=None,
     should_stop=None,
+    structured_progress_cb=None,
 ) -> list[dict[str, object]]:
     aria2c = resolve_aria2c_path(root)
     if not aria2c:
@@ -324,11 +379,25 @@ def iter_download_urls(
     Path(options.output_dir).mkdir(parents=True, exist_ok=True)
     results = []
     for index, url in enumerate(urls, start=1):
+        name = options.output_name or guess_filename(url)
+        if structured_progress_cb:
+            structured_progress_cb(f'__HYL_PROGRESS__|task_start|index={index - 1}|total={len(urls)}|url={url}')
         if progress_cb:
-            progress_cb(f'开始下载 {index}/{len(urls)}: {guess_filename(url)}')
+            progress_cb(f'开始下载 {index}/{len(urls)}: {name}')
         command = build_aria2_command(url, options, aria2c)
-        returncode, output = _run_command(command, progress_cb, process_cb, should_stop)
+
+        def _progress(text: str):
+            if progress_cb:
+                progress_cb(text)
+            if structured_progress_cb:
+                marker = parse_aria2_progress_event(text, index - 1, name)
+                if marker:
+                    structured_progress_cb(marker)
+
+        returncode, output = _run_command(command, _progress, process_cb, should_stop)
         results.append({'url': url, 'success': returncode == 0, 'returncode': returncode, 'output': output})
+        if structured_progress_cb:
+            structured_progress_cb(f'__HYL_PROGRESS__|task_done|index={index - 1}|completed={len(results)}|total={len(urls)}')
         if returncode == 130:
             break
     return results
@@ -341,6 +410,7 @@ def iter_download_requests(
     root: str | Path | None = None,
     process_cb=None,
     should_stop=None,
+    structured_progress_cb=None,
 ) -> list[dict[str, object]]:
     aria2c = resolve_aria2c_path(root)
     if not aria2c:
@@ -348,11 +418,25 @@ def iter_download_requests(
     Path(options.output_dir).mkdir(parents=True, exist_ok=True)
     results = []
     for index, request in enumerate(requests, start=1):
+        name = request.output_name or options.output_name or guess_filename(request.url)
+        if structured_progress_cb:
+            structured_progress_cb(f'__HYL_PROGRESS__|task_start|index={index - 1}|total={len(requests)}|url={request.url}')
         if progress_cb:
-            progress_cb(f'开始下载 {index}/{len(requests)}: {request.output_name or guess_filename(request.url)}')
+            progress_cb(f'开始下载 {index}/{len(requests)}: {name}')
         command = build_aria2_command_for_request(request, options, aria2c)
-        returncode, output = _run_command(command, progress_cb, process_cb, should_stop)
+
+        def _progress(text: str):
+            if progress_cb:
+                progress_cb(text)
+            if structured_progress_cb:
+                marker = parse_aria2_progress_event(text, index - 1, name)
+                if marker:
+                    structured_progress_cb(marker)
+
+        returncode, output = _run_command(command, _progress, process_cb, should_stop)
         results.append({'url': request.url, 'success': returncode == 0, 'returncode': returncode, 'output': output})
+        if structured_progress_cb:
+            structured_progress_cb(f'__HYL_PROGRESS__|task_done|index={index - 1}|completed={len(results)}|total={len(requests)}')
         if returncode == 130:
             break
     return results

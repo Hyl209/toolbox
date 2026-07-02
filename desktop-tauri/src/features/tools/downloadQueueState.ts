@@ -13,6 +13,14 @@ type QueueStateOptions = {
   applyCompletedResult: (row: DownloadQueueRow, result: QueueResultRow) => void;
 };
 
+type QueueOverview = {
+  total: number;
+  current: number;
+  completed: number;
+  failed: number;
+  summary: string;
+};
+
 type ProgressMarker = {
   kind: string;
   payload: Record<string, string>;
@@ -58,6 +66,77 @@ function markerIndex(marker: ProgressMarker, fallbackIndex: number): number {
   return Number.isFinite(parsed) ? Math.max(0, parsed) : fallbackIndex;
 }
 
+export function queueOverviewFromSession(tasks: QueueTask[], session: ToolSessionSnapshot | null): QueueOverview {
+  let total = tasks.length;
+  let current = 0;
+  let completed = 0;
+  let failed = 0;
+
+  if (!session) {
+    return {
+      total,
+      current,
+      completed,
+      failed,
+      summary: total > 0 ? `0/${total} 完成` : "暂无任务",
+    };
+  }
+
+  for (const event of session.progress_events) {
+    const marker = parseProgressMarker(String(event.message ?? ""));
+    if (!marker) {
+      continue;
+    }
+    const markerTotal = Number.parseInt(marker.payload.total ?? "", 10);
+    if (Number.isFinite(markerTotal) && markerTotal > 0) {
+      total = Math.max(total, markerTotal);
+    }
+    if (marker.kind === "task_start") {
+      current = markerIndex(marker, current > 0 ? current - 1 : 0) + 1;
+      continue;
+    }
+    if (marker.kind === "task_done") {
+      completed = Math.max(completed, Number.parseInt(marker.payload.completed ?? "0", 10) || completed);
+      current = Math.max(current, markerIndex(marker, completed > 0 ? completed - 1 : 0) + 1);
+    }
+  }
+
+  if (session.status === "completed") {
+    const results = sessionResultRows(session);
+    const successCount = results.filter((item) => item.success === true).length;
+    const failedCount = results.filter((item) => item.success === false).length;
+    total = Math.max(total, results.length);
+    current = total;
+    completed = successCount;
+    failed = failedCount;
+    return {
+      total,
+      current,
+      completed,
+      failed,
+      summary: failed > 0 ? `${completed}/${total} 完成，${failed} 失败` : `${completed}/${total} 完成`,
+    };
+  }
+
+  if (session.status === "failed") {
+    const failedResults = sessionResultRows(session);
+    failed = failedResults.length > 0
+      ? failedResults.filter((item) => item.success === false).length || 1
+      : Math.max(1, tasks.length - completed);
+    current = Math.max(current, completed + failed);
+  } else if (session.status === "cancelled") {
+    current = Math.max(current, completed);
+  }
+
+  return {
+    total,
+    current,
+    completed,
+    failed,
+    summary: total > 0 ? `${completed}/${total} 完成，当前第 ${Math.max(current, completed > 0 ? completed + 1 : 1)} 项` : "暂无任务",
+  };
+}
+
 export function queueRowsFromSession(tasks: QueueTask[], session: ToolSessionSnapshot | null, options: QueueStateOptions): DownloadQueueRow[] {
   const rows = tasks.map<DownloadQueueRow>((task) => ({
     source_url: task.source_url,
@@ -69,17 +148,8 @@ export function queueRowsFromSession(tasks: QueueTask[], session: ToolSessionSna
     return rows;
   }
 
-  function rowAt(index: number, url = "") {
-    while (rows.length <= index) {
-      const sourceUrl = url || `task-${rows.length + 1}`;
-      rows.push({
-        source_url: sourceUrl,
-        fileName: shortPathName(sourceUrl),
-        status: "queued",
-        detail: sourceUrl,
-      });
-    }
-    return rows[index];
+  function rowAt(index: number): DownloadQueueRow | null {
+    return index >= 0 && index < rows.length ? rows[index] : null;
   }
 
   let fallbackIndex = -1;
@@ -94,7 +164,10 @@ export function queueRowsFromSession(tasks: QueueTask[], session: ToolSessionSna
     if (marker.kind === "task_start") {
       fallbackIndex = markerIndex(marker, fallbackIndex);
       activeIndex = fallbackIndex;
-      const row = rowAt(fallbackIndex, marker.payload.url);
+      const row = rowAt(fallbackIndex);
+      if (!row) {
+        continue;
+      }
       row.status = session.status === "paused" ? "paused" : "running";
       row.detail = marker.payload.url || row.detail;
       continue;
@@ -107,6 +180,9 @@ export function queueRowsFromSession(tasks: QueueTask[], session: ToolSessionSna
       }
       activeIndex = currentIndex;
       const row = rowAt(currentIndex);
+      if (!row) {
+        continue;
+      }
       row.status = session.status === "paused" ? "paused" : "running";
       if (marker.payload.name) {
         row.fileName = marker.payload.name;
@@ -123,6 +199,9 @@ export function queueRowsFromSession(tasks: QueueTask[], session: ToolSessionSna
       if (currentIndex >= 0) {
         activeIndex = currentIndex;
         const row = rowAt(currentIndex);
+        if (!row) {
+          continue;
+        }
         row.status = "success";
         row.detail = "已完成";
         row.percent = 100;
