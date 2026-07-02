@@ -3,7 +3,9 @@ from __future__ import annotations
 from contextlib import contextmanager
 from contextvars import ContextVar, Token as ContextToken
 import json
+import logging
 from pathlib import Path
+import tempfile
 from threading import Event, Thread
 from typing import Callable, Iterator
 
@@ -12,6 +14,11 @@ ProgressEmitter = Callable[[str, int], None]
 
 _progress_emitter: ContextVar[ProgressEmitter | None] = ContextVar("hyl_progress_emitter", default=None)
 _download_token: ContextVar[DownloadToken | None] = ContextVar("hyl_download_token", default=None)
+logger = logging.getLogger(__name__)
+
+
+class ControlPathError(ValueError):
+    pass
 
 
 class DownloadToken:
@@ -50,6 +57,16 @@ def _read_control_state(path: Path) -> tuple[bool, bool, bool] | None:
     return bool(payload.get("paused")), bool(payload.get("cancelled")), bool(payload.get("reconnect"))
 
 
+def validate_control_path(path: Path) -> Path:
+    expected_base = Path(tempfile.gettempdir()).resolve()
+    candidate = Path(path).expanduser().resolve(strict=False)
+    try:
+        candidate.relative_to(expected_base)
+    except ValueError as exc:
+        raise ControlPathError("control file must be under the system temp directory") from exc
+    return candidate
+
+
 @contextmanager
 def bind_download_control(control_path: Path | None) -> Iterator[DownloadToken | None]:
     token = DownloadToken()
@@ -58,7 +75,7 @@ def bind_download_control(control_path: Path | None) -> Iterator[DownloadToken |
     watcher: Thread | None = None
 
     if control_path is not None:
-        control_path = Path(control_path)
+        control_path = validate_control_path(control_path)
 
         def watch_control() -> None:
             last_state: tuple[bool, bool, bool] | None = None
@@ -90,4 +107,6 @@ def bind_download_control(control_path: Path | None) -> Iterator[DownloadToken |
         stop_event.set()
         if watcher is not None:
             watcher.join(timeout=1.0)
+            if watcher.is_alive():
+                logger.warning("control watcher did not stop in 1s")
         _download_token.reset(token_ctx)

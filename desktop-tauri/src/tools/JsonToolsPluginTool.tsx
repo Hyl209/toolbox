@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { runTool } from "../api/tauri";
+import { uiText } from "../uiText";
 
 type JsonAction = "format" | "minify" | "validate";
 
@@ -50,8 +51,8 @@ function JsonToolsPluginTool() {
   const [error, setError] = useState("");
   const [logs, setLogs] = useState<string[]>([]);
 
-  const inputStats = useMemo(() => `${inputText.length} chars`, [inputText.length]);
-  const outputStats = useMemo(() => `${outputText.length} chars`, [outputText.length]);
+  const inputStats = useMemo(() => uiText.common.charCount(inputText.length), [inputText.length]);
+  const outputStats = useMemo(() => uiText.common.charCount(outputText.length), [outputText.length]);
   const canRun = Boolean(inputText.trim()) && !running;
 
   async function handleRun(nextAction = action) {
@@ -96,7 +97,7 @@ function JsonToolsPluginTool() {
     <div className="base64-tool json-plugin-tool">
       <div className="tool-heading">
         <div>
-          <p className="eyebrow">Plugin - JSON tools</p>
+          <p className="eyebrow">{uiText.common.pluginLabel("json_tools")}</p>
           <h2>{ui.title}</h2>
           <p>{ui.subtitle}</p>
         </div>
@@ -141,7 +142,7 @@ function JsonToolsPluginTool() {
       </div>
 
       <section className="log-panel" aria-label={ui.logAria}>
-        <div><div className="panel-title">Runtime</div><p className="muted">{ui.recentLogs}</p></div>
+        <div><div className="panel-title">{uiText.common.runtime}</div><p className="muted">{ui.recentLogs}</p></div>
         <div className="log-content">
           {error ? <div className="error-box">{error}</div> : null}
           {logs.length ? <ul>{logs.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul> : <p className="muted">{ui.noLogs}</p>}

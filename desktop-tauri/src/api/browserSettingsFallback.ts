@@ -120,6 +120,14 @@ let browserToolSettings: SettingsSnapshot["tool_settings"] = {
 
 let browserSnapshot: SettingsSnapshot | null = null;
 
+type BrowserSettingsState = {
+  customThemeEnabled: boolean;
+  rememberPassword: boolean;
+  autoLogin: boolean;
+  customThemeColors: Record<"dark" | "light", SettingsSnapshot["theme"]["colors"]>;
+  toolSettings: SettingsSnapshot["tool_settings"];
+};
+
 function defaultFilesorterCategories(): Record<string, boolean> {
   return Object.fromEntries(FILESORTER_CATEGORIES.map((category) => [category, true]));
 }
@@ -138,7 +146,26 @@ function cloneToolSettings(settings: SettingsSnapshot["tool_settings"]): Setting
   return JSON.parse(JSON.stringify(settings)) as SettingsSnapshot["tool_settings"];
 }
 
-function buildBrowserSettingsSnapshot(theme: "dark" | "light", disabledTools: string[], disabledPlugins: string[] = [], sidebarOrder: string[] = []): SettingsSnapshot {
+function currentBrowserSettingsState(): BrowserSettingsState {
+  return {
+    customThemeEnabled: browserCustomThemeEnabled,
+    rememberPassword: browserRememberPassword,
+    autoLogin: browserAutoLogin,
+    customThemeColors: {
+      dark: { ...browserCustomThemeColors.dark },
+      light: { ...browserCustomThemeColors.light },
+    },
+    toolSettings: cloneToolSettings(browserToolSettings),
+  };
+}
+
+function buildBrowserSettingsSnapshot(
+  theme: "dark" | "light",
+  disabledTools: string[],
+  disabledPlugins: string[] = [],
+  sidebarOrder: string[] = [],
+  state = currentBrowserSettingsState(),
+): SettingsSnapshot {
   const disabledSet = new Set(disabledTools);
   const disabledPluginSet = new Set(disabledPlugins);
   const tools = toolManifest.map((tool) => ({
@@ -150,24 +177,24 @@ function buildBrowserSettingsSnapshot(theme: "dark" | "light", disabledTools: st
     settings_path: "browser-preview",
     ui: {
       theme,
-      custom_theme_enabled: browserCustomThemeEnabled,
+      custom_theme_enabled: state.customThemeEnabled,
     },
     auth: {
-      remember_password: browserRememberPassword,
-      auto_login: browserAutoLogin,
+      remember_password: state.rememberPassword,
+      auto_login: state.autoLogin,
       last_user: browserLastUser,
     },
     theme: {
-      mode: browserCustomThemeEnabled ? "custom" : theme,
-      colors: browserCustomThemeEnabled ? { ...browserCustomThemeColors[theme] } : { ...browserThemeColors[theme] },
+      mode: state.customThemeEnabled ? "custom" : theme,
+      colors: state.customThemeEnabled ? { ...state.customThemeColors[theme] } : { ...browserThemeColors[theme] },
       custom_colors: {
-        dark: { ...browserCustomThemeColors.dark },
-        light: { ...browserCustomThemeColors.light },
+        dark: { ...state.customThemeColors.dark },
+        light: { ...state.customThemeColors.light },
       },
     },
     disabled_tools: [...disabledSet].sort(),
     disabled_plugins: [...disabledPluginSet].sort(),
-    tool_settings: cloneToolSettings(browserToolSettings),
+    tool_settings: cloneToolSettings(state.toolSettings),
     sidebar_order: sidebarOrder,
     tools: orderTools(tools, sidebarOrder),
   };
@@ -195,15 +222,15 @@ export function saveBrowserSettingsPatch(patch: SettingsPatch): SettingsSnapshot
   const autoLoginValue = patch.updates["auth/auto_login"];
   const rememberPatched = typeof rememberValue === "boolean";
   const autoPatched = typeof autoLoginValue === "boolean";
-  browserRememberPassword = rememberPatched ? rememberValue : current.auth.remember_password;
-  browserAutoLogin = autoPatched ? autoLoginValue : current.auth.auto_login;
-  if (rememberPatched && !browserRememberPassword) {
-    browserAutoLogin = false;
-  } else if (autoPatched && browserAutoLogin) {
-    browserRememberPassword = true;
+  let nextRememberPassword = rememberPatched ? rememberValue : current.auth.remember_password;
+  let nextAutoLogin = autoPatched ? autoLoginValue : current.auth.auto_login;
+  if (rememberPatched && !nextRememberPassword) {
+    nextAutoLogin = false;
+  } else if (autoPatched && nextAutoLogin) {
+    nextRememberPassword = true;
   }
-  browserCustomThemeEnabled = typeof patch.updates["ui/custom_theme_enabled"] === "boolean" ? patch.updates["ui/custom_theme_enabled"] : current.ui.custom_theme_enabled;
-  browserToolSettings = {
+  const nextCustomThemeEnabled = typeof patch.updates["ui/custom_theme_enabled"] === "boolean" ? patch.updates["ui/custom_theme_enabled"] : current.ui.custom_theme_enabled;
+  const nextToolSettings: SettingsSnapshot["tool_settings"] = {
     ...current.tool_settings,
     base64: { output_dir: typeof patch.updates["base64/output_dir"] === "string" ? patch.updates["base64/output_dir"] : current.tool_settings.base64?.output_dir ?? "" },
     music: { output_dir: typeof patch.updates["music/output_dir"] === "string" ? patch.updates["music/output_dir"] : current.tool_settings.music?.output_dir ?? "" },
@@ -245,14 +272,32 @@ export function saveBrowserSettingsPatch(patch: SettingsPatch): SettingsSnapshot
     },
     ...patchVideoDownloaderSettings(patch, current.tool_settings),
   };
+  const nextCustomThemeColors = {
+    dark: { ...browserCustomThemeColors.dark },
+    light: { ...browserCustomThemeColors.light },
+  };
   (["dark", "light"] as const).forEach((theme) => {
     THEME_ZONES.forEach((zone) => {
       const value = patch.updates[`theme/${theme}/${zone}`];
       if (typeof value === "string") {
-        browserCustomThemeColors[theme][zone] = value;
+        nextCustomThemeColors[theme][zone] = value;
       }
     });
   });
-  browserSnapshot = buildBrowserSettingsSnapshot(nextTheme, nextDisabled, nextDisabledPlugins, nextOrder);
+  const nextState: BrowserSettingsState = {
+    customThemeEnabled: nextCustomThemeEnabled,
+    rememberPassword: nextRememberPassword,
+    autoLogin: nextAutoLogin,
+    customThemeColors: nextCustomThemeColors,
+    toolSettings: nextToolSettings,
+  };
+  const nextSnapshot = buildBrowserSettingsSnapshot(nextTheme, nextDisabled, nextDisabledPlugins, nextOrder, nextState);
+  browserRememberPassword = nextState.rememberPassword;
+  browserAutoLogin = nextState.autoLogin;
+  browserCustomThemeEnabled = nextState.customThemeEnabled;
+  browserCustomThemeColors.dark = { ...nextState.customThemeColors.dark };
+  browserCustomThemeColors.light = { ...nextState.customThemeColors.light };
+  browserToolSettings = cloneToolSettings(nextState.toolSettings);
+  browserSnapshot = nextSnapshot;
   return browserSnapshot;
 }

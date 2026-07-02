@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { pickDirectory, pickFile, runTool, type ToolSettings } from "../api/tauri";
+import { uiText } from "../uiText";
 
 type ArchiveAction = "detect" | "extract";
 
@@ -75,7 +76,7 @@ function ArchiveExtractorPluginTool({ initialSettings = {} }: { initialSettings?
   const [logs, setLogs] = useState<string[]>([]);
 
   const filesText = useMemo(() => (result?.files?.length ? result.files.join("\n") : ""), [result]);
-  const outputStats = useMemo(() => `${outputText.length} chars`, [outputText.length]);
+  const outputStats = useMemo(() => uiText.common.charCount(outputText.length), [outputText.length]);
   const canRun = !running && Boolean(archivePath.trim()) && (action === "detect" || Boolean(outputDir.trim()));
 
   useEffect(() => {
@@ -160,7 +161,7 @@ function ArchiveExtractorPluginTool({ initialSettings = {} }: { initialSettings?
     <div className="base64-tool archive-extractor-plugin-tool">
       <div className="tool-heading">
         <div>
-          <p className="eyebrow">Plugin - archive_extractor</p>
+          <p className="eyebrow">{uiText.common.pluginLabel("archive_extractor")}</p>
           <h2>{text.title}</h2>
           <p>{text.desc}</p>
         </div>
@@ -215,7 +216,7 @@ function ArchiveExtractorPluginTool({ initialSettings = {} }: { initialSettings?
         <section className="settings-card">
           <span>{text.extractedCount}</span>
           <strong>{result?.extracted_count ?? "-"}</strong>
-          <p>{result?.files?.length ? `${result.files.length} files` : text.emptyFiles}</p>
+          <p>{result?.files?.length ? uiText.common.fileCount(result.files.length) : text.emptyFiles}</p>
         </section>
       </div>
 
@@ -236,7 +237,7 @@ function ArchiveExtractorPluginTool({ initialSettings = {} }: { initialSettings?
       </div>
 
       <section className="log-panel" aria-label={text.log}>
-        <div><div className="panel-title">Runtime</div><p className="muted">{text.recent}</p></div>
+        <div><div className="panel-title">{uiText.common.runtime}</div><p className="muted">{text.recent}</p></div>
         <div className="log-content">
           {error ? <div className="error-box">{error}</div> : null}
           {logs.length ? <ul>{logs.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul> : <p className="muted">{text.emptyLog}</p>}

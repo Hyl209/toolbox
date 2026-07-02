@@ -10,8 +10,10 @@ from typing import Any
 
 try:
     from ..runtime_paths import project_root
+    from ..runtime_state import current_download_token, emit_runtime_progress
 except ImportError:  # direct script execution support
     from runtime_paths import project_root
+    from runtime_state import current_download_token, emit_runtime_progress
 
 
 ROOT = project_root(__file__, 2)
@@ -194,6 +196,8 @@ def _run_download(payload: dict[str, Any]) -> dict:
             _options(payload, module),
             progress_cb=logs.append,
             root=ROOT,
+            should_stop=lambda: bool(current_download_token() and current_download_token().cancel.is_set()),
+            structured_progress_cb=emit_runtime_progress,
         )
     except Exception as exc:
         return _error("TOOL_ERROR", str(exc))

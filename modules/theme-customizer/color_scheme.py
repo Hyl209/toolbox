@@ -64,12 +64,17 @@ def get_default_colors(theme: str) -> dict[str, str]:
     return dict(_DEFAULT_COLORS.get(theme, _DEFAULT_COLORS['dark']))
 
 
+def _clean_color_value(value) -> str:
+    return value.strip() if isinstance(value, str) else ''
+
+
 def load_custom_colors(settings, theme: str) -> dict[str, str]:
     defaults = get_default_colors(theme)
     result = {}
     for zone_id, _, _ in COLOR_ZONES:
         raw = settings.value(f'theme/{theme}/{zone_id}', '') if hasattr(settings, 'value') else ''
-        result[zone_id] = raw.strip() if raw and raw.strip() else defaults.get(zone_id, '')
+        value = _clean_color_value(raw)
+        result[zone_id] = value if value else defaults.get(zone_id, '')
     return result
 
 

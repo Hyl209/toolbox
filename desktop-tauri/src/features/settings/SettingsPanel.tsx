@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { SettingsSnapshot, ToolItem } from "../../api/tauri";
+import { uiText } from "../../uiText";
 import { DEFAULT_THEME_COLORS, pluginConfigKey, type ThemeColors, type ThemeName } from ".";
 import { useSettingsPanelController } from "./useSettingsPanelController";
 import AccountPreferencesSection from "./sections/AccountPreferencesSection";
@@ -26,7 +27,7 @@ const SETTINGS_SECTIONS = [
   { id: "appearance", label: "外观", title: "外观", description: "主题和配色。" },
   { id: "paths", label: "目录", title: "目录", description: "默认输入输出位置。" },
   { id: "downloaders", label: "下载", title: "下载", description: "下载器默认行为。" },
-  { id: "wordformatter", label: "Word", title: "Word", description: "排版默认参数。" },
+  { id: "wordformatter", label: uiText.settings.wordSection, title: uiText.settings.wordSectionTitle, description: "排版默认参数。" },
   { id: "tools", label: "工具", title: "工具", description: "工具与插件开关。" },
   { id: "sidebar", label: "侧栏", title: "侧栏", description: "工具显示顺序。" },
 ] as const;
@@ -152,19 +153,11 @@ export default function SettingsPanel({
         ) : null}
 
         {activeSection === "paths" ? (
-          <ToolOutputDirsSection
-            saving={saving}
-            toolOutputDirs={drafts.toolOutputDirs}
-            onChange={updateToolOutputDir}
-          />
+          <ToolOutputDirsSection saving={saving} toolOutputDirs={drafts.toolOutputDirs} onChange={updateToolOutputDir} />
         ) : null}
 
         {activeSection === "downloaders" ? (
-          <DownloaderSettingsSection
-            saving={saving}
-            downloader={drafts.downloader}
-            onChange={updateDownloader}
-          />
+          <DownloaderSettingsSection saving={saving} downloader={drafts.downloader} onChange={updateDownloader} />
         ) : null}
 
         {activeSection === "wordformatter" ? (
@@ -218,7 +211,7 @@ export default function SettingsPanel({
         <div className="settings-save-row settings-save-sticky">
           <span className="action-hint">{saving ? "正在写回设置…" : "改动只在点击保存后落盘。"}</span>
           <button className="primary-button" disabled={!snapshot || saving} onClick={saveSettings} type="button">
-            {saving ? "\u4fdd\u5b58\u4e2d" : "\u4fdd\u5b58"}
+            {saving ? "保存中" : "保存"}
           </button>
         </div>
       </div>

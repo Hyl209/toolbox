@@ -1,14 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { pickDirectory, runTool, type ToolInput, type ToolResult, type ToolSessionSnapshot, type ToolSettings } from "../api/tauri";
+import { pickDirectory, pickFiles, runTool, type ToolInput, type ToolResult, type ToolSessionSnapshot, type ToolSettings } from "../api/tauri";
 import { DownloadQueueTable, type DownloadQueueRow } from "../features/tools/components/DownloadQueueTable";
-import { queueRowsFromSession as buildQueueRows } from "../features/tools/downloadQueueState";
+import { queueOverviewFromSession, queueRowsFromSession as buildQueueRows } from "../features/tools/downloadQueueState";
 import { useDownloadRuntimeSession } from "../features/tools/hooks/useDownloadRuntimeSession";
+import { uiText } from "../uiText";
 
 type WebTask = {
   source_url: string;
   source_kind: string;
   target_title?: string;
   output_subdir?: string;
+  source_page_url?: string;
+  candidate_index?: number;
+  candidate_total?: number;
 };
 
 type InspectResult = {
@@ -43,6 +47,16 @@ type WebVideoResult = ToolResult & {
   data?: WebVideoResult;
 };
 
+type InspectCandidateRow = {
+  page_url: string;
+  candidate_url: string;
+  index: number;
+  total: number;
+  source?: string;
+  success: boolean;
+  error?: string;
+};
+
 function text(error: unknown): string {
   if (error instanceof Error) {
     return error.message;
@@ -71,6 +85,174 @@ function effectiveProxyUrl(proxyUrl: string, proxyHost: string, proxyPort: strin
   return "";
 }
 
+function inspectCandidateUrls(results: InspectResult[]): string[] {
+  const seen = new Set();
+  const urls: string[] = [];
+  for (const result of results) {
+    for (const raw of result.candidates ?? []) {
+      const url = `${raw ?? ""}`.trim();
+      if (!url || seen.has(url)) {
+        continue;
+      }
+      seen.add(url);
+      urls.push(url);
+    }
+  }
+  return urls;
+}
+
+function inspectCandidateRows(results: InspectResult[]): InspectCandidateRow[] {
+  const rows: InspectCandidateRow[] = [];
+  for (const result of results) {
+    const candidates = inspectCandidateUrls([result]);
+    if (!result.success) {
+      rows.push({
+        page_url: result.source_url,
+        candidate_url: "",
+        index: 0,
+        total: 0,
+        source: result.source,
+        success: false,
+        error: result.error || "failed",
+      });
+      continue;
+    }
+    candidates.forEach((url, index) => {
+      rows.push({
+        page_url: result.source_url,
+        candidate_url: url,
+        index: index + 1,
+        total: candidates.length,
+        source: result.source,
+        success: true,
+      });
+    });
+  }
+  return rows;
+}
+
+function sourceTitleFromUrl(url: string): string {
+  let value = "";
+  try {
+    const parsed = new URL(url);
+    const parts = parsed.pathname.split("/").filter(Boolean);
+    value = decodeURIComponent(parts[parts.length - 1] || parsed.hostname || "video");
+  } catch {
+    value = url.split(/[/?#]/).filter(Boolean).pop() || "video";
+  }
+  value = value.replace(/\.[a-z0-9]{2,8}$/i, "");
+  const cleaned = value.replace(/[<>:"/\\|?*\x00-\x1f]+/g, "_").replace(/\s+/g, "_").replace(/^_+|_+$/g, "");
+  return cleaned || "video";
+}
+
+function numberedTitle(base: string, index: number, total: number): string {
+  return total > 1 ? `${base}_${String(index).padStart(3, "0")}` : base;
+}
+
+function sanitizeTaskTitle(value: string, fallback = "video"): string {
+  const cleaned = `${value ?? ""}`
+    .replace(/[<>:"/\\|?*\x00-\x1f]+/g, "_")
+    .replace(/\s+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return cleaned || fallback;
+}
+
+function taskTitleBase(title: string): string {
+  const cleaned = sanitizeTaskTitle(title);
+  return cleaned.replace(/_\d{3}$/i, "") || cleaned;
+}
+
+function taskGroupKey(task: WebTask): string {
+  return `${task.source_page_url?.trim() || task.source_url}`;
+}
+
+function reindexGroupedTasks(tasks: WebTask[]): WebTask[] {
+  const next = tasks.map((task) => ({ ...task }));
+  const groups = new Map<string, number[]>();
+  next.forEach((task, index) => {
+    const key = taskGroupKey(task);
+    groups.set(key, [...(groups.get(key) ?? []), index]);
+  });
+  for (const indices of groups.values()) {
+    if (!indices.length) {
+      continue;
+    }
+    const firstTask = next[indices[0]];
+    const fallbackTitle = sourceTitleFromUrl(firstTask.source_page_url || firstTask.source_url);
+    const base = taskTitleBase(firstTask.target_title || fallbackTitle);
+    if (indices.length === 1) {
+      next[indices[0]].target_title = base;
+      continue;
+    }
+    indices.forEach((taskIndex, offset) => {
+      next[taskIndex].target_title = numberedTitle(base, offset + 1, indices.length);
+    });
+  }
+  return next;
+}
+
+function renameGroupedTaskTitles(tasks: WebTask[], index: number, nextTitle: string): WebTask[] {
+  const cleaned = sanitizeTaskTitle(nextTitle, "");
+  if (!cleaned) {
+    return tasks;
+  }
+  const next = tasks.map((task) => ({ ...task }));
+  const current = next[index];
+  if (!current) {
+    return next;
+  }
+  const indices = next
+    .map((task, taskIndex) => (taskGroupKey(task) === taskGroupKey(current) ? taskIndex : -1))
+    .filter((taskIndex) => taskIndex >= 0);
+  if (indices.length <= 1) {
+    next[index].target_title = cleaned;
+    return reindexGroupedTasks(next);
+  }
+  indices.forEach((taskIndex, offset) => {
+    next[taskIndex].target_title = numberedTitle(cleaned, offset + 1, indices.length);
+  });
+  return next;
+}
+
+function removeQueuedTask(tasks: WebTask[], index: number): WebTask[] {
+  return reindexGroupedTasks(tasks.filter((_, taskIndex) => taskIndex !== index));
+}
+
+function applyTaskOutputSubdirs(tasks: WebTask[], enabled: boolean): WebTask[] {
+  return tasks.map((task) => ({
+    ...task,
+    output_subdir: enabled ? taskTitleBase(task.target_title || sourceTitleFromUrl(task.source_page_url || task.source_url)) : "",
+  }));
+}
+
+const removeQueuedTaskHelper = removeQueuedTask;
+
+function candidateTasksFromInspectResults(results: InspectResult[]): WebTask[] {
+  const seen = new Set();
+  const tasks: WebTask[] = [];
+  for (const result of results) {
+    const candidates = inspectCandidateUrls([result]).filter((url) => {
+      if (seen.has(url)) {
+        return false;
+      }
+      seen.add(url);
+      return true;
+    });
+    const base = sourceTitleFromUrl(result.source_url);
+    candidates.forEach((source_url, index) => {
+      tasks.push({
+        source_url,
+        source_kind: "web",
+        target_title: numberedTitle(base, index + 1, candidates.length),
+        source_page_url: result.source_url,
+        candidate_index: index + 1,
+        candidate_total: candidates.length,
+      });
+    });
+  }
+  return tasks;
+}
+
 function queueRowsFromSession(tasks: WebTask[], session: ToolSessionSnapshot | null): DownloadQueueRow[] {
   return buildQueueRows(tasks, session, {
     progressKinds: ["file", "web_status", "web_aria2", "web_percent"],
@@ -79,7 +261,7 @@ function queueRowsFromSession(tasks: WebTask[], session: ToolSessionSnapshot | n
       row.status = result.success ? "success" : "failed";
       row.fileName = result.files?.[0] ? result.files[0].split(/[\\/]/).pop() || row.fileName : row.fileName;
       row.percent = result.success ? 100 : row.percent;
-      row.detail = result.success ? `${result.downloaded_count ?? result.files?.length ?? 0} files` : result.error || "failed";
+      row.detail = result.success ? uiText.common.fileCount(result.downloaded_count ?? result.files?.length ?? 0) : result.error || uiText.common.failed;
     },
   });
 }
@@ -126,7 +308,28 @@ function WebVideoDownloaderTool({ initialSettings = {} }: { initialSettings?: To
     [concurrent, inspectAll, outputDir, outputSubdirByTitle, overwrite, proxyHost, proxyPort, proxyUrl, urlText],
   );
   const queueRows = useMemo(() => queueRowsFromSession(tasks, runtime.session), [tasks, runtime.session]);
+  const overview = useMemo(() => queueOverviewFromSession(tasks, runtime.session), [tasks, runtime.session]);
+  const inspectCandidateList = useMemo(() => inspectCandidateRows(inspectRows), [inspectRows]);
   const runtimeLogs = runtime.session?.logs?.length ? runtime.session.logs : logs;
+
+  function applyQueuedTasks(nextTasks: WebTask[]) {
+    const normalized = applyTaskOutputSubdirs(reindexGroupedTasks(nextTasks), outputSubdirByTitle);
+    const nextUrls = normalized.map((task) => task.source_url);
+    setTasks(normalized);
+    setUrls(nextUrls);
+    setUrlText(nextUrls.join("\n"));
+  }
+
+  function renameTaskTitle(index: number, nextTitle: string) {
+    const renamed = renameGroupedTaskTitles(tasks, index, nextTitle);
+    if (renamed !== tasks) {
+      applyQueuedTasks(renamed);
+    }
+  }
+
+  function removeQueuedTask(index: number) {
+    applyQueuedTasks(removeQueuedTaskHelper(tasks, index));
+  }
 
   useEffect(() => {
     if (!outputDirTouchedRef.current) {
@@ -158,6 +361,13 @@ function WebVideoDownloaderTool({ initialSettings = {} }: { initialSettings?: To
     }
   }, [runtime.session]);
 
+  useEffect(() => {
+    if (!tasks.length) {
+      return;
+    }
+    setTasks((items) => applyTaskOutputSubdirs(items, outputSubdirByTitle));
+  }, [outputSubdirByTitle]);
+
   async function chooseOutputDir() {
     const path = await pickDirectory({ title: "选择网页视频输出目录" });
     if (path) {
@@ -181,10 +391,68 @@ function WebVideoDownloaderTool({ initialSettings = {} }: { initialSettings?: To
       setTasks(parsed.tasks ?? []);
       const checked = dataOf(await runTool("webvideodownloader", { task_id: `webvideo-validate-${Date.now()}`, action: "validate", payload }));
       setLogs((items) => [`parse=${parsed.url_count ?? 0}; validate=${checked.valid ? "ok" : "bad"}`, ...items].slice(0, 20));
+      if (checked.valid) {
+        await inspectAndApplyCandidates();
+      }
     } catch (caught) {
       const message = text(caught);
       setError(message);
       setLogs((items) => [`parse/validate failed: ${message}`, ...items].slice(0, 20));
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  async function inspectAndApplyCandidates(): Promise<{ urls: string[]; tasks: WebTask[] }> {
+    const data = dataOf(await runTool("webvideodownloader", { task_id: `webvideo-inspect-${Date.now()}`, action: "inspect", payload }));
+    const rows = data.results ?? [];
+    const candidateTasks = candidateTasksFromInspectResults(rows);
+    const candidateUrls = candidateTasks.map((task) => task.source_url);
+    setInspectRows(rows);
+    if (candidateUrls.length > 0) {
+      applyQueuedTasks(candidateTasks);
+    }
+    setLogs((items) => [...(data.logs ?? [`inspect success=${data.success_count ?? 0}; fail=${data.fail_count ?? 0}`]), ...items].slice(0, 20));
+    return { urls: candidateUrls, tasks: candidateTasks };
+  }
+
+  async function handleEmbedThumbnail() {
+    const selected = await pickFiles({
+      title: "选择要补封面的视频",
+      filters: [{ name: "Video", extensions: ["mp4", "mkv", "webm", "mov"] }],
+    });
+    if (!selected?.length) {
+      return;
+    }
+    setRunning(true);
+    setError("");
+    try {
+      const jobs = selected.map((path, index) => {
+        const task = tasks[index];
+        const sourceUrl = `${task?.source_page_url || task?.source_url || ""}`.trim();
+        return {
+          path,
+          source_url: sourceUrl,
+          candidate_index: sourceUrl && task?.source_page_url ? task.candidate_index : undefined,
+          thumbnail_mode: sourceUrl ? "web_then_frame" : "frame",
+        };
+      });
+      const result = dataOf(
+        await runTool("webvideodownloader", {
+          task_id: `webvideo-cover-${Date.now()}`,
+          action: "embed_thumbnail",
+          payload: {
+            jobs,
+            options: {
+              proxy_url: effectiveProxyUrl(proxyUrl, proxyHost, proxyPort),
+            },
+          },
+        }),
+      );
+      setLogs((result.logs ?? []).slice(-50));
+      setError("");
+    } catch (caught) {
+      setError(text(caught));
     } finally {
       setRunning(false);
     }
@@ -197,9 +465,7 @@ function WebVideoDownloaderTool({ initialSettings = {} }: { initialSettings?: To
     setRunning(true);
     setError("");
     try {
-      const data = dataOf(await runTool("webvideodownloader", { task_id: `webvideo-inspect-${Date.now()}`, action: "inspect", payload }));
-      setInspectRows(data.results ?? []);
-      setLogs((items) => [...(data.logs ?? [`inspect success=${data.success_count ?? 0}; fail=${data.fail_count ?? 0}`]), ...items].slice(0, 20));
+      await inspectAndApplyCandidates();
     } catch (caught) {
       const message = text(caught);
       setError(message);
@@ -220,15 +486,31 @@ function WebVideoDownloaderTool({ initialSettings = {} }: { initialSettings?: To
     setError("");
     setDownloadRows([]);
     setDownloadedFiles([]);
-    const input: ToolInput = {
-      task_id: `webvideo-download-${Date.now()}`,
-      action: "download",
-      payload,
-    };
+    setRunning(true);
     try {
+      let downloadPayload: typeof payload & { tasks?: WebTask[] } = payload;
+      let candidateTasks = tasks;
+      let candidateUrls = candidateTasks.map((task) => task.source_url);
+      if (!candidateUrls.length) {
+        const inspected = await inspectAndApplyCandidates();
+        candidateUrls = inspected.urls;
+        candidateTasks = inspected.tasks;
+      }
+      if (candidateUrls.length) {
+        const queuedTasks = applyTaskOutputSubdirs(candidateTasks, outputSubdirByTitle);
+        downloadPayload = { ...payload, text: candidateUrls.join("\n") };
+        downloadPayload = { ...downloadPayload, tasks: queuedTasks };
+      }
+      const input: ToolInput = {
+        task_id: `webvideo-download-${Date.now()}`,
+        action: "download",
+        payload: downloadPayload,
+      };
       await runtime.start(input);
     } catch (caught) {
       setError(text(caught));
+    } finally {
+      setRunning(false);
     }
   }
 
@@ -256,7 +538,7 @@ function WebVideoDownloaderTool({ initialSettings = {} }: { initialSettings?: To
         <label className="field-block">
           <span>
             {"URL / 分享文本"}
-            <small>{urls.length ? `${urls.length} parsed` : "multi-line"}</small>
+            <small>{urls.length ? uiText.common.parsedCount(urls.length) : uiText.common.multiLineHint}</small>
           </span>
           <textarea disabled={busy} onChange={(event) => setUrlText(event.currentTarget.value)} placeholder="https://example.com/video" value={urlText} />
         </label>
@@ -272,11 +554,11 @@ function WebVideoDownloaderTool({ initialSettings = {} }: { initialSettings?: To
             </div>
           </label>
           <label className="field-block file-path-field">
-            <span>{"Proxy Host"}</span>
+            <span>{uiText.web.proxyHost}</span>
             <input disabled={busy} onChange={(event) => { settingsTouchedRef.current = true; setProxyHost(event.currentTarget.value); }} placeholder="127.0.0.1" value={proxyHost} />
           </label>
           <label className="field-block file-path-field">
-            <span>{"Proxy Port"}</span>
+            <span>{uiText.web.proxyPort}</span>
             <input disabled={busy} onChange={(event) => { settingsTouchedRef.current = true; setProxyPort(event.currentTarget.value); }} placeholder="7890" value={proxyPort} />
           </label>
           <label className="field-block file-path-field">
@@ -284,7 +566,7 @@ function WebVideoDownloaderTool({ initialSettings = {} }: { initialSettings?: To
             <input disabled={busy} onChange={(event) => { settingsTouchedRef.current = true; setProxyUrl(event.currentTarget.value); }} placeholder="http://127.0.0.1:7890" value={proxyUrl} />
           </label>
           <label className="field-block file-path-field">
-            <span>{"Concurrent"}</span>
+            <span>{uiText.web.concurrent}</span>
             <select disabled={busy} onChange={(event) => { settingsTouchedRef.current = true; setConcurrent(event.currentTarget.value); }} value={concurrent}>
               {["0", "1", "2", "3", "4", "5"].map((value) => (
                 <option key={value} value={value}>{value === "0" ? "auto" : value}</option>
@@ -293,11 +575,11 @@ function WebVideoDownloaderTool({ initialSettings = {} }: { initialSettings?: To
           </label>
           <label className="check-row">
             <input checked={overwrite} disabled={busy} onChange={(event) => { settingsTouchedRef.current = true; setOverwrite(event.currentTarget.checked); }} type="checkbox" />
-            {"overwrite"}
+            {uiText.web.overwrite}
           </label>
           <label className="check-row">
             <input checked={outputSubdirByTitle} disabled={busy} onChange={(event) => { settingsTouchedRef.current = true; setOutputSubdirByTitle(event.currentTarget.checked); }} type="checkbox" />
-            {"output_subdir_by_title"}
+            {uiText.web.outputSubdirByTitle}
           </label>
           <label className="check-row">
             <input checked={inspectAll} disabled={busy} onChange={(event) => setInspectAll(event.currentTarget.checked)} type="checkbox" />
@@ -305,6 +587,19 @@ function WebVideoDownloaderTool({ initialSettings = {} }: { initialSettings?: To
           </label>
         </div>
       </div>
+
+      {overview.total > 0 ? (
+        <section className="table-panel queue-overview-panel">
+          <div className="panel-title">{"进度总览"}</div>
+          <div className="queue-overview-inline" role="status" aria-label="进度总览">
+            <span><small>{"总任务"}</small><strong>{overview.total}</strong></span>
+            <span><small>{"当前"}</small><strong>{overview.current || "-"}</strong></span>
+            <span><small>{"完成"}</small><strong>{overview.completed}</strong></span>
+            <span><small>{"失败"}</small><strong>{overview.failed}</strong></span>
+            <span className="queue-overview-summary"><small>{"总进度"}</small><strong>{overview.summary}</strong></span>
+          </div>
+        </section>
+      ) : null}
 
       <div className="actions-row">
         <div className="button-cluster">
@@ -317,6 +612,9 @@ function WebVideoDownloaderTool({ initialSettings = {} }: { initialSettings?: To
           <button className="primary-button" disabled={!canRun} onClick={handleInspect} type="button">
             {"媒体"}
           </button>
+          <button className="ghost-button" disabled={busy} onClick={() => void handleEmbedThumbnail()} type="button">
+            {"补封面"}
+          </button>
           <button className="primary-button" disabled={!canRun || !outputDir.trim()} onClick={handleDownload} type="button">
             {"下载"}
           </button>
@@ -326,21 +624,25 @@ function WebVideoDownloaderTool({ initialSettings = {} }: { initialSettings?: To
 
 <DownloadQueueTable
         active={runtime.active}
+        className="web-video-queue-table"
+        iconActions
         onCancel={() => void runtime.control("cancel")}
+        onDelete={removeQueuedTask}
         onPause={() => void runtime.control("pause")}
+        onRename={renameTaskTitle}
         onResume={() => void runtime.control("resume")}
         paused={paused}
         rows={queueRows}
       />
 
-      {inspectRows.length ? (
+      {inspectCandidateList.length ? (
         <section className="table-panel">
           <div className="panel-title">{"媒体候选"}</div>
           <div className="result-list">
-            {inspectRows.map((row, index) => (
-              <div className="result-row" key={`${row.source_url}-${index}`}>
-                <span>{row.source_url}</span>
-                <strong>{row.success ? `${row.candidate_count} candidates (${row.source || "unknown"})` : row.error || "failed"}</strong>
+            {inspectCandidateList.map((row, index) => (
+              <div className="result-row" key={`${row.page_url}-${row.candidate_url}-${index}`}>
+                <span>{row.success ? row.candidate_url : row.page_url}</span>
+                <strong>{row.success ? `${row.index}/${row.total} (${row.source || "未知来源"})` : row.error || uiText.common.failed}</strong>
               </div>
             ))}
           </div>
@@ -354,23 +656,22 @@ function WebVideoDownloaderTool({ initialSettings = {} }: { initialSettings?: To
             {downloadRows.map((row, index) => (
               <div className="result-row" key={`${row.source_url}-${index}`}>
                 <span>{row.source_url}</span>
-                <strong>{row.success ? `${row.downloaded_count ?? row.files?.length ?? 0} files` : row.error || "failed"}</strong>
+                <strong>{row.success ? uiText.common.fileCount(row.downloaded_count ?? row.files?.length ?? 0) : row.error || uiText.common.failed}</strong>
               </div>
             ))}
             {downloadedFiles.map((file, index) => (
               <div className="result-row" key={`${file}-${index}`}>
                 <span>{file}</span>
-                <strong>{"saved"}</strong>
+                <strong>{uiText.common.saved}</strong>
               </div>
             ))}
           </div>
         </section>
       ) : null}
 
-      <section className="log-panel" aria-label="Runtime">
-        <div>
-          <div className="panel-title">Runtime</div>
-          <p className="muted">{"最近的解析、校验、候选检查或下载记录"}</p>
+      <section className="log-panel web-video-log-panel" aria-label={uiText.common.runtime}>
+        <div className="web-video-log-header">
+          <div className="panel-title">{uiText.common.runtime}</div>
         </div>
         <div className="log-content">
           {error ? <div className="error-box">{error}</div> : null}

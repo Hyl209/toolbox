@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { pickDirectory, runTool, type ToolSettings } from "../api/tauri";
 import { ActionBar, DirectoryPickerRow, ResultCards, RuntimeLogPanel } from "../features/tools/components/CommonToolParts";
 import { dataOf, errorText, rowsOf, summaryOf } from "../features/tools/utils/toolResult";
+import { uiText } from "../uiText";
 
 const categoryOptions = ["图片", "视频", "音频", "文档", "压缩包", "程序", "其他"];
 const resolutionCategories = ["图片", "视频"];
@@ -213,7 +214,7 @@ function FileSorterTool({ initialSettings = {} }: { initialSettings?: ToolSettin
 
       {countRows.length ? (
         <section className="table-panel">
-          <div className="panel-title">Category summary</div>
+          <div className="panel-title">{uiText.common.categorySummary}</div>
           <div className="result-list">
             {countRows.map(([category, count]) => (
               <div className="result-row" key={category}>
@@ -227,7 +228,7 @@ function FileSorterTool({ initialSettings = {} }: { initialSettings?: ToolSettin
 
       {results.length ? (
         <section className="table-panel">
-          <div className="panel-title">Move results</div>
+          <div className="panel-title">{uiText.common.moveResults}</div>
           <div className="result-list">
             {results.map((row, index) => (
               <div className="result-row" key={`${row.source_name}-${row.target_name}-${index}`}>

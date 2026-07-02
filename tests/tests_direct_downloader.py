@@ -134,6 +134,18 @@ def test_is_aria2_progress_text_detects_summary_without_flagging_normal_logs():
     assert not module.is_aria2_progress_text('ERROR failed')
 
 
+def test_parse_aria2_progress_event_extracts_percent_speed_and_eta():
+    module = load_module()
+
+    marker = module.parse_aria2_progress_event(
+        '[#1b550 162MiB/4.3GiB(3%) CN:16 DL:1.5MiB ETA:46m34s]',
+        index=2,
+        name='archive.rar',
+    )
+
+    assert marker == '__HYL_PROGRESS__|direct_aria2|index=2|name=archive.rar|percent=3|speed=1.5MiB/s|eta=46:34'
+
+
 def test_run_command_streams_output():
     module = load_module()
     lines = []

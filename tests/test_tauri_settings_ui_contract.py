@@ -111,6 +111,125 @@ process.stdout.write(JSON.stringify(queueRowsFromSession(tasks, session, options
     return json.loads(result.stdout)
 
 
+def _run_web_video_inspect_candidate_urls(results: list[dict]) -> list[str]:
+    source = WEB_VIDEO_TSX.read_text(encoding="utf-8")
+    body = _extract_function_body(source, "inspectCandidateUrls")
+    script = f"""
+const results = {json.dumps(results, ensure_ascii=False)};
+function inspectCandidateUrls(results) {{
+{body}
+}}
+process.stdout.write(JSON.stringify(inspectCandidateUrls(results)));
+"""
+    result = subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True, encoding="utf-8")
+    return json.loads(result.stdout)
+
+
+def _run_web_video_candidate_tasks(results: list[dict]) -> list[dict]:
+    source = WEB_VIDEO_TSX.read_text(encoding="utf-8")
+    inspect_urls_body = _extract_function_body(source, "inspectCandidateUrls")
+    source_title_body = _extract_function_body(source, "sourceTitleFromUrl")
+    numbered_title_body = _extract_function_body(source, "numberedTitle")
+    candidate_tasks_body = _extract_function_body(source, "candidateTasksFromInspectResults")
+    script = f"""
+const results = {json.dumps(results, ensure_ascii=False)};
+function inspectCandidateUrls(results) {{
+{inspect_urls_body}
+}}
+function sourceTitleFromUrl(url) {{
+{source_title_body}
+}}
+function numberedTitle(base, index, total) {{
+{numbered_title_body}
+}}
+function candidateTasksFromInspectResults(results) {{
+{candidate_tasks_body}
+}}
+process.stdout.write(JSON.stringify(candidateTasksFromInspectResults(results)));
+"""
+    result = subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True, encoding="utf-8")
+    return json.loads(result.stdout)
+
+
+def _run_web_video_task_helpers(function_name: str, tasks: list[dict], *args: object) -> list[dict]:
+    source = WEB_VIDEO_TSX.read_text(encoding="utf-8")
+    source_title_body = _extract_function_body(source, "sourceTitleFromUrl")
+    sanitize_body = _extract_function_body(source, "sanitizeTaskTitle")
+    base_body = _extract_function_body(source, "taskTitleBase")
+    group_key_body = _extract_function_body(source, "taskGroupKey")
+    renumber_body = _extract_function_body(source, "reindexGroupedTasks")
+    rename_body = _extract_function_body(source, "renameGroupedTaskTitles")
+    remove_body = _extract_function_body(source, "removeQueuedTask")
+    apply_subdir_body = _extract_function_body(source, "applyTaskOutputSubdirs")
+    script = f"""
+const tasks = {json.dumps(tasks, ensure_ascii=False)};
+const fnName = {json.dumps(function_name)};
+const args = {json.dumps(args, ensure_ascii=False)};
+function sourceTitleFromUrl(url) {{
+{source_title_body}
+}}
+function sanitizeTaskTitle(value, fallback = "video") {{
+{sanitize_body}
+}}
+function taskTitleBase(title) {{
+{base_body}
+}}
+function taskGroupKey(task) {{
+{group_key_body}
+}}
+function numberedTitle(base, index, total) {{
+  return total > 1 ? `${{base}}_${{String(index).padStart(3, "0")}}` : base;
+}}
+function reindexGroupedTasks(tasks) {{
+{renumber_body}
+}}
+function renameGroupedTaskTitles(tasks, index, nextTitle) {{
+{rename_body}
+}}
+function removeQueuedTask(tasks, index) {{
+{remove_body}
+}}
+function applyTaskOutputSubdirs(tasks, enabled) {{
+{apply_subdir_body}
+}}
+const mapping = {{
+  renameGroupedTaskTitles,
+  removeQueuedTask,
+  applyTaskOutputSubdirs,
+}};
+process.stdout.write(JSON.stringify(mapping[fnName](tasks, ...args)));
+"""
+    result = subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True, encoding="utf-8")
+    return json.loads(result.stdout)
+
+
+def _run_download_queue_overview(tasks: list[dict], session: dict | None) -> dict:
+    source = DOWNLOAD_QUEUE_STATE_TS.read_text(encoding="utf-8")
+    parse_progress_body = _extract_function_body(source, "parseProgressMarker")
+    session_rows_body = _extract_function_body(source, "sessionResultRows")
+    marker_index_body = _extract_function_body(source, "markerIndex")
+    overview_body = _extract_function_body(source, "queueOverviewFromSession")
+    script = f"""
+const tasks = {json.dumps(tasks, ensure_ascii=False)};
+const session = {json.dumps(session, ensure_ascii=False)};
+function parseProgressMarker(message) {{
+{parse_progress_body}
+}}
+function sessionResultRows(session) {{
+{session_rows_body}
+}}
+function markerIndex(marker, fallbackIndex) {{
+{marker_index_body}
+}}
+function queueOverviewFromSession(tasks, session) {{
+{overview_body}
+}}
+process.stdout.write(JSON.stringify(queueOverviewFromSession(tasks, session)));
+"""
+    result = subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True, encoding="utf-8")
+    return json.loads(result.stdout)
+
+
 def test_pyproject_uses_writable_repo_local_basetemp() -> None:
     source = PYPROJECT.read_text(encoding="utf-8")
 
@@ -749,6 +868,20 @@ def test_direct_downloader_tool_uses_collapsible_advanced_options_and_removes_de
     assert "命令预览" not in source
 
 
+def test_direct_downloader_streams_runtime_progress_into_queue_table() -> None:
+    source = DIRECT_DOWNLOADER_TSX.read_text(encoding="utf-8")
+
+    for marker in (
+        'useDownloadRuntimeSession("directdownloader")',
+        "DownloadQueueTable",
+        "queueOverviewFromSession(",
+        'progressKinds: ["direct_aria2"]',
+        "runtime.start(input)",
+        'onCancel={() => void runtime.control("cancel")}',
+    ):
+        assert marker in source
+
+
 def test_web_video_downloader_tool_initializes_legacy_settings_and_payload_options() -> None:
     source = WEB_VIDEO_TSX.read_text(encoding="utf-8")
     required = [
@@ -768,6 +901,236 @@ def test_web_video_downloader_tool_initializes_legacy_settings_and_payload_optio
 
     for marker in required:
         assert marker in source
+
+
+def test_web_video_downloader_inspect_expands_all_detected_candidates() -> None:
+    results = [
+        {
+            "source_url": "https://example.com/course",
+            "success": True,
+            "candidate_count": 3,
+            "candidates": [
+                "https://cdn.example.com/a.mp4",
+                "",
+                "https://cdn.example.com/b.mp4",
+                "https://cdn.example.com/a.mp4",
+                "https://cdn.example.com/c.mp4",
+            ],
+            "source": "yt-dlp",
+            "error": "",
+        }
+    ]
+    urls = _run_web_video_inspect_candidate_urls(results)
+
+    assert urls == [
+        "https://cdn.example.com/a.mp4",
+        "https://cdn.example.com/b.mp4",
+        "https://cdn.example.com/c.mp4",
+    ]
+    assert _run_web_video_candidate_tasks(results) == [
+        {
+            "source_url": "https://cdn.example.com/a.mp4",
+            "source_kind": "web",
+            "target_title": "course_001",
+            "source_page_url": "https://example.com/course",
+            "candidate_index": 1,
+            "candidate_total": 3,
+        },
+        {
+            "source_url": "https://cdn.example.com/b.mp4",
+            "source_kind": "web",
+            "target_title": "course_002",
+            "source_page_url": "https://example.com/course",
+            "candidate_index": 2,
+            "candidate_total": 3,
+        },
+        {
+            "source_url": "https://cdn.example.com/c.mp4",
+            "source_kind": "web",
+            "target_title": "course_003",
+            "source_page_url": "https://example.com/course",
+            "candidate_index": 3,
+            "candidate_total": 3,
+        },
+    ]
+
+    source = WEB_VIDEO_TSX.read_text(encoding="utf-8")
+    assert "applyQueuedTasks(candidateTasks)" in source
+
+
+def test_web_video_downloader_download_auto_inspects_page_candidates() -> None:
+    source = WEB_VIDEO_TSX.read_text(encoding="utf-8")
+    body = _extract_function_body(source, "handleDownload")
+
+    assert "await inspectAndApplyCandidates()" in body
+    assert "downloadPayload = { ...payload, text: candidateUrls.join(\"\\n\") }" in body
+    assert "const queuedTasks = applyTaskOutputSubdirs(candidateTasks, outputSubdirByTitle)" in body
+    assert "tasks: queuedTasks" in body
+    assert "payload: downloadPayload" in body
+
+
+def test_web_video_downloader_validate_auto_expands_page_candidates() -> None:
+    source = WEB_VIDEO_TSX.read_text(encoding="utf-8")
+    body = _extract_function_body(source, "handleParseValidate")
+
+    assert "if (checked.valid) {" in body
+    assert "await inspectAndApplyCandidates()" in body
+
+
+def test_web_video_downloader_queue_supports_renaming_candidate_titles() -> None:
+    web_source = WEB_VIDEO_TSX.read_text(encoding="utf-8")
+    queue_source = (ROOT / "desktop-tauri" / "src" / "features" / "tools" / "components" / "DownloadQueueTable.tsx").read_text(encoding="utf-8")
+
+    assert "function renameTaskTitle" in web_source
+    assert "onRename={renameTaskTitle}" in web_source
+    assert "function removeQueuedTask" in web_source
+    assert "onDelete={removeQueuedTask}" in web_source
+    assert "onDoubleClick" in queue_source
+    assert "onRename?.(index" in queue_source
+    assert 'type="button"' in queue_source
+    assert "×" in queue_source
+
+
+def test_web_video_downloader_grouped_rename_delete_and_subdir_follow_legacy_rules() -> None:
+    renamed = _run_web_video_task_helpers(
+        "renameGroupedTaskTitles",
+        [
+            {
+                "source_url": "https://cdn.example.com/a.mp4",
+                "source_kind": "web",
+                "target_title": "29274_001",
+                "source_page_url": "https://example.com/course",
+            },
+            {
+                "source_url": "https://cdn.example.com/b.mp4",
+                "source_kind": "web",
+                "target_title": "29274_002",
+                "source_page_url": "https://example.com/course",
+            },
+        ],
+        0,
+        "课程",
+    )
+    assert [item["target_title"] for item in renamed] == ["课程_001", "课程_002"]
+
+    rejected_blank = _run_web_video_task_helpers("renameGroupedTaskTitles", renamed, 0, "   ")
+    assert [item["target_title"] for item in rejected_blank] == ["课程_001", "课程_002"]
+
+    removed = _run_web_video_task_helpers(
+        "removeQueuedTask",
+        [
+            {
+                "source_url": "https://cdn.example.com/a.mp4",
+                "source_kind": "web",
+                "target_title": "课程_001",
+                "source_page_url": "https://example.com/course",
+            },
+            {
+                "source_url": "https://cdn.example.com/b.mp4",
+                "source_kind": "web",
+                "target_title": "课程_002",
+                "source_page_url": "https://example.com/course",
+            },
+            {
+                "source_url": "https://cdn.example.com/c.mp4",
+                "source_kind": "web",
+                "target_title": "课程_003",
+                "source_page_url": "https://example.com/course",
+            },
+        ],
+        1,
+    )
+    assert [item["source_url"] for item in removed] == [
+        "https://cdn.example.com/a.mp4",
+        "https://cdn.example.com/c.mp4",
+    ]
+    assert [item["target_title"] for item in removed] == ["课程_001", "课程_002"]
+
+    subdirs = _run_web_video_task_helpers("applyTaskOutputSubdirs", renamed, True)
+    assert [item["output_subdir"] for item in subdirs] == ["课程", "课程"]
+
+
+def test_web_video_downloader_cover_entry_and_embed_thumbnail_action_are_wired() -> None:
+    source = WEB_VIDEO_TSX.read_text(encoding="utf-8")
+
+    for marker in (
+        "pickFiles(",
+        'action: "embed_thumbnail"',
+        "thumbnail_mode",
+        "candidate_index",
+        "source_page_url",
+        "function handleEmbedThumbnail",
+    ):
+        assert marker in source
+
+    sidecar_source = WEB_SIDECAR_TOOL.read_text(encoding="utf-8")
+    for marker in (
+        'if action == "embed_thumbnail"',
+        "module.embed_thumbnail(",
+        "thumbnail_mode",
+        "candidate_index",
+    ):
+        assert marker in sidecar_source
+
+
+def test_download_queue_overview_uses_runtime_markers_and_results() -> None:
+    running = _run_download_queue_overview(
+        [
+            {"source_url": "https://example.com/a", "target_title": "Task A"},
+            {"source_url": "https://example.com/b", "target_title": "Task B"},
+            {"source_url": "https://example.com/c", "target_title": "Task C"},
+        ],
+        {
+            "status": "running",
+            "progress_events": [
+                {"message": "__HYL_PROGRESS__|task_start|index=0|total=3|url=https://example.com/a"},
+                {"message": "__HYL_PROGRESS__|task_done|index=0|completed=1|total=3"},
+                {"message": "__HYL_PROGRESS__|task_start|index=1|total=3|url=https://example.com/b"},
+                {"message": "__HYL_PROGRESS__|web_percent|index=1|percent=40"},
+            ],
+            "result": None,
+        },
+    )
+    assert running == {
+        "total": 3,
+        "current": 2,
+        "completed": 1,
+        "failed": 0,
+        "summary": "1/3 完成，当前第 2 项",
+    }
+
+    completed = _run_download_queue_overview(
+        [
+            {"source_url": "https://example.com/a", "target_title": "Task A"},
+            {"source_url": "https://example.com/b", "target_title": "Task B"},
+        ],
+        {
+            "status": "completed",
+            "progress_events": [],
+            "result": {
+                "data": {
+                    "results": [
+                        {"success": True},
+                        {"success": False, "error": "boom"},
+                    ]
+                }
+            },
+        },
+    )
+    assert completed == {
+        "total": 2,
+        "current": 2,
+        "completed": 1,
+        "failed": 1,
+        "summary": "1/2 完成，1 失败",
+    }
+
+
+def test_tg_downloader_all_messages_disables_recent_limit_input() -> None:
+    source = TG_DOWNLOADER_TSX.read_text(encoding="utf-8")
+
+    assert "disabled={busy || downloadAllMessages}" in source
+    assert "setDownloadAllMessages(event.currentTarget.checked)" in source
 
 
 
@@ -855,6 +1218,8 @@ def test_video_downloaders_stream_runtime_progress_and_render_queue_controls() -
     for marker in (
         "useDownloadRuntimeSession(",
         "queueRows",
+        "queueOverviewFromSession(",
+        "进度总览",
         "paused",
         "buildQueueRows(tasks, session, {",
         'progressKinds: ["file", "web_status", "web_aria2", "web_percent"]',
@@ -864,6 +1229,8 @@ def test_video_downloaders_stream_runtime_progress_and_render_queue_controls() -
     for marker in (
         "useDownloadRuntimeSession(",
         "queueRows",
+        "queueOverviewFromSession(",
+        "进度总览",
         "paused",
         "buildQueueRows(tasks, session, {",
         'progressKinds: ["file", "tg_media"]',
@@ -872,6 +1239,7 @@ def test_video_downloaders_stream_runtime_progress_and_render_queue_controls() -
 
     for marker in (
         "function markerIndex(",
+        "function queueOverviewFromSession(",
         'Number.parseInt(marker.payload.index ?? "", 10)',
         "options.progressKinds.includes(marker.kind)",
         'row.detail = "已完成"',
@@ -895,7 +1263,7 @@ def test_video_downloaders_stream_runtime_progress_and_render_queue_controls() -
         "emit_runtime_progress",
         "current_download_token",
         "_progress(",
-        "token=current_download_token()",
+        'kwargs["token"] = current_download_token()',
     ):
         assert marker in web_sidecar_source
         assert marker in tg_sidecar_source

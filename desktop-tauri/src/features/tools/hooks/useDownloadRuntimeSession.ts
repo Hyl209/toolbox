@@ -40,6 +40,18 @@ export function useDownloadRuntimeSession(toolId: string) {
     return next;
   }, [stopPolling]);
 
+  const startPolling = useCallback((sessionId: string) => {
+    if (pollTimerRef.current !== null) {
+      return;
+    }
+    pollTimerRef.current = window.setInterval(() => {
+      void refresh(sessionId).catch((caught) => {
+        stopPolling();
+        setSessionError(caught instanceof Error ? caught.message : String(caught));
+      });
+    }, 500);
+  }, [refresh, stopPolling]);
+
   const start = useCallback(async (input: ToolInput) => {
     stopPolling();
     setSessionError("");
@@ -47,21 +59,16 @@ export function useDownloadRuntimeSession(toolId: string) {
     if (previousSessionId) {
       try {
         await cleanupToolSession(previousSessionId);
-      } catch {
-        // ignore stale cleanup failures
+      } catch (caught) {
+        console.error("cleanupToolSession failed", caught);
       }
     }
     const next = await startToolSession(toolId, input);
     sessionIdRef.current = next.session_id;
     setSession(next);
-    pollTimerRef.current = window.setInterval(() => {
-      void refresh(next.session_id).catch((caught) => {
-        stopPolling();
-        setSessionError(caught instanceof Error ? caught.message : String(caught));
-      });
-    }, 500);
+    startPolling(next.session_id);
     return next;
-  }, [refresh, stopPolling, toolId]);
+  }, [startPolling, stopPolling, toolId]);
 
   const control = useCallback(async (action: ToolSessionControlAction) => {
     if (!session?.session_id) {
@@ -71,12 +78,15 @@ export function useDownloadRuntimeSession(toolId: string) {
     setSession(next);
     if (action === "resume") {
       emitToolActivity(toolId, "running");
+      if (next.status === "running" || next.status === "paused") {
+        startPolling(next.session_id);
+      }
     }
     if (action === "cancel") {
       emitToolActivity(toolId, "error");
     }
     return next;
-  }, [session?.session_id, toolId]);
+  }, [session?.session_id, startPolling, toolId]);
 
   const clear = useCallback(async () => {
     stopPolling();
@@ -85,8 +95,8 @@ export function useDownloadRuntimeSession(toolId: string) {
     if (sessionId) {
       try {
         await cleanupToolSession(sessionId);
-      } catch {
-        // ignore cleanup failures after process exit
+      } catch (caught) {
+        console.error("cleanupToolSession failed", caught);
       }
     }
     setSession(null);
@@ -94,15 +104,18 @@ export function useDownloadRuntimeSession(toolId: string) {
   }, [stopPolling]);
 
   useEffect(() => () => {
-    stopPolling();
+    if (pollTimerRef.current !== null) {
+      window.clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
     const sessionId = sessionIdRef.current;
     sessionIdRef.current = null;
     if (sessionId) {
-      void cleanupToolSession(sessionId).catch(() => {
-        // ignore cleanup failures after process exit
+      void cleanupToolSession(sessionId).catch((caught) => {
+        console.error("cleanupToolSession failed", caught);
       });
     }
-  }, [stopPolling]);
+  }, []);
 
   useEffect(() => {
     if (!session) {

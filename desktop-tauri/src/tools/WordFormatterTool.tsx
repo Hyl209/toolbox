@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { pickDirectory, pickFiles, type DialogFilter, runTool, type ToolResult, type ToolSettings } from "../api/tauri";
 import { ActionBar, DirectoryPickerRow, MultiPathInput, ResultCards, RuntimeLogPanel, ToolHeading } from "../features/tools/components/CommonToolParts";
+import { uiText } from "../uiText";
 
 type OutputRow = { source: string; output: string };
 type WordConfig = {
@@ -215,7 +216,7 @@ function WordFormatterTool({ initialSettings = {} }: { initialSettings?: ToolSet
         <div className="file-mode-card compact-card">
           <MultiPathInput
             label="Word 输入路径"
-            countLabel={`${paths.length} paths`}
+            countLabel={uiText.common.pathCount(paths.length)}
             value={inputText}
             disabled={running}
             placeholder="每行一个 .docx 或目录"
@@ -321,7 +322,7 @@ function WordFormatterTool({ initialSettings = {} }: { initialSettings?: ToolSet
 
       {results.length ? (
         <section className="table-panel">
-          <div className="panel-title">Word outputs</div>
+          <div className="panel-title">{uiText.common.wordOutputs}</div>
           <div className="result-list">
             {results.map((row, index) => (
               <div className="result-row" key={`${row.output}-${index}`}>

@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 export type DownloadQueueRow = {
   source_url: string;
   fileName: string;
@@ -15,6 +17,10 @@ type DownloadQueueTableProps = {
   onPause: () => void;
   onResume: () => void;
   onCancel: () => void;
+  onRename?: (index: number, nextName: string) => void;
+  onDelete?: (index: number) => void;
+  className?: string;
+  iconActions?: boolean;
 };
 
 const statusText: Record<DownloadQueueRow["status"], string> = {
@@ -42,13 +48,33 @@ function fileExt(name: string) {
   return (ext || "FILE").slice(0, 4).toUpperCase();
 }
 
-export function DownloadQueueTable({ rows, active, paused, onPause, onResume, onCancel }: DownloadQueueTableProps) {
+export function DownloadQueueTable({ rows, active, paused, onPause, onResume, onCancel, onRename, onDelete, className = "", iconActions = false }: DownloadQueueTableProps) {
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editingName, setEditingName] = useState("");
+
   if (!rows.length) {
     return null;
   }
 
+  function startRename(index: number, name: string) {
+    if (active || !onRename) {
+      return;
+    }
+    setEditingIndex(index);
+    setEditingName(name);
+  }
+
+  function commitRename(index: number) {
+    const next = editingName.trim();
+    if (next) {
+      onRename?.(index, next);
+    }
+    setEditingIndex(null);
+    setEditingName("");
+  }
+
   return (
-    <section className="download-table-panel" aria-label="下载队列">
+    <section className={`download-table-panel ${className}`.trim()} aria-label="下载队列">
       <div className="download-table-head">
         <span>文件名</span>
         <span>进度</span>
@@ -60,6 +86,7 @@ export function DownloadQueueTable({ rows, active, paused, onPause, onResume, on
         {rows.map((row, index) => {
           const percent = clampPercent(row.percent, row.status);
           const hasControls = active && (row.status === "running" || row.status === "paused");
+          const canDelete = !active && row.status === "queued" && Boolean(onDelete);
           return (
             <div className="download-row" key={`${row.source_url}-${index}`}>
               <div className="download-file-cell">
@@ -67,7 +94,25 @@ export function DownloadQueueTable({ rows, active, paused, onPause, onResume, on
                   <small>{fileExt(row.fileName)}</small>
                 </span>
                 <span className="download-file-text">
-                  <strong title={row.fileName}>{row.fileName}</strong>
+                  {editingIndex === index ? (
+                    <input
+                      autoFocus
+                      className="download-name-input"
+                      onBlur={() => commitRename(index)}
+                      onChange={(event) => setEditingName(event.currentTarget.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          commitRename(index);
+                        } else if (event.key === "Escape") {
+                          setEditingIndex(null);
+                          setEditingName("");
+                        }
+                      }}
+                      value={editingName}
+                    />
+                  ) : (
+                    <strong onDoubleClick={() => startRename(index, row.fileName)} title={row.fileName}>{row.fileName}</strong>
+                  )}
                   <small title={row.detail}>{row.detail}</small>
                 </span>
               </div>
@@ -82,13 +127,36 @@ export function DownloadQueueTable({ rows, active, paused, onPause, onResume, on
               <span className="download-row-actions">
                 {hasControls ? (
                   <>
-                    <button className="ghost-button mini-pill" disabled={paused ? false : row.status !== "running"} onClick={paused ? onResume : onPause} type="button">
-                      {paused ? "继续" : "暂停"}
+                    <button
+                      aria-label={paused ? "继续" : "暂停"}
+                      className={`ghost-button mini-pill${iconActions ? " icon-mini-pill" : ""}`}
+                      disabled={paused ? false : row.status !== "running"}
+                      onClick={paused ? onResume : onPause}
+                      title={paused ? "继续" : "暂停"}
+                      type="button"
+                    >
+                      {iconActions ? (paused ? "▶" : "⏸") : (paused ? "继续" : "暂停")}
                     </button>
-                    <button className="ghost-button mini-pill" onClick={onCancel} type="button">
-                      取消
+                    <button
+                      aria-label="取消"
+                      className={`ghost-button mini-pill${iconActions ? " icon-mini-pill" : ""}`}
+                      onClick={onCancel}
+                      title="取消"
+                      type="button"
+                    >
+                      {iconActions ? "✕" : "取消"}
                     </button>
                   </>
+                ) : canDelete ? (
+                  <button
+                    aria-label="取消"
+                    className={`ghost-button mini-pill${iconActions ? " icon-mini-pill" : ""}`}
+                    onClick={() => onDelete?.(index)}
+                    title="取消"
+                    type="button"
+                  >
+                    {iconActions ? "✕" : "×"}
+                  </button>
                 ) : (
                   <small>{statusText[row.status]}</small>
                 )}

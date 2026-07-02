@@ -126,6 +126,44 @@ def test_directdownloader_build_commands_includes_download_options(tmp_path: Pat
     assert "--header=User-Agent:Test" in command
 
 
+def test_directdownloader_download_emits_runtime_progress(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from sidecar.runtime_state import bind_progress_emitter
+    from sidecar.tools import directdownloader_tool as tool
+
+    module = tool._load_converter_module()
+    captured: list[str] = []
+
+    def fake_iter_download_requests(
+        requests,
+        options,
+        progress_cb=None,
+        root=None,
+        process_cb=None,
+        should_stop=None,
+        structured_progress_cb=None,
+    ):
+        if structured_progress_cb:
+            structured_progress_cb("__HYL_PROGRESS__|direct_aria2|index=0|name=hello.txt|percent=50|speed=1.0MiB/s|eta=00:05")
+        return [{"url": requests[0].url, "success": True, "returncode": 0, "output": "ok"}]
+
+    monkeypatch.setattr(module, "iter_download_requests", fake_iter_download_requests)
+    with bind_progress_emitter(lambda message, percent=0: captured.append(message)):
+        result = tool.run_directdownloader(
+            {
+                "task_id": "direct-runtime-progress",
+                "action": "download",
+                "payload": {
+                    "url_text": "https://cdn.example.com/hello.txt",
+                    "output_dir": str(tmp_path),
+                    "connections": 1,
+                },
+            }
+        )
+
+    assert result["ok"] is True
+    assert captured == ["__HYL_PROGRESS__|direct_aria2|index=0|name=hello.txt|percent=50|speed=1.0MiB/s|eta=00:05"]
+
+
 def test_directdownloader_unknown_action_returns_error() -> None:
     event = last_event({"task_id": "direct-bogus-001", "action": "bogus", "payload": {}})
 

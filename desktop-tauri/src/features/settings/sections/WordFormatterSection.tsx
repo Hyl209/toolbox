@@ -1,3 +1,4 @@
+import { uiText } from "../../../uiText";
 import {
   type WordFormatterDraft,
   type WordFormatterPageKey,
@@ -31,7 +32,7 @@ export default function WordFormatterSection({
 }: WordFormatterSectionProps) {
   return (
     <section className="settings-card settings-wide-card">
-      <span>Word 排版</span>
+      <span>{uiText.settings.wordSectionTitle}</span>
       <p>把输出目录、页面参数和样式参数分开编辑，避免全部字段同屏堆叠。</p>
 
       <div className="settings-group-stack">

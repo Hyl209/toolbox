@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import inspect
 import importlib.util
+import logging
 import sys
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
@@ -11,15 +11,18 @@ from typing import Any
 
 try:
     from ..runtime_paths import project_root
-    from ..runtime_state import current_download_token, emit_runtime_progress
+    from ..runtime_state import emit_runtime_progress
+    from ._cancel_support import add_cancel_token_kwarg
 except ImportError:  # direct script execution support
     from runtime_paths import project_root
-    from runtime_state import current_download_token, emit_runtime_progress
+    from runtime_state import emit_runtime_progress
+    from tools._cancel_support import add_cancel_token_kwarg
 
 
 ROOT = project_root(__file__, 2)
 MODULE_DIR = ROOT / "modules" / "video-downloader"
 PACKAGE_NAME = "hyl_legacy_video_downloader"
+logger = logging.getLogger(__name__)
 
 
 def _load_converter_module() -> ModuleType:
@@ -294,9 +297,7 @@ def _run_download(payload: dict[str, Any]) -> dict:
             "options": options,
             "progress_cb": _progress,
         }
-        signature = inspect.signature(module.download_batch)
-        if "token" in signature.parameters:
-            kwargs["token"] = current_download_token()
+        add_cancel_token_kwarg(module, kwargs, logger)
         results = module.download_batch(tasks, _payload_str(payload, "output_dir"), **kwargs)
         return {"ok": True, "data": _download_data(results=results, logs=logs)}
     except ValueError as exc:

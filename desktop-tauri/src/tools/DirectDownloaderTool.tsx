@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { pickDirectory, runTool, type ToolResult, type ToolSettings } from "../api/tauri";
+import { pickDirectory, runTool, type ToolInput, type ToolResult, type ToolSessionSnapshot, type ToolSettings } from "../api/tauri";
 import { ActionBar, DirectoryPickerRow, RuntimeLogPanel, ToolHeading } from "../features/tools/components/CommonToolParts";
+import { DownloadQueueTable, type DownloadQueueRow } from "../features/tools/components/DownloadQueueTable";
+import { queueOverviewFromSession, queueRowsFromSession as buildQueueRows } from "../features/tools/downloadQueueState";
+import { useDownloadRuntimeSession } from "../features/tools/hooks/useDownloadRuntimeSession";
 
 type DirectRequest = {
   url: string;
@@ -8,6 +11,11 @@ type DirectRequest = {
   extra_headers: string[];
   referer: string;
   guess_filename: string;
+};
+
+type DirectTask = {
+  source_url: string;
+  target_title?: string;
 };
 
 type DirectResult = ToolResult & {
@@ -31,8 +39,8 @@ function errorText(error: unknown): string {
   return typeof error === "string" ? error : JSON.stringify(error);
 }
 
-function dataOf(result: ToolResult): DirectResult {
-  const direct = result as DirectResult;
+function dataOf(result: ToolResult | null | undefined): DirectResult {
+  const direct = (result ?? {}) as DirectResult;
   return (direct.data ?? direct) as DirectResult;
 }
 
@@ -68,9 +76,29 @@ function splitProxyUrl(value: unknown): { host: string; port: string } {
   }
 }
 
+function tasksFromRequests(requests: DirectRequest[]): DirectTask[] {
+  return requests.map((request) => ({
+    source_url: request.url,
+    target_title: request.output_name || request.guess_filename,
+  }));
+}
+
+function queueRowsFromSession(tasks: DirectTask[], session: ToolSessionSnapshot | null): DownloadQueueRow[] {
+  return buildQueueRows(tasks, session, {
+    progressKinds: ["direct_aria2"],
+    applyCompletedResult(row, item) {
+      const success = Boolean(item.success);
+      row.status = success ? "success" : "failed";
+      row.percent = success ? 100 : row.percent;
+      row.detail = success ? "已完成" : String(item.output ?? item.error ?? "失败");
+    },
+  });
+}
+
 function DirectDownloaderTool({ initialOutputDir = "", initialSettings = {} }: { initialOutputDir?: string; initialSettings?: ToolSettings }) {
   const didApplyInitial = useRef(false);
   const initialProxy = splitProxyUrl(initialSettings.proxy_url);
+  const runtime = useDownloadRuntimeSession("directdownloader");
   const [urlText, setUrlText] = useState("");
   const [outputDir, setOutputDir] = useState(initialOutputDir);
   const [outputName, setOutputName] = useState("");
@@ -82,14 +110,18 @@ function DirectDownloaderTool({ initialOutputDir = "", initialSettings = {} }: {
   const [overwrite, setOverwrite] = useState(initialSettings.overwrite ?? false);
   const [outputSubdirByFilename, setOutputSubdirByFilename] = useState(initialSettings.output_subdir_by_filename ?? false);
   const [requests, setRequests] = useState<DirectRequest[]>([]);
-  const [downloadRows, setDownloadRows] = useState<Array<Record<string, unknown>>>([]);
+  const [tasks, setTasks] = useState<DirectTask[]>([]);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
   const [logs, setLogs] = useState<string[]>([]);
 
   const parsedHeaders = useMemo(() => headerLines(extraHeaders), [extraHeaders]);
-  const canInspect = !running && urlText.trim().length > 0;
+  const busy = running || runtime.active;
+  const canInspect = !busy && urlText.trim().length > 0;
   const canBuild = canInspect && outputDir.trim().length > 0;
+  const queueRows = useMemo(() => queueRowsFromSession(tasks, runtime.session), [tasks, runtime.session]);
+  const overview = useMemo(() => queueOverviewFromSession(tasks, runtime.session), [tasks, runtime.session]);
+  const runtimeLogs = runtime.session?.logs?.length ? runtime.session.logs : logs;
 
   useEffect(() => {
     if (!initialOutputDir) {
@@ -163,10 +195,11 @@ function DirectDownloaderTool({ initialOutputDir = "", initialSettings = {} }: {
     }
     setRunning(true);
     setError("");
-    setDownloadRows([]);
+    setTasks([]);
     try {
       const parsed = dataOf(await runTool("directdownloader", { task_id: `direct-parse-${Date.now()}`, action: "parse", payload: { url_text: urlText } }));
       setRequests(parsed.requests ?? []);
+      setTasks(tasksFromRequests(parsed.requests ?? []));
       const checked = dataOf(await runTool("directdownloader", { task_id: `direct-validate-${Date.now()}`, action: "validate", payload }));
       const issueCount = checked.errors?.length ?? 0;
       setLogs((items) => [`解析 ${parsed.requests?.length ?? 0} 条，校验${issueCount ? `发现 ${issueCount} 个问题` : "通过"}`, ...items].slice(0, 8));
@@ -185,11 +218,20 @@ function DirectDownloaderTool({ initialOutputDir = "", initialSettings = {} }: {
     }
     setRunning(true);
     setError("");
-    setDownloadRows([]);
     try {
-      const data = dataOf(await runTool("directdownloader", { task_id: `direct-download-${Date.now()}`, action: "download", payload }));
-      setDownloadRows((data.results as Array<Record<string, unknown>> | undefined) ?? []);
-      setLogs((items) => [...(data.logs ?? [`下载完成：${data.success_count ?? 0} 成功 / ${data.fail_count ?? 0} 失败`]), ...items].slice(0, 8));
+      let parsedRequests = requests;
+      if (!parsedRequests.length) {
+        const parsed = dataOf(await runTool("directdownloader", { task_id: `direct-parse-${Date.now()}`, action: "parse", payload: { url_text: urlText } }));
+        parsedRequests = parsed.requests ?? [];
+        setRequests(parsedRequests);
+      }
+      setTasks(tasksFromRequests(parsedRequests));
+      const input: ToolInput = {
+        task_id: `direct-download-${Date.now()}`,
+        action: "download",
+        payload,
+      };
+      await runtime.start(input);
     } catch (caught) {
       const message = errorText(caught);
       setError(message);
@@ -199,9 +241,10 @@ function DirectDownloaderTool({ initialOutputDir = "", initialSettings = {} }: {
     }
   }
 
-  function clearResults() {
+  async function clearResults() {
+    await runtime.clear();
     setRequests([]);
-    setDownloadRows([]);
+    setTasks([]);
     setError("");
     setLogs([]);
   }
@@ -222,7 +265,7 @@ function DirectDownloaderTool({ initialOutputDir = "", initialSettings = {} }: {
             <small>{requests.length ? `${requests.length} parsed` : "支持多行"}</small>
           </span>
           <textarea
-            disabled={running}
+            disabled={busy}
             onChange={(event) => setUrlText(event.currentTarget.value)}
             placeholder={'https://example.com/file.zip\naria2c "https://cdn.example.com/a.rar" --out "a.rar" --header "Cookie:a=b"'}
             value={urlText}
@@ -230,10 +273,10 @@ function DirectDownloaderTool({ initialOutputDir = "", initialSettings = {} }: {
         </label>
 
         <div className="file-mode-card compact-card">
-          <DirectoryPickerRow label="输出目录" value={outputDir} disabled={running} onChange={setOutputDir} onPick={chooseOutputDir} placeholder="E:\\downloads" />
+          <DirectoryPickerRow label="输出目录" value={outputDir} disabled={busy} onChange={setOutputDir} onPick={chooseOutputDir} placeholder="E:\\downloads" />
           <label className="field-block file-path-field">
             <span>单文件名（多 URL 留空）</span>
-            <input disabled={running} onChange={(event) => setOutputName(event.currentTarget.value)} placeholder="archive.zip" value={outputName} />
+            <input disabled={busy} onChange={(event) => setOutputName(event.currentTarget.value)} placeholder="archive.zip" value={outputName} />
           </label>
         </div>
       </div>
@@ -243,32 +286,32 @@ function DirectDownloaderTool({ initialOutputDir = "", initialSettings = {} }: {
         <div className="tool-result-grid">
           <label className="field-block file-path-field">
             <span>连接数</span>
-            <input disabled={running} onChange={(event) => setConnections(event.currentTarget.value)} placeholder="16" value={connections} />
+            <input disabled={busy} onChange={(event) => setConnections(event.currentTarget.value)} placeholder="16" value={connections} />
           </label>
           <label className="field-block file-path-field">
             <span>代理 Host</span>
-            <input disabled={running} onChange={(event) => setProxyHost(event.currentTarget.value)} placeholder="127.0.0.1" value={proxyHost} />
+            <input disabled={busy} onChange={(event) => setProxyHost(event.currentTarget.value)} placeholder="127.0.0.1" value={proxyHost} />
           </label>
           <label className="field-block file-path-field">
             <span>代理 Port</span>
-            <input disabled={running} onChange={(event) => setProxyPort(event.currentTarget.value)} placeholder="7890" value={proxyPort} />
+            <input disabled={busy} onChange={(event) => setProxyPort(event.currentTarget.value)} placeholder="7890" value={proxyPort} />
           </label>
           <label className="field-block file-path-field">
             <span>Referer</span>
-            <input disabled={running} onChange={(event) => setReferer(event.currentTarget.value)} placeholder="https://pan.example.com/" value={referer} />
+            <input disabled={busy} onChange={(event) => setReferer(event.currentTarget.value)} placeholder="https://pan.example.com/" value={referer} />
           </label>
           <label className="field-block file-path-field">
             <span>额外 Headers（每行一个）</span>
-            <textarea disabled={running} onChange={(event) => setExtraHeaders(event.currentTarget.value)} placeholder="User-Agent:Mozilla/5.0" value={extraHeaders} />
+            <textarea disabled={busy} onChange={(event) => setExtraHeaders(event.currentTarget.value)} placeholder="User-Agent:Mozilla/5.0" value={extraHeaders} />
           </label>
         </div>
         <div className="field-button-row">
           <label className="check-row">
-            <input checked={overwrite} disabled={running} onChange={(event) => setOverwrite(event.currentTarget.checked)} type="checkbox" />
+            <input checked={overwrite} disabled={busy} onChange={(event) => setOverwrite(event.currentTarget.checked)} type="checkbox" />
             覆盖同名文件
           </label>
           <label className="check-row">
-            <input checked={outputSubdirByFilename} disabled={running} onChange={(event) => setOutputSubdirByFilename(event.currentTarget.checked)} type="checkbox" />
+            <input checked={outputSubdirByFilename} disabled={busy} onChange={(event) => setOutputSubdirByFilename(event.currentTarget.checked)} type="checkbox" />
             按文件名建文件夹
           </label>
         </div>
@@ -276,26 +319,34 @@ function DirectDownloaderTool({ initialOutputDir = "", initialSettings = {} }: {
 
       <ActionBar
         hint="先校验，再下载。"
-        secondary={<button className="ghost-button" disabled={running || (!requests.length && !downloadRows.length && !error && !logs.length)} onClick={clearResults} type="button">清空</button>}
+        secondary={<button className="ghost-button" disabled={busy || (!requests.length && !tasks.length && !error && !runtimeLogs.length)} onClick={() => void clearResults()} type="button">清空</button>}
         tertiary={<button className="ghost-button" disabled={!canInspect} onClick={handleParseValidate} type="button">校验</button>}
-        primary={<button className="primary-button" disabled={!canBuild} onClick={handleDownload} type="button">{running ? "运行中" : "下载"}</button>}
+        primary={<button className="primary-button" disabled={!canBuild} onClick={handleDownload} type="button">{busy ? "运行中" : "下载"}</button>}
       />
 
-      {downloadRows.length ? (
+      {overview.total > 0 ? (
         <section className="table-panel">
-          <div className="panel-title">下载结果</div>
+          <div className="panel-title">进度总览</div>
           <div className="result-list">
-            {downloadRows.map((row, index) => (
-              <div className="result-row" key={`${String(row.url)}-${index}`}>
-                <span>{String(row.url)}</span>
-                <strong>{row.success ? "success" : `fail (${String(row.returncode ?? "")})`}</strong>
-              </div>
-            ))}
+            <div className="result-row"><span>总任务数</span><strong>{overview.total}</strong></div>
+            <div className="result-row"><span>当前任务</span><strong>{overview.current || "-"}</strong></div>
+            <div className="result-row"><span>完成数</span><strong>{overview.completed}</strong></div>
+            <div className="result-row"><span>失败数</span><strong>{overview.failed}</strong></div>
+            <div className="result-row"><span>总进度</span><strong>{overview.summary}</strong></div>
           </div>
         </section>
       ) : null}
 
-      <RuntimeLogPanel error={error} logs={logs} />
+      <DownloadQueueTable
+        active={runtime.active}
+        onCancel={() => void runtime.control("cancel")}
+        onPause={() => void runtime.control("pause")}
+        onResume={() => void runtime.control("resume")}
+        paused={runtime.paused}
+        rows={queueRows}
+      />
+
+      <RuntimeLogPanel error={error || runtime.sessionError} logs={runtimeLogs} />
     </div>
   );
 }

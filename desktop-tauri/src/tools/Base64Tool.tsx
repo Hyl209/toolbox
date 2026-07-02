@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { pickDirectory, pickFile, type DialogFilter, runTool } from "../api/tauri";
 import { ActionBar, RuntimeLogPanel } from "../features/tools/components/CommonToolParts";
 import { errorText, resultPath, resultText } from "../features/tools/utils/toolResult";
+import { uiText } from "../uiText";
 
 type TextMode = "encode" | "decode";
 type WorkMode = "text" | "file";
@@ -28,8 +29,8 @@ function Base64Tool({ initialOutputDir = "" }: { initialOutputDir?: string }) {
   const [error, setError] = useState("");
   const [logs, setLogs] = useState<string[]>([]);
 
-  const inputStats = useMemo(() => `${inputText.length} chars`, [inputText.length]);
-  const outputStats = useMemo(() => `${outputText.length} chars`, [outputText.length]);
+  const inputStats = useMemo(() => uiText.common.charCount(inputText.length), [inputText.length]);
+  const outputStats = useMemo(() => uiText.common.charCount(outputText.length), [outputText.length]);
   const fileActionLabel = fileMode === "encode_file" ? "文件 → Base64 文本" : "Base64 文本 → 文件";
   const canRunText = Boolean(inputText) && !running;
   const canRunFile = !running && Boolean(outputDir) && Boolean(outputName) && (fileMode === "encode_file" ? Boolean(filePath) : Boolean(inputText));

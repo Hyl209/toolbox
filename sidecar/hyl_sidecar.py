@@ -9,7 +9,7 @@ from pathlib import Path
 
 try:
     from .protocol import emit_error, emit_progress, emit_result
-    from .runtime_state import bind_download_control, bind_progress_emitter
+    from .runtime_state import ControlPathError, bind_download_control, bind_progress_emitter, validate_control_path
     from .settings_bridge import (
         DEFAULT_PLUGINS_DIR,
         DEFAULT_SETTINGS,
@@ -41,7 +41,7 @@ try:
     from .tools.zipandpng_tool import run_zipandpng
 except ImportError:  # direct script execution: python sidecar\hyl_sidecar.py
     from protocol import emit_error, emit_progress, emit_result
-    from runtime_state import bind_download_control, bind_progress_emitter
+    from runtime_state import ControlPathError, bind_download_control, bind_progress_emitter, validate_control_path
     from settings_bridge import (
         DEFAULT_PLUGINS_DIR,
         DEFAULT_SETTINGS,
@@ -113,6 +113,12 @@ def load_task(path: Path) -> dict:
 def run_tool(tool_id: str, input_path: Path, control_path: Path | None = None) -> int:
     task = load_task(input_path)
     task_id = task.get("task_id")
+    if control_path is not None:
+        try:
+            control_path = validate_control_path(control_path)
+        except ControlPathError as exc:
+            emit_error(task_id, "INVALID_CONTROL_PATH", str(exc))
+            return 1
     runners = {
         "batchrename": run_batchrename,
         "base64": run_base64,

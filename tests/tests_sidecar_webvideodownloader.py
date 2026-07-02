@@ -4,6 +4,7 @@ import contextlib
 import functools
 import http.server
 import json
+import logging
 import os
 import socketserver
 import subprocess
@@ -239,6 +240,135 @@ def test_webvideodownloader_download_batch_monkeypatch_passes_legacy_arguments(m
     assert result["data"]["fail_count"] == 0
     assert result["data"]["files"] == [str(tmp_path / "sample.mp4")]
     assert result["data"]["logs"] == ["download started"]
+
+
+def test_webvideodownloader_warns_when_cancel_token_support_is_not_declared(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    from sidecar.tools import webvideodownloader_tool as tool
+
+    module = tool._load_converter_module()
+    monkeypatch.delattr(module, "__supports_cancel__", raising=False)
+
+    def fake_download_batch(tasks, output_dir, telegram_config=None, options=None, progress_cb=None):
+        return [{"source_url": tasks[0].source_url, "success": True, "files": []}]
+
+    monkeypatch.setattr(module, "download_batch", fake_download_batch)
+
+    caplog.set_level(logging.WARNING)
+    result = tool.run_webvideodownloader(
+        {
+            "task_id": "web-download-cancel-support",
+            "action": "download",
+            "payload": {"urls": ["https://example.com/a"], "output_dir": str(tmp_path), "options": {}},
+        }
+    )
+
+    assert result["ok"] is True
+    assert "does not declare cancel token support" in caplog.text
+
+
+def test_webvideodownloader_download_payload_tasks_preserve_target_titles(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from sidecar.tools import webvideodownloader_tool as tool
+
+    captured: dict[str, object] = {}
+
+    def fake_download_batch(tasks, output_dir, telegram_config=None, options=None, progress_cb=None):
+        captured["titles"] = [task.target_title for task in tasks]
+        captured["subdirs"] = [task.output_subdir for task in tasks]
+        return [{"source_url": tasks[0].source_url, "success": True, "files": [str(tmp_path / "29274_001.mp4")]}]
+
+    module = tool._load_converter_module()
+    monkeypatch.setattr(module, "download_batch", fake_download_batch)
+
+    result = tool.run_webvideodownloader(
+        {
+            "task_id": "web-download-titled",
+            "action": "download",
+            "payload": {
+                "output_dir": str(tmp_path),
+                "tasks": [
+                    {"source_url": "https://cdn.example.com/a/index.m3u8", "source_kind": "web", "target_title": "29274_001", "output_subdir": "29274"},
+                    {"source_url": "https://cdn.example.com/b/index.m3u8", "source_kind": "web", "target_title": "29274_002", "output_subdir": "29274"},
+                ],
+                "options": {},
+            },
+        }
+    )
+
+    assert result["ok"] is True
+    assert captured["titles"] == ["29274_001", "29274_002"]
+    assert captured["subdirs"] == ["29274", "29274"]
+
+
+def test_webvideodownloader_embed_thumbnail_action_uses_source_and_frame_fallback(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from sidecar.tools import webvideodownloader_tool as tool
+
+    seen: list[dict[str, object]] = []
+
+    def fake_embed_thumbnail(video_path, source_url, progress_cb=None, candidate_index=None, thumbnail_mode="web_then_frame", proxy_url=""):
+        seen.append(
+            {
+                "video_path": str(video_path),
+                "source_url": source_url,
+                "candidate_index": candidate_index,
+                "thumbnail_mode": thumbnail_mode,
+                "proxy_url": proxy_url,
+            }
+        )
+        if progress_cb:
+            progress_cb(f"cover:{Path(video_path).name}")
+        return {"success": True, "files": [str(video_path)]}
+
+    module = tool._load_converter_module()
+    monkeypatch.setattr(module, "embed_thumbnail", fake_embed_thumbnail)
+
+    video_a = tmp_path / "a.mp4"
+    video_b = tmp_path / "b.mp4"
+    video_a.write_bytes(b"a")
+    video_b.write_bytes(b"b")
+
+    result = tool.run_webvideodownloader(
+        {
+            "task_id": "web-cover-001",
+            "action": "embed_thumbnail",
+            "payload": {
+                "jobs": [
+                    {
+                        "path": str(video_a),
+                        "source_url": "https://example.com/course",
+                        "candidate_index": 2,
+                        "thumbnail_mode": "web_then_frame",
+                    },
+                    {
+                        "path": str(video_b),
+                        "source_url": "",
+                        "thumbnail_mode": "frame",
+                    },
+                ],
+                "options": {"proxy_url": "http://127.0.0.1:7890"},
+            },
+        }
+    )
+
+    assert result["ok"] is True
+    assert seen == [
+        {
+            "video_path": str(video_a),
+            "source_url": "https://example.com/course",
+            "candidate_index": 2,
+            "thumbnail_mode": "web_then_frame",
+            "proxy_url": "http://127.0.0.1:7890",
+        },
+        {
+            "video_path": str(video_b),
+            "source_url": "",
+            "candidate_index": None,
+            "thumbnail_mode": "frame",
+            "proxy_url": "http://127.0.0.1:7890",
+        },
+    ]
+    assert result["data"]["success_count"] == 2
+    assert result["data"]["fail_count"] == 0
+    assert result["data"]["logs"] == ["cover:a.mp4", "cover:b.mp4"]
 
 
 def test_webvideodownloader_download_local_html_video(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

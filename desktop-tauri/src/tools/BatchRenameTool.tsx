@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { pickDirectory, runTool, type ToolResult, type ToolSettings } from "../api/tauri";
+import { uiText } from "../uiText";
 
 const LEGACY_DEFAULT_PREFIX = "\u6279\u91cf\u547d\u540d";
 const legacyGroupModes: Record<string, string> = {
@@ -262,7 +263,7 @@ function BatchRenameTool({ initialSettings = {} }: { initialSettings?: ToolSetti
 
       {(plan.length || results.length) ? (
         <section className="table-panel">
-          <div className="panel-title">{results.length ? "Rename results" : "Preview plan"}</div>
+          <div className="panel-title">{results.length ? uiText.common.renameResults : uiText.common.previewPlan}</div>
           <div className="result-list">
             {(results.length ? results : plan).map((row, index) => (
               <div className="result-row" key={`${row.source_name}-${row.target_name}-${index}`}>
@@ -276,7 +277,7 @@ function BatchRenameTool({ initialSettings = {} }: { initialSettings?: ToolSetti
 
       <section className="log-panel" aria-label="运行日志">
         <div>
-          <div className="panel-title">Runtime</div>
+          <div className="panel-title">{uiText.common.runtime}</div>
           <p className="muted">最近 5 条本地执行记录</p>
         </div>
         <div className="log-content">

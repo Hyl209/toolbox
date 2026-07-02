@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import inspect
 import importlib.util
+import logging
 import sys
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
@@ -11,15 +11,18 @@ from typing import Any
 
 try:
     from ..runtime_paths import project_root
-    from ..runtime_state import current_download_token, emit_runtime_progress
+    from ..runtime_state import emit_runtime_progress
+    from ._cancel_support import add_cancel_token_kwarg
 except ImportError:  # direct script execution support
     from runtime_paths import project_root
-    from runtime_state import current_download_token, emit_runtime_progress
+    from runtime_state import emit_runtime_progress
+    from tools._cancel_support import add_cancel_token_kwarg
 
 
 ROOT = project_root(__file__, 2)
 MODULE_DIR = ROOT / "modules" / "video-downloader"
 PACKAGE_NAME = "hyl_legacy_video_downloader"
+logger = logging.getLogger(__name__)
 
 
 def _load_converter_module() -> ModuleType:
@@ -109,6 +112,25 @@ def _urls_from_payload(payload: dict[str, Any], module: ModuleType) -> list[str]
     return module.parse_task_lines(_payload_str(payload, "text"))
 
 
+def _download_tasks_from_payload(payload: dict[str, Any], module: ModuleType) -> list[Any]:
+    raw_tasks = payload.get("tasks")
+    if not isinstance(raw_tasks, list):
+        return module.build_download_tasks(_urls_from_payload(payload, module))
+    tasks: list[Any] = []
+    for item in raw_tasks:
+        if not isinstance(item, dict):
+            continue
+        urls = module.parse_task_lines(str(item.get("source_url") or item.get("url") or ""))
+        if not urls:
+            continue
+        source_url = urls[0]
+        source_kind = str(item.get("source_kind") or "web")
+        target_title = str(item.get("target_title") or "").strip()
+        output_subdir = str(item.get("output_subdir") or "").strip()
+        tasks.append(module.DownloadTask(source_url, source_kind, target_title, output_subdir))
+    return tasks
+
+
 def _inspect_urls_from_payload(payload: dict[str, Any], module: ModuleType) -> tuple[list[str], list[str]]:
     urls = _urls_from_payload(payload, module)
     web_urls: list[str] = []
@@ -150,6 +172,8 @@ def run_webvideodownloader(task: dict) -> dict:
         return _run_validate(payload)
     if action == "inspect":
         return _run_inspect(payload)
+    if action == "embed_thumbnail":
+        return _run_embed_thumbnail(payload)
     if action == "download":
         return _run_download(payload)
     return _error("UNKNOWN_ACTION", f"unknown action: {action}")
@@ -258,12 +282,100 @@ def _download_data(
     }
 
 
+def _thumbnail_jobs_from_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_jobs = payload.get("jobs")
+    jobs: list[dict[str, Any]] = []
+    if isinstance(raw_jobs, list):
+        for item in raw_jobs:
+            if not isinstance(item, dict):
+                continue
+            path = str(item.get("path") or item.get("file") or "").strip()
+            if not path:
+                continue
+            candidate_index = item.get("candidate_index")
+            try:
+                candidate_index = int(candidate_index) if candidate_index is not None else None
+            except (TypeError, ValueError):
+                candidate_index = None
+            source_url = str(item.get("source_url") or "").strip()
+            thumbnail_mode = str(item.get("thumbnail_mode") or ("web_then_frame" if source_url else "frame")).strip() or "frame"
+            jobs.append(
+                {
+                    "path": Path(path),
+                    "source_url": source_url,
+                    "candidate_index": candidate_index,
+                    "thumbnail_mode": thumbnail_mode,
+                }
+            )
+    if jobs:
+        return jobs
+
+    files = payload.get("files")
+    if not isinstance(files, list):
+        return []
+    source_url = _payload_str(payload, "source_url").strip()
+    thumbnail_mode = _payload_str(payload, "thumbnail_mode", "web_then_frame" if source_url else "frame").strip() or "frame"
+    candidate_index = payload.get("candidate_index")
+    try:
+        candidate_index = int(candidate_index) if candidate_index is not None else None
+    except (TypeError, ValueError):
+        candidate_index = None
+    for item in files:
+        path = str(item or "").strip()
+        if not path:
+            continue
+        jobs.append(
+            {
+                "path": Path(path),
+                "source_url": source_url,
+                "candidate_index": candidate_index,
+                "thumbnail_mode": thumbnail_mode,
+            }
+        )
+    return jobs
+
+
+def _run_embed_thumbnail(payload: dict[str, Any]) -> dict:
+    module = _load_converter_module()
+    jobs = _thumbnail_jobs_from_payload(payload)
+    if not jobs:
+        return _download_data(errors=["payload.jobs or payload.files must contain at least one file"])
+
+    logs: list[str] = []
+    proxy_url = _options(payload, module).proxy_url
+    results: list[dict[str, Any]] = []
+
+    def _progress(message: str) -> None:
+        logs.append(message)
+        emit_runtime_progress(message)
+
+    for job in jobs:
+        try:
+            result = module.embed_thumbnail(
+                job["path"],
+                job["source_url"],
+                progress_cb=_progress,
+                candidate_index=job["candidate_index"],
+                thumbnail_mode=job["thumbnail_mode"],
+                proxy_url=proxy_url,
+            )
+            clean_result = _clean(result)
+            if isinstance(clean_result, dict):
+                clean_result.setdefault("files", [str(job["path"])] if clean_result.get("success") else [])
+                clean_result.setdefault("_path", str(job["path"]))
+                results.append(clean_result)
+            else:
+                results.append({"success": True, "files": [str(job["path"])], "_path": str(job["path"])})
+        except Exception as exc:
+            results.append({"success": False, "error": str(exc), "files": [], "_path": str(job["path"])})
+    return _download_data(results=results, logs=logs)
+
+
 def _run_download(payload: dict[str, Any]) -> dict:
     module = _load_converter_module()
     output_dir = _payload_str(payload, "output_dir")
     try:
-        urls = _urls_from_payload(payload, module)
-        tasks = module.build_download_tasks(urls)
+        tasks = _download_tasks_from_payload(payload, module)
     except ValueError as exc:
         return _download_data(errors=[str(exc)])
 
@@ -289,9 +401,7 @@ def _run_download(payload: dict[str, Any]) -> dict:
             "options": _options(payload, module),
             "progress_cb": _progress,
         }
-        signature = inspect.signature(module.download_batch)
-        if "token" in signature.parameters:
-            kwargs["token"] = current_download_token()
+        add_cancel_token_kwarg(module, kwargs, logger)
         results = module.download_batch(tasks, output_dir, **kwargs)
     except ValueError as exc:
         return _download_data(logs=logs, errors=[str(exc)])

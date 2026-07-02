@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { runTool } from "../api/tauri";
+import { uiText } from "../uiText";
 
 type UuidAction = "generate" | "normalize" | "validate" | "describe";
 
@@ -95,7 +96,7 @@ function UuidToolsPluginTool() {
   return (
     <div className="base64-tool uuid-plugin-tool">
       <div className="tool-heading">
-        <div><p className="eyebrow">Plugin - UUID tools</p><h2>{ui.title}</h2><p>{ui.subtitle}</p></div>
+        <div><p className="eyebrow">{uiText.common.pluginLabel("uuid_tools")}</p><h2>{ui.title}</h2><p>{ui.subtitle}</p></div>
         <div className="mode-switch" role="group" aria-label={ui.actionAria}>
           {(["generate", "normalize", "validate", "describe"] as UuidAction[]).map((item) => (
             <button className={action === item ? "active" : ""} disabled={running} key={item} onClick={() => setAction(item)} type="button">{actionLabels[item]}</button>
@@ -111,7 +112,7 @@ function UuidToolsPluginTool() {
 
       <div className="editor-grid">
         <label className="field-block"><span>{ui.input}<small>{needsInput ? ui.required : ui.noInput}</small></span><textarea disabled={running || action === "generate"} onChange={(event) => setInputText(event.currentTarget.value)} placeholder={ui.inputPlaceholder} value={inputText} /></label>
-        <label className="field-block output-field"><span>{ui.output}<small>{outputText.length} chars</small></span><textarea placeholder={ui.outputPlaceholder} readOnly value={outputText} /></label>
+        <label className="field-block output-field"><span>{ui.output}<small>{uiText.common.charCount(outputText.length)}</small></span><textarea placeholder={ui.outputPlaceholder} readOnly value={outputText} /></label>
       </div>
 
       <div className="actions-row">
@@ -124,7 +125,7 @@ function UuidToolsPluginTool() {
       </div>
 
       <section className="log-panel" aria-label={ui.logAria}>
-        <div><div className="panel-title">Runtime</div><p className="muted">{ui.recentLogs}</p></div>
+        <div><div className="panel-title">{uiText.common.runtime}</div><p className="muted">{ui.recentLogs}</p></div>
         <div className="log-content">{error ? <div className="error-box">{error}</div> : null}{logs.length ? <ul>{logs.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul> : <p className="muted">{ui.noLogs}</p>}</div>
       </section>
     </div>

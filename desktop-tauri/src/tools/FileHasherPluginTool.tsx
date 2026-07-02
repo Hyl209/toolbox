@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { pickFile, runTool } from "../api/tauri";
+import { uiText } from "../uiText";
 
 type FileHasherAction = "calculate" | "verify";
 type HashAlgorithm = "md5" | "sha1" | "sha256";
@@ -57,7 +58,7 @@ function FileHasherPluginTool() {
   const [error, setError] = useState("");
   const [logs, setLogs] = useState<string[]>([]);
 
-  const outputStats = useMemo(() => `${outputText.length} chars`, [outputText.length]);
+  const outputStats = useMemo(() => uiText.common.charCount(outputText.length), [outputText.length]);
   const canRun = !running && Boolean(path.trim()) && (action === "calculate" ? selectedAlgorithms.length > 0 : Boolean(expectedChecksum.trim()));
 
   function toggleAlgorithm(algorithm: HashAlgorithm) {
@@ -115,7 +116,7 @@ function FileHasherPluginTool() {
     <div className="base64-tool file-hasher-plugin-tool">
       <div className="tool-heading">
         <div>
-          <p className="eyebrow">Plugin - file_hasher</p>
+          <p className="eyebrow">{uiText.common.pluginLabel("file_hasher")}</p>
           <h2>{text.title}</h2>
           <p>{text.desc}</p>
         </div>
@@ -176,7 +177,7 @@ function FileHasherPluginTool() {
       </div>
 
       <section className="log-panel" aria-label={text.log}>
-        <div><div className="panel-title">Runtime</div><p className="muted">{text.recent}</p></div>
+        <div><div className="panel-title">{uiText.common.runtime}</div><p className="muted">{text.recent}</p></div>
         <div className="log-content">
           {error ? <div className="error-box">{error}</div> : null}
           {logs.length ? <ul>{logs.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul> : <p className="muted">{text.emptyLog}</p>}

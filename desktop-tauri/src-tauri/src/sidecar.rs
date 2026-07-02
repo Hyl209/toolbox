@@ -4,12 +4,14 @@ use std::collections::{BTreeSet, HashMap};
 use std::env;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::State;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
+use tokio::task::JoinHandle;
 
 const STATUS_RUNNING: &str = "running";
 const STATUS_PAUSED: &str = "paused";
@@ -17,8 +19,12 @@ const STATUS_COMPLETED: &str = "completed";
 const STATUS_FAILED: &str = "failed";
 const STATUS_CANCELLED: &str = "cancelled";
 
+static NEXT_SESSION_ID: AtomicU64 = AtomicU64::new(1);
+
 #[derive(Default)]
 pub struct ToolSessionStore {
+    // Lock order: never hold this map mutex while awaiting a ToolSession mutex.
+    // Clone/remove the Arc under the map lock, release it, then lock the session.
     sessions: Mutex<HashMap<String, Arc<Mutex<ToolSession>>>>,
 }
 
@@ -185,7 +191,7 @@ pub async fn start_tool_session(
 
     tokio::spawn(read_sidecar_stdout(session.clone(), stdout));
     tokio::spawn(read_sidecar_stderr(session.clone(), stderr));
-    tokio::spawn(wait_for_sidecar_exit(session.clone(), child, input_path, control_path));
+    tokio::spawn(wait_for_sidecar_exit(session.clone(), child));
 
     let snapshot = session.lock().await.snapshot();
     Ok(snapshot)
@@ -280,10 +286,8 @@ pub async fn cleanup_tool_session(
     }
     .ok_or_else(|| format!("unknown tool session: {session_id}"))?;
 
-    {
+    let (input_path, control_path) = {
         let mut guard = session.lock().await;
-        guard.cancel_requested = true;
-        guard.paused = false;
         if let Some(path) = guard.control_path.as_ref() {
             let _ = write_control_state(
                 path,
@@ -297,14 +301,23 @@ pub async fn cleanup_tool_session(
         if let Some(pid) = guard.pid {
             kill_process_by_pid(pid);
         }
-    }
-    if let Some(path) = session.lock().await.input_path.clone() {
+        prepare_session_cleanup(&mut guard)
+    };
+    if let Some(path) = input_path {
         cleanup_temp(&path);
     }
-    if let Some(path) = session.lock().await.control_path.clone() {
+    if let Some(path) = control_path {
         cleanup_temp(&path);
     }
     Ok(json!({"session_id": session_id, "removed": true}))
+}
+
+fn prepare_session_cleanup(session: &mut ToolSession) -> (Option<PathBuf>, Option<PathBuf>) {
+    session.cancel_requested = true;
+    session.paused = false;
+    session.status = STATUS_CANCELLED.to_string();
+    session.child = None;
+    (session.input_path.take(), session.control_path.take())
 }
 
 async fn get_session(
@@ -384,51 +397,49 @@ async fn read_sidecar_stderr(
     guard.stderr = text;
 }
 
-async fn wait_for_sidecar_exit(
-    session: Arc<Mutex<ToolSession>>,
-    child: Arc<Mutex<Child>>,
-    input_path: PathBuf,
-    control_path: PathBuf,
-) {
+async fn wait_for_sidecar_exit(session: Arc<Mutex<ToolSession>>, child: Arc<Mutex<Child>>) {
     let status = {
         let mut child = child.lock().await;
         child.wait().await
     };
-    cleanup_temp(&input_path);
-    cleanup_temp(&control_path);
 
-    let mut guard = session.lock().await;
-    guard.exit_code = status.as_ref().ok().and_then(|value| value.code());
-    guard.child = None;
-    guard.input_path = None;
-    guard.control_path = None;
+    let (input_path, control_path) = {
+        let mut guard = session.lock().await;
+        guard.exit_code = status.as_ref().ok().and_then(|value| value.code());
+        guard.child = None;
+        let input_path = guard.input_path.take();
+        let control_path = guard.control_path.take();
 
-    if guard.status == STATUS_CANCELLED {
-        return;
-    }
-    if guard.result.is_some() {
-        guard.status = STATUS_COMPLETED.to_string();
-        return;
-    }
-    if guard.error.is_some() {
-        guard.status = STATUS_FAILED.to_string();
-        return;
-    }
-    if guard.cancel_requested {
-        guard.status = STATUS_CANCELLED.to_string();
-        return;
-    }
+        if guard.status != STATUS_CANCELLED {
+            if guard.result.is_some() {
+                guard.status = STATUS_COMPLETED.to_string();
+            } else if guard.error.is_some() {
+                guard.status = STATUS_FAILED.to_string();
+            } else if guard.cancel_requested {
+                guard.status = STATUS_CANCELLED.to_string();
+            } else {
+                let exit_text = match status {
+                    Ok(value) => value.to_string(),
+                    Err(err) => err.to_string(),
+                };
+                guard.status = STATUS_FAILED.to_string();
+                guard.error = Some(format!(
+                    "sidecar exited without result; status={exit_text}; progress_events={}; stderr={}",
+                    guard.progress_events.len(),
+                    summarize(&guard.stderr)
+                ));
+            }
+        }
 
-    let exit_text = match status {
-        Ok(value) => value.to_string(),
-        Err(err) => err.to_string(),
+        (input_path, control_path)
     };
-    guard.status = STATUS_FAILED.to_string();
-    guard.error = Some(format!(
-        "sidecar exited without result; status={exit_text}; progress_events={}; stderr={}",
-        guard.progress_events.len(),
-        summarize(&guard.stderr)
-    ));
+
+    if let Some(path) = input_path {
+        cleanup_temp(&path);
+    }
+    if let Some(path) = control_path {
+        cleanup_temp(&path);
+    }
 }
 
 async fn run_sidecar(tool_id: String, input: Value) -> Result<Value, String> {
@@ -538,7 +549,7 @@ async fn run_sidecar_command(args: Vec<OsString>) -> Result<Value, String> {
     }
 
     let status = child.wait().await.map_err(|err| err.to_string())?;
-    let stderr = stderr_task.await.unwrap_or_default();
+    let stderr = collect_stderr_task(stderr_task).await;
 
     if let Some(data) = result {
         return Ok(data);
@@ -553,16 +564,7 @@ async fn run_sidecar_command(args: Vec<OsString>) -> Result<Value, String> {
 
 async fn spawn_sidecar_child(args: Vec<OsString>) -> Result<Child, String> {
     let invocation = resolve_sidecar_invocation()?;
-
-    let mut command = Command::new(&invocation.program);
-    command
-        .args(&invocation.args)
-        .args(&args)
-        .current_dir(&invocation.current_dir)
-        .env("PYTHONUTF8", "1")
-        .env("PYTHONIOENCODING", "utf-8")
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
+    let mut command = build_sidecar_command(&invocation, &args);
 
     command.spawn().map_err(|err| {
         format!(
@@ -573,6 +575,26 @@ async fn spawn_sidecar_child(args: Vec<OsString>) -> Result<Child, String> {
             invocation.args
         )
     })
+}
+
+async fn collect_stderr_task(stderr_task: JoinHandle<String>) -> String {
+    stderr_task
+        .await
+        .unwrap_or_else(|_| "<stderr task panicked>".to_string())
+}
+
+fn build_sidecar_command(invocation: &SidecarInvocation, args: &[OsString]) -> Command {
+    let mut command = Command::new(&invocation.program);
+    command
+        .args(&invocation.args)
+        .args(args)
+        .current_dir(&invocation.current_dir)
+        .env("PYTHONUTF8", "1")
+        .env("PYTHONIOENCODING", "utf-8")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true);
+    command
 }
 
 struct SidecarInvocation {
@@ -777,7 +799,10 @@ fn temp_control_path() -> PathBuf {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_nanos())
         .unwrap_or_default();
-    env::temp_dir().join(format!("hyl-sidecar-control-{}-{nanos}.json", std::process::id()))
+    env::temp_dir().join(format!(
+        "hyl-sidecar-control-{}-{nanos}.json",
+        std::process::id()
+    ))
 }
 
 fn unique_session_id(tool_id: &str) -> String {
@@ -785,7 +810,8 @@ fn unique_session_id(tool_id: &str) -> String {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_nanos())
         .unwrap_or_default();
-    format!("{tool_id}-{nanos}")
+    let sequence = NEXT_SESSION_ID.fetch_add(1, Ordering::Relaxed);
+    format!("{tool_id}-{nanos}-{sequence}")
 }
 
 fn cleanup_temp(path: &Path) {
@@ -799,9 +825,7 @@ fn cleanup_temp(path: &Path) {
 #[cfg(windows)]
 fn kill_process_by_pid(pid: u32) {
     use windows_sys::Win32::Foundation::CloseHandle;
-    use windows_sys::Win32::System::Threading::{
-        OpenProcess, TerminateProcess, PROCESS_TERMINATE,
-    };
+    use windows_sys::Win32::System::Threading::{OpenProcess, TerminateProcess, PROCESS_TERMINATE};
     unsafe {
         let handle = OpenProcess(PROCESS_TERMINATE, 0, pid);
         if handle.is_null() {
@@ -843,7 +867,12 @@ fn summarize(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{load_settings_snapshot, run_settings_update_with_paths, run_tool, write_control_state, ToolControlState};
+    use super::{
+        build_sidecar_command, collect_stderr_task, load_settings_snapshot,
+        prepare_session_cleanup, run_settings_update_with_paths, run_tool, unique_session_id,
+        write_control_state, SidecarInvocation, ToolControlState, ToolSession, STATUS_CANCELLED,
+        STATUS_RUNNING,
+    };
     use serde_json::json;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -920,12 +949,79 @@ mod tests {
         .expect("control state should be written");
 
         let content = std::fs::read_to_string(&control_path).expect("control file should exist");
-        let payload: serde_json::Value = serde_json::from_str(&content).expect("control file should be valid json");
+        let payload: serde_json::Value =
+            serde_json::from_str(&content).expect("control file should be valid json");
         assert_eq!(payload["paused"], true);
         assert_eq!(payload["cancelled"], true);
         assert_eq!(payload["reconnect"], false);
 
         let _ = std::fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn prepare_session_cleanup_marks_cancelled_and_takes_temp_paths() {
+        let input_path = PathBuf::from("input.json");
+        let control_path = PathBuf::from("control.json");
+        let mut session = test_session();
+        session.paused = true;
+        session.input_path = Some(input_path.clone());
+        session.control_path = Some(control_path.clone());
+
+        let paths = prepare_session_cleanup(&mut session);
+
+        assert!(session.cancel_requested);
+        assert!(!session.paused);
+        assert_eq!(session.status, STATUS_CANCELLED);
+        assert_eq!(session.input_path, None);
+        assert_eq!(session.control_path, None);
+        assert_eq!(paths, (Some(input_path), Some(control_path)));
+    }
+
+    #[test]
+    fn unique_session_id_includes_monotonic_suffix_after_timestamp() {
+        let session_id = unique_session_id("same-tool");
+        let suffixes: Vec<&str> = session_id.rsplitn(2, '-').collect();
+
+        assert_eq!(suffixes.len(), 2);
+        assert!(
+            suffixes[0].parse::<u64>().is_ok(),
+            "last suffix should be the monotonic counter: {session_id}"
+        );
+        assert!(
+            suffixes[1].rsplit_once('-').is_some(),
+            "timestamp and counter should both be present: {session_id}"
+        );
+    }
+
+    #[test]
+    fn collect_stderr_task_reports_panics_explicitly() {
+        let previous_hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let stderr = tauri::async_runtime::block_on(async {
+            let task = tokio::spawn(async {
+                panic!("stderr reader exploded");
+                #[allow(unreachable_code)]
+                String::new()
+            });
+            collect_stderr_task(task).await
+        });
+        std::panic::set_hook(previous_hook);
+
+        assert_eq!(stderr, "<stderr task panicked>");
+    }
+
+    #[test]
+    fn build_sidecar_command_kills_child_on_drop() {
+        let invocation = SidecarInvocation {
+            mode: "test",
+            program: PathBuf::from("python"),
+            args: vec![],
+            current_dir: PathBuf::from("."),
+        };
+
+        let command = build_sidecar_command(&invocation, &[]);
+
+        assert!(command.get_kill_on_drop());
     }
 
     fn unique_temp_dir(prefix: &str) -> PathBuf {
@@ -934,5 +1030,25 @@ mod tests {
             .map(|duration| duration.as_nanos())
             .unwrap_or_default();
         std::env::temp_dir().join(format!("{prefix}-{}-{nanos}", std::process::id()))
+    }
+
+    fn test_session() -> ToolSession {
+        ToolSession {
+            session_id: "session".to_string(),
+            tool_id: "tool".to_string(),
+            status: STATUS_RUNNING.to_string(),
+            pid: None,
+            paused: false,
+            cancel_requested: false,
+            result: None,
+            error: None,
+            exit_code: None,
+            logs: Vec::new(),
+            progress_events: Vec::new(),
+            stderr: String::new(),
+            child: None,
+            input_path: None,
+            control_path: None,
+        }
     }
 }

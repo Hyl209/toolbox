@@ -6,6 +6,7 @@ import sys
 import threading
 import time
 import types
+from contextlib import contextmanager
 
 
 ROOT = pathlib.Path(__file__).resolve().parent
@@ -2472,6 +2473,91 @@ def test_emit_aria2_progress_reports_speed_without_overall_percent():
     assert any(item.startswith('__HYL_PROGRESS__|web_aria2|') and 'speed=4.5MiB/s' in item and 'percent=12' in item and 'eta=00:19' in item for item in captured)
     assert not any(item.startswith('__HYL_PROGRESS__|web_status|') for item in captured)
     assert any('正在下载 "demo.mp4" "4.5MiB/s" "--"' in item for item in captured)
+
+
+def test_emit_aria2_file_progress_reports_percent_speed_and_eta():
+    wb = load_web_backend()
+    captured: list[str] = []
+
+    wb._emit_aria2_file_progress(
+        captured.append,
+        'demo.mp4',
+        downloaded_bytes=50 * 1024 * 1024,
+        total_bytes=100 * 1024 * 1024,
+        elapsed=10.0,
+    )
+
+    assert any(item.startswith('__HYL_PROGRESS__|web_aria2|') and 'name=demo.mp4' in item and 'percent=50' in item and 'speed=5.0 MiB/s' in item and 'eta=00:10' in item for item in captured)
+    assert any('demo.mp4' in item and '5.0 MiB/s' in item and '50%' in item and '00:10' in item for item in captured)
+
+
+def test_download_url_with_ytdlp_uses_file_progress_monitor_for_concurrent_aria2():
+    module = load_module()
+    wb = load_web_backend()
+    sh = load_shared()
+    fake_ytdlp = types.ModuleType('yt_dlp')
+    monitor_calls: list[tuple[str, int]] = []
+
+    class FakeYoutubeDL:
+        def __init__(self, opts):
+            self.opts = opts
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def extract_info(self, url, download=False):
+            if not download:
+                return {'title': 'Demo', 'id': 'abc', 'filesize': 100}
+            pathlib.Path(str(self.opts['outtmpl']).replace('%(ext)s', 'mp4')).write_text('ok', encoding='utf-8')
+            return {'ok': True}
+
+    @contextmanager
+    def fake_monitor(progress_cb, output_root, unique_stem, file_name, total_bytes, token=None):
+        monitor_calls.append((file_name, total_bytes))
+        yield
+
+    @contextmanager
+    def forbidden_capture(*_args, **_kwargs):
+        raise AssertionError('concurrent aria2 must not redirect process stdout')
+        yield
+
+    fake_ytdlp.YoutubeDL = FakeYoutubeDL
+    original_module = sys.modules.get('yt_dlp')
+    original_require = wb._require_web_backend
+    original_resolve_aria2 = sh._resolve_aria2c_path
+    original_ffmpeg = wb.shutil.which
+    original_capture = wb._capture_aria2_console_progress
+    original_monitor = wb._monitor_aria2_file_progress
+    try:
+        sys.modules['yt_dlp'] = fake_ytdlp
+        wb._require_web_backend = lambda: None
+        sh._resolve_aria2c_path = lambda: 'C:/tools/aria2c.exe'
+        wb.shutil.which = lambda name: ''
+        wb._capture_aria2_console_progress = forbidden_capture
+        wb._monitor_aria2_file_progress = fake_monitor
+        with tempfile.TemporaryDirectory() as tmp:
+            result = wb._download_url_with_ytdlp(
+                'https://example.com/video',
+                pathlib.Path(tmp),
+                module.DownloadOptions(max_concurrent_downloads=2),
+                lambda _message: None,
+            )
+    finally:
+        if original_module is None:
+            sys.modules.pop('yt_dlp', None)
+        else:
+            sys.modules['yt_dlp'] = original_module
+        wb._require_web_backend = original_require
+        sh._resolve_aria2c_path = original_resolve_aria2
+        wb.shutil.which = original_ffmpeg
+        wb._capture_aria2_console_progress = original_capture
+        wb._monitor_aria2_file_progress = original_monitor
+
+    assert result['success'] is True
+    assert monitor_calls == [('Demo [abc]', 100)]
 
 
 def test_capture_aria2_console_progress_serializes_process_stdout_redirect():

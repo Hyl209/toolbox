@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { pickDirectory, pickFile, pickSaveFile, type DialogFilter, runTool, type ToolResult } from "../api/tauri";
+import { uiText } from "../uiText";
 
 type Mode = "disguise" | "recover";
 
@@ -241,7 +242,7 @@ function ZipPngTool({ initialOutputDir = "" }: { initialOutputDir?: string }) {
 
       <section className="log-panel" aria-label="运行日志">
         <div>
-          <div className="panel-title">Runtime</div>
+          <div className="panel-title">{uiText.common.runtime}</div>
           <p className="muted">最近 5 条本地执行记录</p>
         </div>
         <div className="log-content">

@@ -9,6 +9,8 @@ Use the sub-modules directly if you need private helpers.
 """
 from __future__ import annotations
 
+__supports_cancel__ = True
+
 # ── Data types & models ──────────────────────────────────────────────
 from .models import (
     SourceKind,

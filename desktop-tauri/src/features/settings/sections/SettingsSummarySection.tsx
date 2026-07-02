@@ -1,3 +1,5 @@
+import { uiText } from "../../../uiText";
+
 type SettingsSummarySectionProps = {
   loading: boolean;
   modeText: string;
@@ -30,7 +32,7 @@ export default function SettingsSummarySection({
         <section className="settings-card">
           <span>主题来源</span>
           <strong>{loading ? "读取中" : modeText}</strong>
-          <p>{settingsPath ?? "browser-preview"}</p>
+          <p>{settingsPath ?? uiText.settings.browserPreview}</p>
         </section>
         <section className="settings-card">
           <span>功能状态</span>

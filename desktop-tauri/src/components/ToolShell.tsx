@@ -25,17 +25,28 @@ const categoryLabels: Record<string, string> = {
   text: "文本",
 };
 
-const statusLabels: Record<ToolItem["status"], string> = {
-  planned: "计划中",
-  pending: "暂未接入",
-  ready: "已接入入口",
-};
-
 const windowActions = {
   close: () => getCurrentWindow().close(),
   maximize: () => getCurrentWindow().toggleMaximize(),
   minimize: () => getCurrentWindow().minimize(),
 };
+
+function assertNever(value: never): never {
+  throw new Error(`Unhandled tool status: ${String(value)}`);
+}
+
+function statusLabel(status: ToolItem["status"]): string {
+  switch (status) {
+    case "planned":
+      return "计划中";
+    case "pending":
+      return "暂未接入";
+    case "ready":
+      return "已接入入口";
+    default:
+      return assertNever(status);
+  }
+}
 
 function runWindowAction(action: keyof typeof windowActions) {
   if (!("__TAURI_INTERNALS__" in window)) {
@@ -48,7 +59,7 @@ function toolStatusText(tool: ToolItem): string {
   if (tool.enabled === false) {
     return "已禁用";
   }
-  const statusText = CAPABILITY_NOTES[tool.id] ?? statusLabels[tool.status];
+  const statusText = CAPABILITY_NOTES[tool.id] ?? statusLabel(tool.status);
   if (tool.source === "plugin") {
     return `${statusText} · 插件`;
   }

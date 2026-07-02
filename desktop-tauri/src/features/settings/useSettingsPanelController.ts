@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { SettingsSnapshot, ToolItem } from "../../api/tauri";
 import {
   createSettingsDraftState,
@@ -65,6 +65,8 @@ export function useSettingsPanelController({ snapshot, fallbackTools, onSaved }:
       }),
     [snapshot, fallbackTools, drafts],
   );
+  const builtinToolsRef = useRef(builtinTools);
+  builtinToolsRef.current = builtinTools;
 
   function applyDraftMutation(mutator: (current: typeof drafts) => typeof drafts, nextNotice = "") {
     setDrafts((current) => mutator(current));
@@ -73,7 +75,7 @@ export function useSettingsPanelController({ snapshot, fallbackTools, onSaved }:
 
   function setToolEnabled(toolId: string, enabled: boolean) {
     setDrafts((current) => {
-      const result = toggleBuiltinTool(current, builtinTools, toolId, enabled);
+      const result = toggleBuiltinTool(current, builtinToolsRef.current, toolId, enabled);
       setNotice(result.notice ?? "");
       return result.next;
     });

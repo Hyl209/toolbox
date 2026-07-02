@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { runTool } from "../api/tauri";
+import { uiText } from "../uiText";
 
 type RegexAction = "extract" | "replace" | "summary";
 
@@ -58,8 +59,8 @@ function RegexToolsPluginTool() {
   const [error, setError] = useState("");
   const [logs, setLogs] = useState<string[]>([]);
 
-  const inputStats = useMemo(() => `${inputText.length} chars`, [inputText.length]);
-  const outputStats = useMemo(() => `${outputText.length} chars`, [outputText.length]);
+  const inputStats = useMemo(() => uiText.common.charCount(inputText.length), [inputText.length]);
+  const outputStats = useMemo(() => uiText.common.charCount(outputText.length), [outputText.length]);
   const canRun = !running && Boolean(inputText.trim()) && Boolean(pattern.trim());
 
   async function handleRun() {
@@ -108,7 +109,7 @@ function RegexToolsPluginTool() {
     <div className="base64-tool regex-plugin-tool">
       <div className="tool-heading">
         <div>
-          <p className="eyebrow">Plugin - regex_tools</p>
+          <p className="eyebrow">{uiText.common.pluginLabel("regex_tools")}</p>
           <h2>{text.title}</h2>
           <p>{text.desc}</p>
         </div>
@@ -144,7 +145,7 @@ function RegexToolsPluginTool() {
       </div>
 
       <section className="log-panel" aria-label={text.log}>
-        <div><div className="panel-title">Runtime</div><p className="muted">{text.recent}</p></div>
+        <div><div className="panel-title">{uiText.common.runtime}</div><p className="muted">{text.recent}</p></div>
         <div className="log-content">
           {error ? <div className="error-box">{error}</div> : null}
           {logs.length ? <ul>{logs.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul> : <p className="muted">{text.emptyLog}</p>}

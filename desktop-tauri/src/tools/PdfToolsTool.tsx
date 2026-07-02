@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { pickDirectory, pickFiles, type DialogFilter, runTool, type ToolResult } from "../api/tauri";
 import { ActionBar, DirectoryPickerRow, MultiPathInput, ResultCards, RuntimeLogPanel, ToolHeading } from "../features/tools/components/CommonToolParts";
+import { uiText } from "../uiText";
 
 type OutputRow = { source: string; output: string };
 
@@ -178,7 +179,7 @@ function PdfToolsTool({ initialOutputDir = "" }: { initialOutputDir?: string }) 
         <div className="file-mode-card compact-card">
           <MultiPathInput
             label="PDF 输入路径"
-            countLabel={`${paths.length} paths`}
+            countLabel={uiText.common.pathCount(paths.length)}
             value={inputText}
             disabled={running}
             placeholder="每行一个 .pdf 或目录"
@@ -268,7 +269,7 @@ function PdfToolsTool({ initialOutputDir = "" }: { initialOutputDir?: string }) 
 
       {results.length ? (
         <section className="table-panel">
-          <div className="panel-title">PDF outputs</div>
+          <div className="panel-title">{uiText.common.pdfOutputs}</div>
           <div className="result-list">
             {results.map((row, index) => (
               <div className="result-row" key={`${row.output}-${index}`}>

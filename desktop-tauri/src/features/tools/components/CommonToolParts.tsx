@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { uiText } from "../../../uiText";
 
 type ToolHeadingProps = {
   eyebrow: string;
@@ -131,9 +132,9 @@ type RuntimeLogPanelProps = {
 
 export function RuntimeLogPanel({ error, logs }: RuntimeLogPanelProps) {
   return (
-    <details className="log-panel" aria-label="运行日志" open={Boolean(error)}>
+    <details className="log-panel" aria-label={uiText.common.runtime} open={Boolean(error)}>
       <summary>
-        <span>运行日志</span>
+        <span>{uiText.common.runtime}</span>
         <small>{error ? "有错误" : logs.length ? `${logs.length} 条` : "空"}</small>
       </summary>
       <div className="log-content" aria-live="polite" aria-atomic="false">

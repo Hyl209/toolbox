@@ -34,7 +34,10 @@ from ..web_backend import (  # noqa: F401
     # Aria2
     _PausedDownload,
     _capture_aria2_console_progress,
+    _monitor_aria2_file_progress,
     _emit_aria2_progress,
+    _emit_aria2_file_progress,
+    _extract_ytdlp_total_bytes,
     _normalize_aria2_speed,
     _normalize_aria2_eta,
     # Common

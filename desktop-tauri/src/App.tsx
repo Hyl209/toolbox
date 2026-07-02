@@ -4,6 +4,7 @@ import ToolShell from "./components/ToolShell";
 import SettingsPanel from "./features/settings/SettingsPanel";
 import { firstSelectableTool, themeStyle, themeStyleFromColors, type ThemeColors, type ThemeName } from "./features/settings";
 import { fallbackTools, renderToolPanel, sidebarToolsFromSnapshot } from "./features/tools";
+import { uiText } from "./uiText";
 import "./styles.css";
 
 function pickFirstTool(tools: readonly ToolItem[]): ToolItem {
@@ -94,7 +95,7 @@ function App() {
   return (
     <div className="theme-root" style={previewTheme?.style ?? themeStyle(snapshot)} data-theme-mode={previewTheme?.mode ?? snapshot?.ui.theme ?? "light"}>
       <ToolShell
-        title="Hyl Toolbox"
+        title={uiText.app.title}
         tools={sidebarTools}
         toolActivity={toolActivity}
         activeToolId={activeTool.id}

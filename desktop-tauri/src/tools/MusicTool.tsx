@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { DialogFilter, ToolResult } from "../api/tauri";
 import { ActionBar, DirectoryPickerRow, MultiPathInput, ResultCards, RuntimeLogPanel, ToolHeading } from "../features/tools/components/CommonToolParts";
 import { useLegacyBatchTool } from "../features/tools/hooks/useLegacyBatchTool";
+import { uiText } from "../uiText";
 
 type SongItem = Record<string, string>;
 
@@ -83,7 +84,7 @@ function MusicTool({ initialOutputDir = "" }: { initialOutputDir?: string }) {
       <div className="editor-grid">
         <MultiPathInput
           label="输入路径"
-          countLabel={`${paths.length} paths`}
+          countLabel={uiText.common.pathCount(paths.length)}
           value={inputText}
           disabled={running}
           placeholder={"E:\\music\\song.ncm\nE:\\music-folder"}
@@ -139,7 +140,7 @@ function MusicTool({ initialOutputDir = "" }: { initialOutputDir?: string }) {
 
       {(songs.length || results.length) ? (
         <section className="table-panel">
-          <div className="panel-title">{results.length ? "Converted files" : "Detected files"}</div>
+          <div className="panel-title">{results.length ? uiText.common.convertedFiles : uiText.common.detectedFiles}</div>
           <div className="result-list">
             {results.length
               ? results.map((row) => (

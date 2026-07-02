@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { pickDirectory, runTool, type ToolInput, type ToolResult, type ToolSessionSnapshot, type ToolSettings } from "../api/tauri";
 import { DownloadQueueTable, type DownloadQueueRow } from "../features/tools/components/DownloadQueueTable";
-import { queueRowsFromSession as buildQueueRows } from "../features/tools/downloadQueueState";
+import { queueOverviewFromSession, queueRowsFromSession as buildQueueRows } from "../features/tools/downloadQueueState";
 import { useDownloadRuntimeSession } from "../features/tools/hooks/useDownloadRuntimeSession";
+import { uiText } from "../uiText";
 
 type TgTask = {
   source_url: string;
@@ -67,7 +68,7 @@ function queueRowsFromSession(tasks: TgTask[], session: ToolSessionSnapshot | nu
       row.status = success ? "success" : "failed";
       row.fileName = files[0] ? files[0].split(/[\\/]/).pop() || row.fileName : row.fileName;
       row.percent = success ? 100 : row.percent;
-      row.detail = success ? `${files.length} files` : String(item.error ?? "failed");
+      row.detail = success ? uiText.common.fileCount(files.length) : String(item.error ?? uiText.common.failed);
     },
   });
 }
@@ -134,6 +135,7 @@ function TgDownloaderTool({ initialSettings = {} }: { initialSettings?: ToolSett
   const busy = running || runtime.active;
   const paused = runtime.paused;
   const queueRows = useMemo(() => queueRowsFromSession(tasks, runtime.session), [tasks, runtime.session]);
+  const overview = useMemo(() => queueOverviewFromSession(tasks, runtime.session), [tasks, runtime.session]);
   const runtimeLogs = runtime.session?.logs?.length ? runtime.session.logs : logs;
 
   useEffect(() => {
@@ -280,7 +282,7 @@ function TgDownloaderTool({ initialSettings = {} }: { initialSettings?: ToolSett
           <input disabled={busy} onChange={(event) => { credentialsTouchedRef.current = true; setPhone(event.currentTarget.value); }} placeholder="+10000000000" value={phone} />
         </label>
         <label className="field-block">
-          <span>Session path</span>
+          <span>{uiText.tg.sessionPath}</span>
           <input disabled={busy} onChange={(event) => setSessionFile(event.currentTarget.value)} placeholder="default: telegram.session" value={sessionFile} />
         </label>
       </div>
@@ -289,7 +291,7 @@ function TgDownloaderTool({ initialSettings = {} }: { initialSettings?: ToolSett
         <label className="field-block">
           <span>
             {"TG URL / 分享文本"}
-            <small>{urls.length ? `${urls.length} parsed` : "multi-line"}</small>
+            <small>{urls.length ? uiText.common.parsedCount(urls.length) : uiText.common.multiLineHint}</small>
           </span>
           <textarea disabled={busy} onChange={(event) => setUrlText(event.currentTarget.value)} placeholder="https://t.me/example/42" value={urlText} />
         </label>
@@ -304,22 +306,22 @@ function TgDownloaderTool({ initialSettings = {} }: { initialSettings?: ToolSett
             </div>
           </label>
           <label className="field-block file-path-field">
-            <span>recent_limit</span>
-            <input disabled={busy} onChange={(event) => { optionsTouchedRef.current = true; setRecentLimit(event.currentTarget.value); }} value={recentLimit} />
+            <span>{uiText.tg.recentLimit}</span>
+            <input disabled={busy || downloadAllMessages} onChange={(event) => { optionsTouchedRef.current = true; setRecentLimit(event.currentTarget.value); }} value={recentLimit} />
           </label>
           <div className="settings-grid">
-            <label className="check-row"><input checked={downloadAllMessages} disabled={busy} onChange={(event) => { optionsTouchedRef.current = true; setDownloadAllMessages(event.currentTarget.checked); }} type="checkbox" />all messages</label>
-            <label className="check-row"><input checked={includeVideos} disabled={busy} onChange={(event) => { optionsTouchedRef.current = true; setIncludeVideos(event.currentTarget.checked); }} type="checkbox" />include videos</label>
-            <label className="check-row"><input checked={includePhotos} disabled={busy} onChange={(event) => { optionsTouchedRef.current = true; setIncludePhotos(event.currentTarget.checked); }} type="checkbox" />include photos</label>
+            <label className="check-row"><input checked={downloadAllMessages} disabled={busy} onChange={(event) => { optionsTouchedRef.current = true; setDownloadAllMessages(event.currentTarget.checked); }} type="checkbox" />{uiText.tg.allMessages}</label>
+            <label className="check-row"><input checked={includeVideos} disabled={busy} onChange={(event) => { optionsTouchedRef.current = true; setIncludeVideos(event.currentTarget.checked); }} type="checkbox" />{uiText.tg.includeVideos}</label>
+            <label className="check-row"><input checked={includePhotos} disabled={busy} onChange={(event) => { optionsTouchedRef.current = true; setIncludePhotos(event.currentTarget.checked); }} type="checkbox" />{uiText.tg.includePhotos}</label>
           </div>
-          <label className="field-block file-path-field"><span>date_from</span><input disabled={busy} onChange={(event) => { optionsTouchedRef.current = true; setDateFrom(event.currentTarget.value); }} placeholder="YYYY-MM-DD" value={dateFrom} /></label>
-          <label className="field-block file-path-field"><span>date_to</span><input disabled={busy} onChange={(event) => { optionsTouchedRef.current = true; setDateTo(event.currentTarget.value); }} placeholder="YYYY-MM-DD" value={dateTo} /></label>
-          <label className="field-block file-path-field"><span>proxy_host</span><input disabled={busy} onChange={(event) => { optionsTouchedRef.current = true; setProxyHost(event.currentTarget.value); }} value={proxyHost} /></label>
-          <label className="field-block file-path-field"><span>proxy_port</span><input disabled={busy} onChange={(event) => { optionsTouchedRef.current = true; setProxyPort(event.currentTarget.value); }} value={proxyPort} /></label>
-          <label className="field-block file-path-field"><span>proxy_url</span><input disabled={busy} onChange={(event) => { optionsTouchedRef.current = true; setProxyUrl(event.currentTarget.value); }} value={proxyUrl} /></label>
-          <label className="field-block file-path-field"><span>concurrent</span><select disabled={busy} onChange={(event) => { optionsTouchedRef.current = true; setConcurrent(event.currentTarget.value); }} value={concurrent}>{["0", "1", "2", "3", "4", "5"].map((value) => <option key={value} value={value}>{value === "0" ? "auto" : value}</option>)}</select></label>
-          <label className="check-row"><input checked={overwrite} disabled={busy} onChange={(event) => { optionsTouchedRef.current = true; setOverwrite(event.currentTarget.checked); }} type="checkbox" />overwrite</label>
-          <label className="check-row"><input checked={outputSubdirByTitle} disabled={busy} onChange={(event) => { optionsTouchedRef.current = true; setOutputSubdirByTitle(event.currentTarget.checked); }} type="checkbox" />output subdir by title</label>
+          <label className="field-block file-path-field"><span>{uiText.tg.dateFrom}</span><input disabled={busy} onChange={(event) => { optionsTouchedRef.current = true; setDateFrom(event.currentTarget.value); }} placeholder="YYYY-MM-DD" value={dateFrom} /></label>
+          <label className="field-block file-path-field"><span>{uiText.tg.dateTo}</span><input disabled={busy} onChange={(event) => { optionsTouchedRef.current = true; setDateTo(event.currentTarget.value); }} placeholder="YYYY-MM-DD" value={dateTo} /></label>
+          <label className="field-block file-path-field"><span>{uiText.tg.proxyHost}</span><input disabled={busy} onChange={(event) => { optionsTouchedRef.current = true; setProxyHost(event.currentTarget.value); }} value={proxyHost} /></label>
+          <label className="field-block file-path-field"><span>{uiText.tg.proxyPort}</span><input disabled={busy} onChange={(event) => { optionsTouchedRef.current = true; setProxyPort(event.currentTarget.value); }} value={proxyPort} /></label>
+          <label className="field-block file-path-field"><span>{uiText.tg.proxyUrl}</span><input disabled={busy} onChange={(event) => { optionsTouchedRef.current = true; setProxyUrl(event.currentTarget.value); }} value={proxyUrl} /></label>
+          <label className="field-block file-path-field"><span>{uiText.tg.concurrent}</span><select disabled={busy} onChange={(event) => { optionsTouchedRef.current = true; setConcurrent(event.currentTarget.value); }} value={concurrent}>{["0", "1", "2", "3", "4", "5"].map((value) => <option key={value} value={value}>{value === "0" ? "自动" : value}</option>)}</select></label>
+          <label className="check-row"><input checked={overwrite} disabled={busy} onChange={(event) => { optionsTouchedRef.current = true; setOverwrite(event.currentTarget.checked); }} type="checkbox" />{uiText.tg.overwrite}</label>
+          <label className="check-row"><input checked={outputSubdirByTitle} disabled={busy} onChange={(event) => { optionsTouchedRef.current = true; setOutputSubdirByTitle(event.currentTarget.checked); }} type="checkbox" />{uiText.tg.outputSubdirByTitle}</label>
         </div>
       </div>
 
@@ -327,8 +329,8 @@ function TgDownloaderTool({ initialSettings = {} }: { initialSettings?: ToolSett
         <span>{"登录授权"}</span>
         <div className="editor-grid file-editor-grid">
           <label className="field-block"><span>{"验证码"}</span><input disabled={busy} onChange={(event) => setCode(event.currentTarget.value)} value={code} /></label>
-          <label className="field-block"><span>phone_code_hash</span><input disabled={busy} onChange={(event) => { credentialsTouchedRef.current = true; setPhoneCodeHash(event.currentTarget.value); }} value={phoneCodeHash} /></label>
-          <label className="field-block"><span>2FA password</span><input disabled={busy} onChange={(event) => setPassword(event.currentTarget.value)} type="password" value={password} /></label>
+          <label className="field-block"><span>{uiText.tg.phoneCodeHash}</span><input disabled={busy} onChange={(event) => { credentialsTouchedRef.current = true; setPhoneCodeHash(event.currentTarget.value); }} value={phoneCodeHash} /></label>
+          <label className="field-block"><span>{uiText.tg.twoFactorPassword}</span><input disabled={busy} onChange={(event) => setPassword(event.currentTarget.value)} type="password" value={password} /></label>
         </div>
       </div>
 
@@ -344,6 +346,19 @@ function TgDownloaderTool({ initialSettings = {} }: { initialSettings?: ToolSett
         </div>
       </div>
 
+      {overview.total > 0 ? (
+        <section className="table-panel">
+          <div className="panel-title">{"进度总览"}</div>
+          <div className="result-list">
+            <div className="result-row"><span>{"总任务数"}</span><strong>{overview.total}</strong></div>
+            <div className="result-row"><span>{"当前任务"}</span><strong>{overview.current || "-"}</strong></div>
+            <div className="result-row"><span>{"完成数"}</span><strong>{overview.completed}</strong></div>
+            <div className="result-row"><span>{"失败数"}</span><strong>{overview.failed}</strong></div>
+            <div className="result-row"><span>{"总进度"}</span><strong>{overview.summary}</strong></div>
+          </div>
+        </section>
+      ) : null}
+
 <DownloadQueueTable
         active={runtime.active}
         onCancel={() => void runtime.control("cancel")}
@@ -353,15 +368,15 @@ function TgDownloaderTool({ initialSettings = {} }: { initialSettings?: ToolSett
         rows={queueRows}
       />
 
-      <section className="log-panel" aria-label="Files">
-        <div><div className="panel-title">Files</div><p className="muted">{"已保存文件"}</p></div>
+      <section className="log-panel" aria-label={uiText.tg.downloadedFiles}>
+        <div><div className="panel-title">{uiText.tg.downloadedFiles}</div><p className="muted">{"已保存文件"}</p></div>
         <div className="log-content">
           {downloadFiles.length ? <ul>{downloadFiles.map((item) => <li key={item}>{item}</li>)}</ul> : <p className="muted">{"暂无下载文件"}</p>}
         </div>
       </section>
 
-      <section className="log-panel" aria-label="Runtime">
-        <div><div className="panel-title">Runtime</div><p className="muted">{"最近的 TG sidecar 调用记录"}</p></div>
+      <section className="log-panel" aria-label={uiText.common.runtime}>
+        <div><div className="panel-title">{uiText.common.runtime}</div><p className="muted">{"最近的 TG sidecar 调用记录"}</p></div>
         <div className="log-content">
           {error ? <div className="error-box">{error}</div> : null}
           {runtimeLogs.length ? <ul>{runtimeLogs.slice(-50).map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul> : <p className="muted">{"暂无日志"}</p>}

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import subprocess
 import sys
 import tempfile
@@ -355,6 +356,30 @@ def test_tgdownloader_download_calls_legacy_batch_with_telegram_options(monkeypa
     assert result["data"]["files"] == [str(tmp_path / "a.mp4")]
     assert result["data"]["errors"] == ["boom"]
     assert result["data"]["logs"] == [f"log-{index}" for index in range(10, 60)]
+
+
+def test_tgdownloader_warns_when_cancel_token_support_is_not_declared(monkeypatch, tmp_path: Path, caplog) -> None:
+    from sidecar.tools import tgdownloader_tool as tool
+
+    module = tool._load_converter_module()
+    monkeypatch.delattr(module, "__supports_cancel__", raising=False)
+
+    def fake_download_batch(tasks, output_dir, telegram_config=None, options=None, progress_cb=None):
+        return [{"success": True, "source_url": "https://t.me/example/42", "files": []}]
+
+    monkeypatch.setattr(module, "download_batch", fake_download_batch)
+
+    caplog.set_level(logging.WARNING)
+    result = tool.run_tgdownloader(
+        {
+            "task_id": "tg-download-cancel-support",
+            "action": "download",
+            "payload": _valid_tg_payload(tmp_path),
+        }
+    )
+
+    assert result["ok"] is True
+    assert "does not declare cancel token support" in caplog.text
 
 
 def test_tgdownloader_download_mixed_web_url_returns_structured_errors(monkeypatch, tmp_path: Path) -> None:
