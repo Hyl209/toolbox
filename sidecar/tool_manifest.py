@@ -22,6 +22,7 @@ REGISTRY_PATH = ROOT / "toolbox_app" / "tool_registry.py"
 TS_MANIFEST_PATH = ROOT / "desktop-tauri" / "src" / "tools" / "manifest.ts"
 
 TAURI_READY_TOOL_IDS = {
+    "aiimage",
     "base64",
     "batchrename",
     "directdownloader",

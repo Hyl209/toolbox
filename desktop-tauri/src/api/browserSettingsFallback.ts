@@ -1,5 +1,5 @@
 import toolManifest from "../tools/manifest";
-import type { SettingsPatch, SettingsSnapshot, ToolSettings } from "./tauri";
+import type { SettingsPatch, SettingsSnapshot, ToolItem, ToolSettings } from "./tauri";
 import {
   patchBoolean,
   patchFilesorterCategories,
@@ -29,6 +29,7 @@ const browserThemeColors: Record<"dark" | "light", SettingsSnapshot["theme"]["co
   },
 };
 
+const browserToolManifest = toolManifest as readonly ToolItem[];
 const THEME_ZONES = ["window_bg", "surface_bg", "card_bg", "accent", "text_primary", "text_secondary", "input_bg"] as const;
 const FILESORTER_CATEGORIES = ["图片", "视频", "音频", "文档", "压缩包", "程序", "其他"] as const;
 const browserWordFormatterSettings: ToolSettings = {
@@ -168,8 +169,9 @@ function buildBrowserSettingsSnapshot(
 ): SettingsSnapshot {
   const disabledSet = new Set(disabledTools);
   const disabledPluginSet = new Set(disabledPlugins);
-  const tools = toolManifest.map((tool) => ({
+  const tools = browserToolManifest.map((tool) => ({
     ...tool,
+    dependencies: tool.dependencies ?? [],
     enabled: !disabledSet.has(tool.id),
     source: "builtin" as const,
   }));

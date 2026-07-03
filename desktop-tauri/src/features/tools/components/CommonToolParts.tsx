@@ -78,7 +78,7 @@ export function DirectoryPickerRow({
       <div className="path-input-row">
         <input disabled={disabled} onChange={(event) => onChange(event.currentTarget.value)} placeholder={placeholder} value={value} />
         <button className="path-pick-button" disabled={disabled} onClick={onPick} type="button">
-          选择
+          {uiText.common.choose}
         </button>
       </div>
     </label>
@@ -135,7 +135,7 @@ export function RuntimeLogPanel({ error, logs }: RuntimeLogPanelProps) {
     <details className="log-panel" aria-label={uiText.common.runtime} open={Boolean(error)}>
       <summary>
         <span>{uiText.common.runtime}</span>
-        <small>{error ? "有错误" : logs.length ? `${logs.length} 条` : "空"}</small>
+        <small>{error ? uiText.common.hasErrors : logs.length ? `${logs.length} 条` : uiText.common.empty}</small>
       </summary>
       <div className="log-content" aria-live="polite" aria-atomic="false">
         {error ? <div className="error-box">{error}</div> : null}
@@ -146,7 +146,7 @@ export function RuntimeLogPanel({ error, logs }: RuntimeLogPanelProps) {
             ))}
           </ul>
         ) : (
-          <p className="muted">暂无日志</p>
+          <p className="muted">{uiText.common.noLogs}</p>
         )}
       </div>
     </details>

@@ -577,6 +577,12 @@ def _filesorter_categories(parser: configparser.ConfigParser) -> dict[str, bool]
     }
 
 
+def _plugin_dependencies(value: Any) -> list[str]:
+    if not isinstance(value, list) or not all(_non_empty_string(item) for item in value):
+        return []
+    return value
+
+
 def _tool_settings(parser: configparser.ConfigParser) -> dict[str, dict[str, Any]]:
     settings: dict[str, dict[str, Any]] = {
         tool: {"output_dir": _value(parser, tool, "output_dir", "")}
@@ -663,6 +669,7 @@ def _plugin_items(plugins_dir: Path, disabled_plugins: set[str]) -> list[dict[st
                 "sidebar_label": sidebar_label,
                 "description": data["description"].strip(),
                 "version": data["version"].strip(),
+                "dependencies": _plugin_dependencies(data.get("dependencies", [])),
                 "priority": raw_priority,
             }
         )

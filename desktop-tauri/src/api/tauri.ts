@@ -7,10 +7,37 @@ export type ToolInput = {
   payload: Record<string, unknown>;
 };
 
+export type AiImageProfile = {
+  id: string;
+  name: string;
+  base_url: string;
+  model: string;
+  secret_ref: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AiImageConfig = {
+  selected_profile_id: string;
+  output_dir: string;
+  default_size: string;
+  default_count: number;
+  profiles: AiImageProfile[];
+};
+
+export type AiImageArtifact = {
+  path: string;
+  filename: string;
+  mime: string;
+  width?: number;
+  height?: number;
+};
+
 export type ToolResult = {
   text?: string;
   output_path?: string;
   mime?: string;
+  images?: Array<AiImageArtifact>;
   embedded?: {
     found?: boolean;
     filename?: string | null;
@@ -37,6 +64,7 @@ export type ToolResult = {
     text?: string;
     output_path?: string;
     mime?: string;
+    images?: Array<AiImageArtifact>;
     embedded?: ToolResult["embedded"];
     available?: boolean;
     message?: string;
@@ -57,7 +85,7 @@ export type ToolResult = {
   };
 };
 
-export type ToolSessionControlAction = "pause" | "resume" | "cancel";
+export type ToolSessionControlAction = "pause" | "resume" | "cancel" | "reconnect";
 
 export type ToolActivityState = "ready" | "running" | "success" | "error";
 
@@ -93,6 +121,7 @@ export type ToolItem = {
   description?: string;
   version?: string;
   plugin_name?: string;
+  dependencies?: string[];
   priority?: number;
 };
 
@@ -342,6 +371,20 @@ export function loadSettingsSnapshot(): Promise<SettingsSnapshot> {
     return Promise.resolve(loadBrowserSettingsSnapshot());
   }
   return invoke<SettingsSnapshot>("load_settings_snapshot");
+}
+
+export function loadSupportImage(): Promise<string> {
+  if (!isTauriRuntime()) {
+    return Promise.resolve("");
+  }
+  return invoke<string>("load_support_image");
+}
+
+export function logoutCurrentUser(): Promise<void> {
+  if (!isTauriRuntime()) {
+    return Promise.resolve();
+  }
+  return invoke<void>("logout_current_user");
 }
 
 export function saveSettingsPatch(patch: SettingsPatch): Promise<SettingsSnapshot> {

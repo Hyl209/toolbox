@@ -629,6 +629,7 @@ function WebVideoDownloaderTool({ initialSettings = {} }: { initialSettings?: To
         onCancel={() => void runtime.control("cancel")}
         onDelete={removeQueuedTask}
         onPause={() => void runtime.control("pause")}
+        onReconnect={() => void runtime.control("reconnect")}
         onRename={renameTaskTitle}
         onResume={() => void runtime.control("resume")}
         paused={paused}
@@ -642,7 +643,7 @@ function WebVideoDownloaderTool({ initialSettings = {} }: { initialSettings?: To
             {inspectCandidateList.map((row, index) => (
               <div className="result-row" key={`${row.page_url}-${row.candidate_url}-${index}`}>
                 <span>{row.success ? row.candidate_url : row.page_url}</span>
-                <strong>{row.success ? `${row.index}/${row.total} (${row.source || "未知来源"})` : row.error || uiText.common.failed}</strong>
+                <strong>{row.success ? `${row.index}/${row.total} (${row.source || uiText.wv.unknownSource})` : row.error || uiText.common.failed}</strong>
               </div>
             ))}
           </div>
@@ -682,7 +683,7 @@ function WebVideoDownloaderTool({ initialSettings = {} }: { initialSettings?: To
               ))}
             </ul>
           ) : (
-            <p className="muted">{"暂无日志"}</p>
+            <p className="muted">{uiText.common.noLogs}</p>
           )}
         </div>
       </section>

@@ -17,6 +17,51 @@ export type DraftActionResult = {
   notice?: string;
 };
 
+function pluginName(tool: ToolItem): string {
+  return pluginConfigKey(tool);
+}
+
+function dependencyName(name: string): string {
+  return name.replace(/^plugin:/, "");
+}
+
+function dependencyClosure(pluginTools: readonly ToolItem[], start: string): Set<string> {
+  const byName = new Map(pluginTools.map((tool) => [pluginName(tool), tool]));
+  const found = new Set<string>();
+  const visit = (name: string) => {
+    const tool = byName.get(name);
+    for (const dep of tool?.dependencies ?? []) {
+      const cleanDep = dependencyName(dep);
+      if (!found.has(cleanDep)) {
+        found.add(cleanDep);
+        visit(cleanDep);
+      }
+    }
+  };
+  visit(start);
+  return found;
+}
+
+function dependentClosure(pluginTools: readonly ToolItem[], start: string): Set<string> {
+  const found = new Set<string>();
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const tool of pluginTools) {
+      const name = pluginName(tool);
+      if (found.has(name) || name === start) {
+        continue;
+      }
+      const deps = (tool.dependencies ?? []).map(dependencyName);
+      if (deps.includes(start) || deps.some((dep) => found.has(dep))) {
+        found.add(name);
+        changed = true;
+      }
+    }
+  }
+  return found;
+}
+
 export function toggleBuiltinTool(
   current: SettingsDraftState,
   builtinTools: readonly ToolItem[],
@@ -42,6 +87,7 @@ export function toggleBuiltinTool(
 
 export function togglePlugin(
   current: SettingsDraftState,
+  pluginTools: readonly ToolItem[],
   tool: ToolItem,
   enabled: boolean,
 ): DraftActionResult {
@@ -51,11 +97,18 @@ export function togglePlugin(
       notice: "该插件已在 manifest 中禁用，不能在此启用",
     };
   }
+  const name = pluginConfigKey(tool);
   const next = new Set(current.disabledPlugins);
   if (enabled) {
-    next.delete(pluginConfigKey(tool));
+    next.delete(name);
+    for (const dep of dependencyClosure(pluginTools, name)) {
+      next.delete(dep);
+    }
   } else {
-    next.add(pluginConfigKey(tool));
+    next.add(name);
+    for (const depender of dependentClosure(pluginTools, name)) {
+      next.add(depender);
+    }
   }
   return { next: { ...current, disabledPlugins: next } };
 }

@@ -363,6 +363,7 @@ function TgDownloaderTool({ initialSettings = {} }: { initialSettings?: ToolSett
         active={runtime.active}
         onCancel={() => void runtime.control("cancel")}
         onPause={() => void runtime.control("pause")}
+        onReconnect={() => void runtime.control("reconnect")}
         onResume={() => void runtime.control("resume")}
         paused={paused}
         rows={queueRows}
@@ -376,10 +377,10 @@ function TgDownloaderTool({ initialSettings = {} }: { initialSettings?: ToolSett
       </section>
 
       <section className="log-panel" aria-label={uiText.common.runtime}>
-        <div><div className="panel-title">{uiText.common.runtime}</div><p className="muted">{"最近的 TG sidecar 调用记录"}</p></div>
+        <div><div className="panel-title">{uiText.common.runtime}</div><p className="muted">{uiText.tg.recentRuntime}</p></div>
         <div className="log-content">
           {error ? <div className="error-box">{error}</div> : null}
-          {runtimeLogs.length ? <ul>{runtimeLogs.slice(-50).map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul> : <p className="muted">{"暂无日志"}</p>}
+          {runtimeLogs.length ? <ul>{runtimeLogs.slice(-50).map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul> : <p className="muted">{uiText.common.noLogs}</p>}
         </div>
       </section>
     </div>

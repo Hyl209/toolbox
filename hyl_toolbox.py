@@ -122,6 +122,7 @@ IMAGE_CONVERT_DIR = ROOT / 'modules' / 'image-converter'
 PDF_TOOLS_DIR = ROOT / 'modules' / 'pdf-tools'
 VIDEO_DOWNLOADER_DIR = ROOT / 'modules' / 'video-downloader'
 DIRECT_DOWNLOADER_DIR = ROOT / 'modules' / 'direct-downloader'
+AIIMAGE_DIR = ROOT / 'modules' / 'ai-image-gen'
 BASE64_DIR = ROOT / 'modules' / 'base64'
 NAME_DIR = ROOT / 'modules' / 'batch-rename'
 FILE_SORTER_DIR = ROOT / 'modules' / 'file-sorter'
@@ -243,6 +244,7 @@ _load_name_tab_module = lambda: _load_dynamic('name_tab')
 _load_same_module = lambda: _load_dynamic('same')
 _load_word_formatter_module = lambda: _load_dynamic('wordformatter')
 _load_word_formatter_tab_module = lambda: _load_dynamic('wordformatter_tab')
+_load_aiimage_tab_module = lambda: _load_dynamic('aiimage_tab')
 
 
 def make_settings(base_dir: str):
@@ -964,7 +966,17 @@ if QWidget is not None:
         'get_word_formatter_module': get_word_formatter_module,
         'ROOT': ROOT,
     })
+    AiImageTab = LazyTabClass(_load_aiimage_tab_module, 'build_aiimage_tab_class', {
+        'QWidget': QWidget,
+        'QVBoxLayout': QVBoxLayout,
+        'QLabel': QLabel,
+        'QPushButton': QPushButton,
+        'Qt': Qt,
+        'make_card': make_card,
+        'show_themed_success': show_themed_success,
+    })
     builtin_tab_factories = {
+        'aiimage': AiImageTab,
         'music': MusicTab,
         'zipandpng': ZipAndPngTab,
         'mp4mp3': Mp4ToMp3Tab,

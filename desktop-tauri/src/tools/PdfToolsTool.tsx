@@ -43,7 +43,6 @@ function PdfToolsTool({ initialOutputDir = "" }: { initialOutputDir?: string }) 
   const [dpi, setDpi] = useState("150");
   const [textExportFormat, setTextExportFormat] = useState("txt");
   const [ocrFallback, setOcrFallback] = useState(false);
-  const [ocrStatus, setOcrStatus] = useState("OCR 未检测");
   const [files, setFiles] = useState<Array<Record<string, string | number | boolean>>>([]);
   const [results, setResults] = useState<OutputRow[]>([]);
   const [running, setRunning] = useState(false);
@@ -60,27 +59,6 @@ function PdfToolsTool({ initialOutputDir = "" }: { initialOutputDir?: string }) 
     }
     setOutputDir((current) => current || initialOutputDir);
   }, [initialOutputDir]);
-
-  useEffect(() => {
-    let cancelled = false;
-    runTool("pdftools", { task_id: `pdftools-probe-${Date.now()}`, action: "probe_ocr", payload: {} })
-      .then((result) => {
-        if (cancelled) {
-          return;
-        }
-        const available = Boolean(result.available ?? result.data?.available);
-        const message = String(result.message ?? result.data?.message ?? "");
-        setOcrStatus(available ? "OCR 可用" : message || "OCR 不可用");
-      })
-      .catch((caught) => {
-        if (!cancelled) {
-          setOcrStatus(errorText(caught));
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   async function chooseFiles() {
     const picked = await pickFiles({ title: "选择 PDF 文件", filters: pdfFilters });
@@ -201,48 +179,38 @@ function PdfToolsTool({ initialOutputDir = "" }: { initialOutputDir?: string }) 
             </select>
           </label>
           <DirectoryPickerRow label="输出目录" value={outputDir} disabled={running} onChange={setOutputDir} onPick={chooseOutputDir} />
-        </div>
-      </div>
-
-      <div className="editor-grid file-editor-grid">
-        <div className="file-mode-card compact-card">
-          <span className="field-label">拆分 / 转图片</span>
-          <div className="mini-form-grid">
-            <label className="field-block">
-              <span>页码范围</span>
-              <input disabled={running || action !== "split"} onChange={(event) => setPageRanges(event.currentTarget.value)} placeholder="1-3,5" value={pageRanges} />
-            </label>
-            <label className="field-block">
-              <span>DPI</span>
-              <input disabled={running || action !== "images"} onChange={(event) => setDpi(event.currentTarget.value)} value={dpi} />
-            </label>
-          </div>
-        </div>
-
-        <div className="file-mode-card compact-card">
-          <span className="field-label">图片 / 文本导出</span>
-          <div className="mini-form-grid">
-            <label className="field-block">
-              <span>图片格式</span>
-              <select disabled={running || action !== "images"} onChange={(event) => setImageFormat(event.currentTarget.value)} value={imageFormat}>
-                <option value="png">png</option>
-                <option value="jpg">jpg</option>
-                <option value="webp">webp</option>
-              </select>
-            </label>
-            <label className="field-block">
-              <span>文本格式</span>
-              <select disabled={running || action !== "text"} onChange={(event) => setTextExportFormat(event.currentTarget.value)} value={textExportFormat}>
-                <option value="txt">txt</option>
-                <option value="docx">docx</option>
-              </select>
-            </label>
-          </div>
-          <label className="check-row">
-            <input checked={ocrFallback} disabled={running || action !== "text"} onChange={(event) => setOcrFallback(event.currentTarget.checked)} type="checkbox" />
-            <span>文字层为空时启用 OCR</span>
-          </label>
-          <p className="muted">{ocrStatus}</p>
+          <details className="direct-advanced-options">
+            <summary>高级选项</summary>
+            <div className="tool-result-grid">
+              <label className="field-block">
+                <span>页码范围（拆分）</span>
+                <input disabled={running || action !== "split"} onChange={(event) => setPageRanges(event.currentTarget.value)} placeholder="1-3,5" value={pageRanges} />
+              </label>
+              <label className="field-block">
+                <span>DPI（转图片）</span>
+                <input disabled={running || action !== "images"} onChange={(event) => setDpi(event.currentTarget.value)} value={dpi} />
+              </label>
+              <label className="field-block">
+                <span>图片格式</span>
+                <select disabled={running || action !== "images"} onChange={(event) => setImageFormat(event.currentTarget.value)} value={imageFormat}>
+                  <option value="png">png</option>
+                  <option value="jpg">jpg</option>
+                  <option value="webp">webp</option>
+                </select>
+              </label>
+              <label className="field-block">
+                <span>文本格式</span>
+                <select disabled={running || action !== "text"} onChange={(event) => setTextExportFormat(event.currentTarget.value)} value={textExportFormat}>
+                  <option value="txt">txt</option>
+                  <option value="docx">docx</option>
+                </select>
+              </label>
+              <label className="check-row">
+                <input checked={ocrFallback} disabled={running || action !== "text"} onChange={(event) => setOcrFallback(event.currentTarget.checked)} type="checkbox" />
+                <span>文字层为空时启用 OCR</span>
+              </label>
+            </div>
+          </details>
         </div>
       </div>
 

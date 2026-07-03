@@ -34,8 +34,6 @@ function ImageConvertTool({ initialOutputDir = "" }: { initialOutputDir?: string
     setInputText,
     outputDir,
     setOutputDir,
-    available,
-    backendMessage,
     files,
     results,
     running,
@@ -44,7 +42,6 @@ function ImageConvertTool({ initialOutputDir = "" }: { initialOutputDir?: string
     paths,
     canList,
     canConvert,
-    backendLabel,
     handleList,
     handleConvert,
     clearAll,
@@ -54,7 +51,6 @@ function ImageConvertTool({ initialOutputDir = "" }: { initialOutputDir?: string
   } = useLegacyBatchTool<ImageItem>({
     toolId: "imageconvert",
     initialOutputDir,
-    probeLabel: (value) => (value === null ? "检测中" : value ? "ImageMagick 可用" : "缺少 ImageMagick"),
     parseFiles: resultFiles,
     parseResults: resultRows,
     fileTitle: "选择图片文件",
@@ -81,9 +77,7 @@ function ImageConvertTool({ initialOutputDir = "" }: { initialOutputDir?: string
         eyebrow="Legacy image converter"
         title="图片格式互转"
         description="批量转换图片格式。"
-        statusLabel={backendLabel}
-        ready={Boolean(available)}
-        message={backendMessage}
+        statusLabel=""
       />
 
       <div className="editor-grid">
@@ -112,26 +106,31 @@ function ImageConvertTool({ initialOutputDir = "" }: { initialOutputDir?: string
               ))}
             </select>
           </label>
-          <label className="field-block">
-            <span>质量（1-100）</span>
-            <input disabled={running} onChange={(event) => setQuality(event.currentTarget.value)} value={quality} />
-          </label>
-          <label className="field-block">
-            <span>目标体积 KB（可选）</span>
-            <input disabled={running} onChange={(event) => setTargetSizeKb(event.currentTarget.value)} placeholder="例如 256" value={targetSizeKb} />
-          </label>
-          <label className="field-block">
-            <span>JPG 背景</span>
-            <select disabled={running} onChange={(event) => setJpgBackground(event.currentTarget.value)} value={jpgBackground}>
-              <option value="white">白色</option>
-              <option value="black">黑色</option>
-              <option value="transparent">透明按白色处理</option>
-            </select>
-          </label>
-          <label className="check-row">
-            <input checked={preserveAlpha} disabled={running} onChange={(event) => setPreserveAlpha(event.currentTarget.checked)} type="checkbox" />
-            非 JPG 输出保留透明通道
-          </label>
+          <details className="direct-advanced-options">
+            <summary>高级选项</summary>
+            <div className="tool-result-grid">
+              <label className="field-block">
+                <span>质量（1-100）</span>
+                <input disabled={running} onChange={(event) => setQuality(event.currentTarget.value)} value={quality} />
+              </label>
+              <label className="field-block">
+                <span>目标体积 KB（可选）</span>
+                <input disabled={running} onChange={(event) => setTargetSizeKb(event.currentTarget.value)} placeholder="留空则不限制" value={targetSizeKb} />
+              </label>
+              <label className="field-block">
+                <span>JPG 背景</span>
+                <select disabled={running} onChange={(event) => setJpgBackground(event.currentTarget.value)} value={jpgBackground}>
+                  <option value="white">白色</option>
+                  <option value="black">黑色</option>
+                  <option value="transparent">透明按白色处理</option>
+                </select>
+              </label>
+              <label className="check-row">
+                <input checked={preserveAlpha} disabled={running} onChange={(event) => setPreserveAlpha(event.currentTarget.checked)} type="checkbox" />
+                非 JPG 输出保留透明通道
+              </label>
+            </div>
+          </details>
         </div>
       </div>
 

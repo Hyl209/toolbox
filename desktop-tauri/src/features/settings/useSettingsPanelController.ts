@@ -67,6 +67,8 @@ export function useSettingsPanelController({ snapshot, fallbackTools, onSaved }:
   );
   const builtinToolsRef = useRef(builtinTools);
   builtinToolsRef.current = builtinTools;
+  const pluginToolsRef = useRef(pluginTools);
+  pluginToolsRef.current = pluginTools;
 
   function applyDraftMutation(mutator: (current: typeof drafts) => typeof drafts, nextNotice = "") {
     setDrafts((current) => mutator(current));
@@ -83,7 +85,7 @@ export function useSettingsPanelController({ snapshot, fallbackTools, onSaved }:
 
   function setPluginEnabled(tool: ToolItem, enabled: boolean) {
     setDrafts((current) => {
-      const result = togglePlugin(current, tool, enabled);
+      const result = togglePlugin(current, pluginToolsRef.current, tool, enabled);
       setNotice(result.notice ?? "");
       return result.next;
     });

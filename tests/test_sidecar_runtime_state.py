@@ -11,7 +11,7 @@ from sidecar import runtime_state
 from sidecar.runtime_state import ControlPathError, bind_download_control, current_download_token
 
 
-def _write_control(path: Path, *, paused: bool = False, cancelled: bool = False, reconnect: bool = False) -> None:
+def _write_control(path: Path, *, paused: bool = False, cancelled: bool = False, reconnect: bool | int = False) -> None:
     path.write_text(
         json.dumps(
             {
@@ -52,6 +52,24 @@ def test_download_control_updates_runtime_token_from_control_file(tmp_path: Path
 
         _write_control(control_path, cancelled=True)
         assert _wait_until(token.cancel.is_set)
+
+
+def test_download_control_treats_reconnect_as_repeatable_pulse(tmp_path: Path) -> None:
+    control_path = tmp_path / "runtime-control.json"
+    _write_control(control_path, reconnect=0)
+
+    with bind_download_control(control_path):
+        token = current_download_token()
+
+        assert token is not None
+        assert not token.reconnect.is_set()
+
+        _write_control(control_path, reconnect=1)
+        assert _wait_until(token.reconnect.is_set)
+
+        token.reconnect.clear()
+        _write_control(control_path, reconnect=2)
+        assert _wait_until(token.reconnect.is_set)
 
 
 def test_download_control_rejects_control_file_outside_temp_dir() -> None:

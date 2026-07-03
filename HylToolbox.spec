@@ -11,6 +11,8 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[
+        ('modules/ai-image-gen/converter.py', 'modules/ai-image-gen'),
+        ('modules/ai-image-gen/tab.py', 'modules/ai-image-gen'),
         ('modules/ncm-converter/ncm_to_mp3.py', 'modules/ncm-converter'),
         ('modules/ncm-converter/tab.py', 'modules/ncm-converter'),
         ('modules/file-disguise/zipandpng.py', 'modules/file-disguise'),
@@ -105,7 +107,7 @@ a = Analysis(
         ('plugins/uuid_tools/README.md', 'plugins/uuid_tools'),
     ] + music_datas,
     hiddenimports=[
-        'ncmdump', 'yt_dlp', 'telethon',
+        'keyring', 'ncmdump', 'yt_dlp', 'telethon',
         'fitz', 'pypdf', 'pytesseract', 'PIL', 'PIL.Image',
         'docx', 'docx.oxml', 'docx.oxml.ns', 'docx.shared',
     ],

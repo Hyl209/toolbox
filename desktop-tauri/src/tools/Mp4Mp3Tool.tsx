@@ -29,8 +29,6 @@ function Mp4Mp3Tool({ initialOutputDir = "" }: { initialOutputDir?: string }) {
     setInputText,
     outputDir,
     setOutputDir,
-    available,
-    backendMessage,
     files,
     results,
     running,
@@ -39,7 +37,6 @@ function Mp4Mp3Tool({ initialOutputDir = "" }: { initialOutputDir?: string }) {
     paths,
     canList,
     canConvert,
-    backendLabel,
     handleList,
     handleConvert,
     clearAll,
@@ -49,7 +46,6 @@ function Mp4Mp3Tool({ initialOutputDir = "" }: { initialOutputDir?: string }) {
   } = useLegacyBatchTool<VideoItem>({
     toolId: "mp4mp3",
     initialOutputDir,
-    probeLabel: (value) => (value === null ? "检测中" : value ? "ffmpeg 可用" : "缺少 ffmpeg"),
     parseFiles: resultFiles,
     parseResults: resultRows,
     fileTitle: "选择 MP4 文件",
@@ -72,9 +68,7 @@ function Mp4Mp3Tool({ initialOutputDir = "" }: { initialOutputDir?: string }) {
         eyebrow="Legacy audio extractor"
         title="MP4 转 MP3"
         description="从 MP4 提取音频。"
-        statusLabel={backendLabel}
-        ready={Boolean(available)}
-        message={backendMessage}
+        statusLabel=""
       />
 
       <div className="editor-grid">
@@ -101,10 +95,15 @@ function Mp4Mp3Tool({ initialOutputDir = "" }: { initialOutputDir?: string }) {
             onChange={setOutputDir}
             onPick={chooseOutputDir}
           />
-          <label className="check-row">
-            <input checked={overwrite} disabled={running} onChange={(event) => setOverwrite(event.currentTarget.checked)} type="checkbox" />
-            覆盖同名 MP3
-          </label>
+          <details className="direct-advanced-options">
+            <summary>高级选项</summary>
+            <div className="field-button-row">
+              <label className="check-row">
+                <input checked={overwrite} disabled={running} onChange={(event) => setOverwrite(event.currentTarget.checked)} type="checkbox" />
+                覆盖同名 MP3
+              </label>
+            </div>
+          </details>
         </div>
       </div>
 

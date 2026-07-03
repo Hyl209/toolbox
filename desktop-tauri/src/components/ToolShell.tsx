@@ -1,14 +1,21 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Fragment, type ReactNode } from "react";
-import type { ToolActivityState, ToolItem } from "../api/tauri";
+import { Fragment, useState, type ReactNode } from "react";
+import type { SettingsSnapshot, ToolActivityState, ToolItem } from "../api/tauri";
 import { CAPABILITY_NOTES } from "../features/tools";
 import { ToolErrorBoundary } from "../features/tools/components/ToolErrorBoundary";
+import SupportPopup from "./SupportPopup";
+import UserMenu from "./UserMenu";
 
 type ToolShellProps = {
   title: string;
   tools: readonly ToolItem[];
   toolActivity: Record<string, ToolActivityState>;
   activeToolId: string;
+  snapshot?: SettingsSnapshot | null;
+  lastUser?: string;
+  supportImage?: string;
+  onLogout?: () => void;
+  onOpenSupport?: () => void;
   onSelectTool: (toolId: string) => void;
   onOpenSettings: () => void;
   settingsOpen: boolean;
@@ -77,13 +84,26 @@ function ToolShell({
   tools,
   toolActivity,
   activeToolId,
+  snapshot,
+  lastUser: explicitLastUser,
+  supportImage = "",
+  onLogout = () => undefined,
+  onOpenSupport,
   onSelectTool,
   onOpenSettings,
   settingsOpen,
   children,
 }: ToolShellProps) {
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [supportOpen, setSupportOpen] = useState(false);
   const activeTool = tools.find((tool) => tool.id === activeToolId) ?? tools[0];
   const activeName = toolTitle(activeTool, settingsOpen);
+  const lastUser = explicitLastUser ?? snapshot?.auth.last_user ?? "";
+
+  function openSupport() {
+    onOpenSupport?.();
+    setSupportOpen(true);
+  }
 
   return (
     <main className="app-shell">
@@ -98,6 +118,12 @@ function ToolShell({
             <h1>{activeName}</h1>
           </div>
           <div className="header-actions" onDoubleClick={(event) => event.stopPropagation()}>
+            <button className="settings-button avatar-button" onClick={() => setUserMenuOpen((value) => !value)} type="button">
+              {lastUser ? lastUser.slice(0, 1).toUpperCase() : "?"}
+            </button>
+            <button className="settings-button" onClick={openSupport} type="button">
+              赞赏
+            </button>
             <button className={settingsOpen ? "settings-button active" : "settings-button"} onClick={onOpenSettings} type="button">
               设置
             </button>
@@ -150,11 +176,13 @@ function ToolShell({
           </aside>
 
           <section className="tool-panel" aria-label="当前工具表单">
-            <ToolErrorBoundary key={activeToolId}>
+            <ToolErrorBoundary>
               {children}
             </ToolErrorBoundary>
           </section>
         </div>
+        <UserMenu lastUser={lastUser} open={userMenuOpen} onClose={() => setUserMenuOpen(false)} onLogout={onLogout} />
+        <SupportPopup open={supportOpen} supportImage={supportImage} onClose={() => setSupportOpen(false)} />
       </section>
     </main>
   );

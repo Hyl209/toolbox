@@ -13,6 +13,7 @@ BATCH_RENAME_TSX = ROOT / "desktop-tauri" / "src" / "tools" / "BatchRenameTool.t
 DIRECT_DOWNLOADER_TSX = ROOT / "desktop-tauri" / "src" / "tools" / "DirectDownloaderTool.tsx"
 FILE_SORTER_TSX = ROOT / "desktop-tauri" / "src" / "tools" / "FileSorterTool.tsx"
 ARCHIVE_EXTRACTOR_TSX = ROOT / "desktop-tauri" / "src" / "tools" / "ArchiveExtractorPluginTool.tsx"
+MP4_MP3_TSX = ROOT / "desktop-tauri" / "src" / "tools" / "Mp4Mp3Tool.tsx"
 WORD_FORMATTER_TSX = ROOT / "desktop-tauri" / "src" / "tools" / "WordFormatterTool.tsx"
 WEB_VIDEO_TSX = ROOT / "desktop-tauri" / "src" / "tools" / "WebVideoDownloaderTool.tsx"
 TG_DOWNLOADER_TSX = ROOT / "desktop-tauri" / "src" / "tools" / "TgDownloaderTool.tsx"
@@ -35,6 +36,7 @@ VIEWSTATE_TS = ROOT / "desktop-tauri" / "src" / "features" / "settings" / "contr
 SIDECAR_RS = ROOT / "desktop-tauri" / "src-tauri" / "src" / "sidecar.rs"
 WEB_SIDECAR_TOOL = ROOT / "sidecar" / "tools" / "webvideodownloader_tool.py"
 TG_SIDECAR_TOOL = ROOT / "sidecar" / "tools" / "tgdownloader_tool.py"
+CANCEL_SUPPORT_TOOL = ROOT / "sidecar" / "tools" / "_cancel_support.py"
 DOWNLOAD_RUNTIME_HOOK_TS = ROOT / "desktop-tauri" / "src" / "features" / "tools" / "hooks" / "useDownloadRuntimeSession.ts"
 DOWNLOAD_QUEUE_STATE_TS = ROOT / "desktop-tauri" / "src" / "features" / "tools" / "downloadQueueState.ts"
 
@@ -418,6 +420,61 @@ def test_settings_panel_uses_grouped_navigation_shell() -> None:
         assert marker in styles_source
 
 
+def test_settings_panel_exposes_dedicated_environment_dependencies_section() -> None:
+    panel_source = SETTINGS_PANEL_TSX.read_text(encoding="utf-8")
+    dependencies_source = (ROOT / "desktop-tauri" / "src" / "features" / "settings" / "dependencies.ts").read_text(encoding="utf-8")
+    section_source = (
+        ROOT / "desktop-tauri" / "src" / "features" / "settings" / "sections" / "EnvironmentDependenciesSection.tsx"
+    ).read_text(encoding="utf-8")
+
+    for marker in (
+        'id: "dependencies"',
+        'label: "环境"',
+        'title: "环境依赖"',
+        "EnvironmentDependenciesSection",
+        '<EnvironmentDependenciesSection />',
+    ):
+        assert marker in panel_source
+
+    for marker in (
+        "DEPENDENCY_DEFINITIONS",
+        'id: "ffmpeg"',
+        'id: "imagemagick"',
+        'toolId: "mp4mp3"',
+        'toolId: "imageconvert"',
+    ):
+        assert marker in dependencies_source
+
+    for marker in (
+        "DEPENDENCY_DEFINITIONS",
+        "runTool(",
+        "action: definition.probeAction",
+        "relatedTools",
+        "dependency-status-pill",
+    ):
+        assert marker in section_source
+
+
+def test_legacy_batch_tools_stop_rendering_dependency_probe_status_in_headings() -> None:
+    hook_source = (ROOT / "desktop-tauri" / "src" / "features" / "tools" / "hooks" / "useLegacyBatchTool.ts").read_text(encoding="utf-8")
+    mp4_source = MP4_MP3_TSX.read_text(encoding="utf-8")
+    image_source = (ROOT / "desktop-tauri" / "src" / "tools" / "ImageConvertTool.tsx").read_text(encoding="utf-8")
+    music_source = (ROOT / "desktop-tauri" / "src" / "tools" / "MusicTool.tsx").read_text(encoding="utf-8")
+    direct_source = DIRECT_DOWNLOADER_TSX.read_text(encoding="utf-8")
+    pdf_source = (ROOT / "desktop-tauri" / "src" / "tools" / "PdfToolsTool.tsx").read_text(encoding="utf-8")
+
+    assert "probeLabel:" not in hook_source
+    assert "backendLabel" not in hook_source
+
+    for source in (mp4_source, image_source, music_source):
+        assert "statusLabel={backendLabel}" not in source
+        assert "ready={Boolean(available)}" not in source
+        assert "message={backendMessage}" not in source
+
+    assert 'action: "probe"' not in direct_source
+    assert 'action: "probe_ocr"' not in pdf_source
+
+
 def test_theme_palette_section_exposes_color_picker_and_card_opacity_slider() -> None:
     source = (ROOT / "desktop-tauri" / "src" / "features" / "settings" / "sections" / "ThemePaletteSection.tsx").read_text(encoding="utf-8")
 
@@ -483,6 +540,141 @@ def test_settings_panel_applies_draft_theme_style_for_live_preview() -> None:
         'data-theme-mode={previewTheme?.mode ?? snapshot?.ui.theme ?? "light"}',
     ):
         assert marker in app_source
+
+
+def test_tauri_shell_exposes_user_menu_logout_and_support_popup() -> None:
+    shell_source = TOOL_SHELL_TSX.read_text(encoding="utf-8")
+    user_menu_source = (ROOT / "desktop-tauri" / "src" / "components" / "UserMenu.tsx").read_text(encoding="utf-8")
+    support_source = (ROOT / "desktop-tauri" / "src" / "components" / "SupportPopup.tsx").read_text(encoding="utf-8")
+
+    for marker in (
+        "UserMenu",
+        "SupportPopup",
+        "onLogout",
+        "onOpenSupport",
+        "snapshot?.auth.last_user",
+    ):
+        assert marker in shell_source
+
+    for marker in ("退出账号", "已登录", "未登录", "lastUser"):
+        assert marker in user_menu_source
+
+    for marker in ("赞赏", "感谢打赏", "supportImage", "src={supportImage}", "赞赏图片缺失"):
+        assert marker in support_source
+
+
+def test_support_popup_styles_center_content_and_keep_close_button_right_aligned() -> None:
+    styles_source = STYLES_CSS.read_text(encoding="utf-8")
+    support_popup_block = styles_source.split(".support-popup {", 1)[1].split("}", 1)[0]
+    close_button_block = styles_source.split(".popover-close {", 1)[1].split("}", 1)[0]
+
+    assert "justify-items: center;" in support_popup_block
+    assert "text-align: center;" in support_popup_block
+    assert "justify-self: end;" in close_button_block
+
+
+def test_tauri_shell_api_exposes_logout_and_support_image_commands() -> None:
+    api_source = TAURI_TS.read_text(encoding="utf-8")
+    app_source = APP_TSX.read_text(encoding="utf-8")
+    rust_lib_source = (ROOT / "desktop-tauri" / "src-tauri" / "src" / "lib.rs").read_text(encoding="utf-8")
+    rust_shell_source = (ROOT / "desktop-tauri" / "src-tauri" / "src" / "shell.rs").read_text(encoding="utf-8")
+
+    for marker in ("loadSupportImage", "logoutCurrentUser", 'invoke<string>("load_support_image")', 'invoke<void>("logout_current_user")'):
+        assert marker in api_source
+
+    for marker in ("loadSupportImage()", "logoutCurrentUser()", "supportImage", 'lastUser={snapshot?.auth.last_user ?? ""}'):
+        assert marker in app_source
+
+    for marker in ("mod shell;", "shell::load_support_image", "shell::logout_current_user"):
+        assert marker in rust_lib_source
+
+    for marker in ("weixin_base64.txt", "auth/auto_login", "logout_current_user"):
+        assert marker in rust_shell_source
+
+
+def test_tauri_settings_snapshot_exposes_plugin_dependencies() -> None:
+    source = (ROOT / "sidecar" / "settings_bridge.py").read_text(encoding="utf-8")
+    api_source = TAURI_TS.read_text(encoding="utf-8")
+    browser_source = BROWSER_FALLBACK_TS.read_text(encoding="utf-8")
+
+    assert '"dependencies":' in source
+    assert "dependencies?: string[]" in api_source
+    assert "dependencies: tool.dependencies ?? []" in browser_source
+
+
+def test_tauri_settings_snapshot_accepts_only_valid_plugin_dependency_arrays(tmp_path: Path) -> None:
+    plugins_dir = tmp_path / "plugins"
+
+    def write_manifest(plugin_name: str, dependencies: object) -> None:
+        plugin_dir = plugins_dir / plugin_name
+        plugin_dir.mkdir(parents=True)
+        (plugin_dir / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "name": plugin_name,
+                    "version": "1.0.0",
+                    "description": "test plugin",
+                    "author": "tests",
+                    "entry": "plugin.py:Plugin",
+                    "dependencies": dependencies,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    write_manifest("bad_array_dep", [123, None, ""])
+    write_manifest("bad_scalar_dep", "dep_tool")
+    write_manifest("good_dep", ["dep_tool", "other_dep"])
+
+    snapshot = build_settings_snapshot(settings_path=tmp_path / "settings.ini", plugins_dir=plugins_dir)
+    plugins = {tool["plugin_name"]: tool for tool in snapshot["tools"] if tool.get("source") == "plugin"}
+
+    assert plugins["bad_array_dep"]["dependencies"] == []
+    assert plugins["bad_scalar_dep"]["dependencies"] == []
+    assert plugins["good_dep"]["dependencies"] == ["dep_tool", "other_dep"]
+
+
+def test_tauri_plugin_toggle_resolves_dependencies() -> None:
+    source = (ROOT / "desktop-tauri" / "src" / "features" / "settings" / "controller" / "actions.ts").read_text(encoding="utf-8")
+    controller_source = SETTINGS_CONTROLLER_TS.read_text(encoding="utf-8")
+
+    for marker in (
+        "function dependencyClosure",
+        "function dependentClosure",
+        "pluginTools: readonly ToolItem[]",
+        "tool.dependencies ?? []",
+        "next.delete(dep)",
+        "next.add(depender)",
+    ):
+        assert marker in source
+
+    assert "pluginToolsRef.current" in controller_source
+    assert "togglePlugin(current, pluginToolsRef.current, tool, enabled)" in controller_source
+
+
+def test_app_keeps_visited_tool_panels_mounted_for_switching_state() -> None:
+    app_source = APP_TSX.read_text(encoding="utf-8")
+    tools_source = (ROOT / "desktop-tauri" / "src" / "features" / "tools" / "index.tsx").read_text(encoding="utf-8")
+    shell_source = TOOL_SHELL_TSX.read_text(encoding="utf-8")
+    styles_source = STYLES_CSS.read_text(encoding="utf-8")
+
+    for marker in (
+        "visitedToolIds",
+        "setVisitedToolIds",
+        "renderKeepAliveToolPanels(",
+        "tool-panel-viewport",
+    ):
+        assert marker in app_source
+
+    for marker in (
+        "renderKeepAliveToolPanels",
+        "keep-alive-tool-panel",
+        "hidden={tool.id !== activeToolId}",
+    ):
+        assert marker in tools_source
+
+    assert "key={activeToolId}" not in shell_source
+    assert ".keep-alive-tool-panel[hidden]" in styles_source
 
 
 def test_theme_palette_section_exposes_glass_strength_slider_contract() -> None:
@@ -1196,6 +1388,21 @@ def test_tauri_api_and_rust_register_download_runtime_session_commands() -> None
         assert marker in rust_sidecar_source
 
 
+def test_download_runtime_session_survives_tool_panel_unmount() -> None:
+    hook_source = DOWNLOAD_RUNTIME_HOOK_TS.read_text(encoding="utf-8")
+
+    for marker in (
+        "downloadRuntimeSessionCache",
+        "cachedSessionForTool(toolId)",
+        "saveCachedSession(toolId, next)",
+        "clearCachedSession(toolId)",
+        "startPolling(cached.session_id)",
+    ):
+        assert marker in hook_source
+
+    assert hook_source.count("cleanupToolSession(") == 2
+
+
 def test_video_downloaders_stream_runtime_progress_and_render_queue_controls() -> None:
     web_tool_source = WEB_VIDEO_TSX.read_text(encoding="utf-8")
     tg_tool_source = TG_DOWNLOADER_TSX.read_text(encoding="utf-8")
@@ -1204,13 +1411,14 @@ def test_video_downloaders_stream_runtime_progress_and_render_queue_controls() -
     hook_source = DOWNLOAD_RUNTIME_HOOK_TS.read_text(encoding="utf-8")
     web_sidecar_source = WEB_SIDECAR_TOOL.read_text(encoding="utf-8")
     tg_sidecar_source = TG_SIDECAR_TOOL.read_text(encoding="utf-8")
+    cancel_support_source = CANCEL_SUPPORT_TOOL.read_text(encoding="utf-8")
 
     for marker in (
         "startToolSession(",
         "pollToolSession(",
         "controlToolSession(",
         "cleanupToolSession(",
-        "const sessionIdRef = useRef<string | null>(null)",
+        "const sessionIdRef = useRef<string | null>(cachedSessionForTool(toolId)?.session_id ?? null)",
         "const sessionId = sessionIdRef.current",
     ):
         assert marker in hook_source
@@ -1261,12 +1469,34 @@ def test_video_downloaders_stream_runtime_progress_and_render_queue_controls() -
 
     for marker in (
         "emit_runtime_progress",
-        "current_download_token",
         "_progress(",
-        'kwargs["token"] = current_download_token()',
+        "add_cancel_token_kwarg(module, kwargs, logger)",
     ):
         assert marker in web_sidecar_source
         assert marker in tg_sidecar_source
+
+    for marker in (
+        "current_download_token",
+        'kwargs["token"] = current_download_token()',
+    ):
+        assert marker in cancel_support_source
+
+
+def test_download_runtime_reconnect_control_is_wired() -> None:
+    api_source = TAURI_TS.read_text(encoding="utf-8")
+    rust_source = SIDECAR_RS.read_text(encoding="utf-8")
+    queue_source = (ROOT / "desktop-tauri" / "src" / "features" / "tools" / "components" / "DownloadQueueTable.tsx").read_text(encoding="utf-8")
+    web_source = WEB_VIDEO_TSX.read_text(encoding="utf-8")
+    tg_source = TG_DOWNLOADER_TSX.read_text(encoding="utf-8")
+    direct_source = DIRECT_DOWNLOADER_TSX.read_text(encoding="utf-8")
+
+    assert '"reconnect"' in api_source
+    assert '"reconnect" =>' in rust_source
+    assert "onReconnect" in queue_source
+    assert "重连" in queue_source
+    assert 'runtime.control("reconnect")' in web_source
+    assert 'runtime.control("reconnect")' in tg_source
+    assert 'runtime.control("reconnect")' not in direct_source
 
 
 def test_download_queue_state_routes_indexed_progress_to_the_correct_row() -> None:

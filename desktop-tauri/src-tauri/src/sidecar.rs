@@ -35,6 +35,7 @@ struct ToolSession {
     pid: Option<u32>,
     paused: bool,
     cancel_requested: bool,
+    reconnect_nonce: u64,
     result: Option<Value>,
     error: Option<String>,
     exit_code: Option<i32>,
@@ -61,6 +62,7 @@ impl ToolSession {
             pid,
             paused: false,
             cancel_requested: false,
+            reconnect_nonce: 0,
             result: None,
             error: None,
             exit_code: None,
@@ -117,7 +119,7 @@ impl ToolSession {
 struct ToolControlState {
     paused: bool,
     cancelled: bool,
-    reconnect: bool,
+    reconnect: u64,
 }
 
 #[tauri::command]
@@ -227,7 +229,7 @@ pub async fn control_tool_session(
                     ToolControlState {
                         paused: true,
                         cancelled: guard.cancel_requested,
-                        reconnect: false,
+                        reconnect: guard.reconnect_nonce,
                     },
                 )?;
             }
@@ -243,7 +245,7 @@ pub async fn control_tool_session(
                     ToolControlState {
                         paused: false,
                         cancelled: guard.cancel_requested,
-                        reconnect: false,
+                        reconnect: guard.reconnect_nonce,
                     },
                 )?;
             }
@@ -260,12 +262,27 @@ pub async fn control_tool_session(
                     ToolControlState {
                         paused: false,
                         cancelled: true,
-                        reconnect: false,
+                        reconnect: guard.reconnect_nonce,
                     },
                 )?;
             }
             if let Some(pid) = guard.pid {
                 kill_process_by_pid(pid);
+            }
+        }
+        "reconnect" => {
+            let mut guard = session.lock().await;
+            guard.push_log("正在重连");
+            guard.reconnect_nonce = guard.reconnect_nonce.saturating_add(1);
+            if let Some(path) = guard.control_path.as_ref() {
+                write_control_state(
+                    path,
+                    ToolControlState {
+                        paused: guard.paused,
+                        cancelled: guard.cancel_requested,
+                        reconnect: guard.reconnect_nonce,
+                    },
+                )?;
             }
         }
         other => return Err(format!("unsupported control action: {other}")),
@@ -294,7 +311,7 @@ pub async fn cleanup_tool_session(
                 ToolControlState {
                     paused: false,
                     cancelled: true,
-                    reconnect: false,
+                    reconnect: guard.reconnect_nonce,
                 },
             );
         }
@@ -943,7 +960,7 @@ mod tests {
             ToolControlState {
                 paused: true,
                 cancelled: true,
-                reconnect: false,
+                reconnect: 0,
             },
         )
         .expect("control state should be written");
@@ -953,7 +970,22 @@ mod tests {
             serde_json::from_str(&content).expect("control file should be valid json");
         assert_eq!(payload["paused"], true);
         assert_eq!(payload["cancelled"], true);
-        assert_eq!(payload["reconnect"], false);
+        assert_eq!(payload["reconnect"], 0);
+
+        write_control_state(
+            &control_path,
+            ToolControlState {
+                paused: false,
+                cancelled: false,
+                reconnect: 2,
+            },
+        )
+        .expect("control state should write a repeatable reconnect pulse");
+
+        let content = std::fs::read_to_string(&control_path).expect("control file should exist");
+        let payload: serde_json::Value =
+            serde_json::from_str(&content).expect("control file should be valid json");
+        assert_eq!(payload["reconnect"], 2);
 
         let _ = std::fs::remove_dir_all(temp_dir);
     }
@@ -1040,6 +1072,7 @@ mod tests {
             pid: None,
             paused: false,
             cancel_requested: false,
+            reconnect_nonce: 0,
             result: None,
             error: None,
             exit_code: None,

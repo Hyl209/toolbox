@@ -47,14 +47,21 @@ def current_download_token() -> DownloadToken | None:
     return _download_token.get()
 
 
-def _read_control_state(path: Path) -> tuple[bool, bool, bool] | None:
+def _read_control_state(path: Path) -> tuple[bool, bool, int] | None:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         return None
     if not isinstance(payload, dict):
         return None
-    return bool(payload.get("paused")), bool(payload.get("cancelled")), bool(payload.get("reconnect"))
+    reconnect = payload.get("reconnect")
+    if isinstance(reconnect, bool):
+        reconnect_nonce = int(reconnect)
+    elif isinstance(reconnect, int):
+        reconnect_nonce = reconnect
+    else:
+        reconnect_nonce = 0
+    return bool(payload.get("paused")), bool(payload.get("cancelled")), reconnect_nonce
 
 
 def validate_control_path(path: Path) -> Path:
@@ -78,7 +85,8 @@ def bind_download_control(control_path: Path | None) -> Iterator[DownloadToken |
         control_path = validate_control_path(control_path)
 
         def watch_control() -> None:
-            last_state: tuple[bool, bool, bool] | None = None
+            last_state: tuple[bool, bool, int] | None = None
+            last_reconnect_nonce = 0
             while not stop_event.is_set():
                 state = _read_control_state(control_path)
                 if state is not None and state != last_state:
@@ -91,10 +99,9 @@ def bind_download_control(control_path: Path | None) -> Iterator[DownloadToken |
                         token.cancel.set()
                     else:
                         token.cancel.clear()
-                    if reconnect:
+                    if reconnect > last_reconnect_nonce:
                         token.reconnect.set()
-                    else:
-                        token.reconnect.clear()
+                        last_reconnect_nonce = reconnect
                     last_state = state
                 stop_event.wait(0.1)
 

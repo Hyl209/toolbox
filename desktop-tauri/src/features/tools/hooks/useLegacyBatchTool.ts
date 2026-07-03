@@ -6,7 +6,6 @@ type BatchToolResultRow = { source: string; output: string };
 type UseLegacyBatchToolOptions<TItem> = {
   toolId: string;
   initialOutputDir?: string;
-  probeLabel: (available: boolean | null) => string;
   parseFiles: (result: ToolResult) => TItem[];
   parseResults: (result: ToolResult) => BatchToolResultRow[];
   fileTitle: string;
@@ -18,7 +17,6 @@ type UseLegacyBatchToolOptions<TItem> = {
   convertTargetLabel: string;
   listAction?: string;
   convertAction?: string;
-  probeAction?: string;
   listPayload?: (paths: string[]) => Record<string, unknown>;
   convertPayload: (ctx: { paths: string[]; outputDir: string }) => Record<string, unknown>;
 };
@@ -40,7 +38,6 @@ function splitPaths(text: string): string[] {
 export function useLegacyBatchTool<TItem>({
   toolId,
   initialOutputDir = "",
-  probeLabel,
   parseFiles,
   parseResults,
   fileTitle,
@@ -52,14 +49,11 @@ export function useLegacyBatchTool<TItem>({
   convertTargetLabel,
   listAction = "list",
   convertAction = "convert",
-  probeAction = "probe",
   listPayload = (paths) => ({ paths }),
   convertPayload,
 }: UseLegacyBatchToolOptions<TItem>) {
   const [inputText, setInputText] = useState("");
   const [outputDir, setOutputDir] = useState(initialOutputDir);
-  const [available, setAvailable] = useState<boolean | null>(null);
-  const [backendMessage, setBackendMessage] = useState("");
   const [files, setFiles] = useState<TItem[]>([]);
   const [results, setResults] = useState<BatchToolResultRow[]>([]);
   const [running, setRunning] = useState(false);
@@ -69,7 +63,6 @@ export function useLegacyBatchTool<TItem>({
   const paths = useMemo(() => splitPaths(inputText), [inputText]);
   const canList = !running && paths.length > 0;
   const canConvert = !running && paths.length > 0 && Boolean(outputDir);
-  const backendLabel = probeLabel(available);
 
   useEffect(() => {
     if (!initialOutputDir) {
@@ -77,28 +70,6 @@ export function useLegacyBatchTool<TItem>({
     }
     setOutputDir((current) => current || initialOutputDir);
   }, [initialOutputDir]);
-
-  useEffect(() => {
-    let cancelled = false;
-    runTool(toolId, { task_id: `${toolId}-probe-${Date.now()}`, action: probeAction, payload: {} })
-      .then((result) => {
-        if (cancelled) {
-          return;
-        }
-        setAvailable(Boolean(result.available ?? result.data?.available));
-        setBackendMessage(String(result.message ?? result.data?.message ?? ""));
-      })
-      .catch((caught) => {
-        if (cancelled) {
-          return;
-        }
-        setAvailable(false);
-        setBackendMessage(errorText(caught));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [probeAction, toolId]);
 
   async function handleList() {
     if (!canList) {
@@ -186,8 +157,6 @@ export function useLegacyBatchTool<TItem>({
     setInputText,
     outputDir,
     setOutputDir,
-    available,
-    backendMessage,
     files,
     results,
     running,
@@ -196,7 +165,6 @@ export function useLegacyBatchTool<TItem>({
     paths,
     canList,
     canConvert,
-    backendLabel,
     handleList,
     handleConvert,
     clearAll,

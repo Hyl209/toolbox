@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { SettingsSnapshot } from "../../api/tauri";
 import ArchiveExtractorPluginTool from "../../tools/ArchiveExtractorPluginTool";
+import AiImageTool from "../../tools/AiImageTool";
 import Base64Tool from "../../tools/Base64Tool";
 import BatchRenameTool from "../../tools/BatchRenameTool";
 import CsvToolsPluginTool from "../../tools/CsvToolsPluginTool";
@@ -32,6 +33,7 @@ import {
 type PanelRenderer = (snapshot: SettingsSnapshot | null) => ReactNode;
 
 export const builtinPanelRenderers: Record<string, PanelRenderer> = {
+  aiimage: () => <AiImageTool />,
   music: (snapshot) => <MusicTool initialOutputDir={toolOutputDir(snapshot, "music")} />,
   imageconvert: (snapshot) => <ImageConvertTool initialOutputDir={toolOutputDir(snapshot, "imageconvert")} />,
   mp4mp3: (snapshot) => <Mp4Mp3Tool initialOutputDir={toolOutputDir(snapshot, "mp4mp3")} />,

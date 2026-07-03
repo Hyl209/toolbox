@@ -160,28 +160,6 @@ function DirectDownloaderTool({ initialOutputDir = "", initialSettings = {} }: {
     [connections, outputDir, outputName, outputSubdirByFilename, overwrite, parsedHeaders, proxyHost, proxyPort, referer, urlText],
   );
 
-  useEffect(() => {
-    let cancelled = false;
-    runTool("directdownloader", { task_id: `direct-probe-${Date.now()}`, action: "probe", payload: {} })
-      .then((result) => {
-        if (cancelled) {
-          return;
-        }
-        const data = dataOf(result);
-        if (data.default_connections) {
-          setConnections((current) => current || String(data.default_connections));
-        }
-      })
-      .catch((caught) => {
-        if (!cancelled) {
-          setError(errorText(caught));
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   async function chooseOutputDir() {
     const path = await pickDirectory({ title: "选择直链下载输出目录" });
     if (path) {

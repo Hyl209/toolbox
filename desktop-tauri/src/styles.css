@@ -434,6 +434,7 @@ input:focus-visible {
   padding: 8px 8px 8px 10px;
 }
 
+.aiimage-tool,
 .base64-tool,
 .music-tool,
 .zippng-tool,
@@ -449,6 +450,7 @@ input:focus-visible {
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
 }
 
+.aiimage-tool,
 .base64-tool,
 .music-tool,
 .zippng-tool {
@@ -1295,6 +1297,69 @@ button:disabled {
   border-radius: 18px;
   padding: 12px;
   background: color-mix(in oklab, var(--legacy-input-bg), transparent 34%);
+}
+
+.settings-dependency-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.dependency-card {
+  display: grid;
+  gap: 10px;
+}
+
+.dependency-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dependency-status-pill {
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.dependency-status-pill[data-status="checking"] {
+  color: var(--legacy-text-secondary);
+  background: color-mix(in oklab, var(--legacy-input-bg), transparent 12%);
+}
+
+.dependency-status-pill[data-status="available"] {
+  color: oklch(41% 0.14 150deg);
+  background: oklch(94% 0.05 150deg / 75%);
+}
+
+.dependency-status-pill[data-status="missing"] {
+  color: oklch(50% 0.18 25deg);
+  background: oklch(95% 0.05 25deg / 82%);
+}
+
+.dependency-detail {
+  margin: 0;
+  color: var(--legacy-text-secondary);
+  font-family: "Cascadia Mono", "Consolas", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+.dependency-tool-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dependency-tool-chip {
+  border-radius: 999px;
+  padding: 5px 10px;
+  color: var(--legacy-text-secondary);
+  background: color-mix(in oklab, var(--legacy-input-bg), transparent 12%);
+  font-size: 12px;
 }
 
 .setting-field-head {
@@ -2685,6 +2750,7 @@ textarea {
     linear-gradient(145deg, color-mix(in oklab, var(--legacy-surface-bg), black 18%), color-mix(in oklab, var(--legacy-window-bg), black 22%));
 }
 
+.theme-root[data-theme-mode="dark"] .aiimage-tool,
 .theme-root[data-theme-mode="dark"] .base64-tool,
 .theme-root[data-theme-mode="dark"] .music-tool,
 .theme-root[data-theme-mode="dark"] .zippng-tool,
@@ -2836,4 +2902,518 @@ textarea {
 .theme-root[data-theme-mode="dark"] .log-content li {
   color: var(--legacy-text-primary);
   background: color-mix(in oklab, var(--legacy-input-bg), black 14%);
+}
+
+/* ── 毛玻璃质感强化 ── */
+
+/* 1. 提升全局模糊/饱和参数 */
+:root {
+  --glass-blur: 20px;
+  --glass-window-blur: 44px;
+  --glass-saturation: 150%;
+  --glass-edge-alpha: 62%;
+  --glass-shadow-alpha: 16%;
+}
+
+/* 2. 工具面板：加四边高光 + 加深背景模糊 */
+.aiimage-tool,
+.base64-tool,
+.music-tool,
+.zippng-tool,
+.directdownloader-tool,
+.imageconvert-tool,
+.mp4mp3-tool,
+.pdftools-tool,
+.wordformatter-tool,
+.batchrename-tool,
+.filesorter-tool,
+.same-tool,
+.empty-tool-panel {
+  box-shadow:
+    var(--glass-card-shadow),
+    inset 0 1px 0 oklch(100% 0 0 / 66%),
+    inset 1px 0 0 oklch(100% 0 0 / 22%),
+    inset -1px 0 0 oklch(100% 0 0 / 14%),
+    inset 0 -1px 0 oklch(100% 0 0 / 10%);
+}
+
+/* 3. 侧边栏 active item：玻璃感替代纯色 */
+.tool-item.active {
+  background:
+    linear-gradient(140deg, oklch(100% 0 0 / 54%), oklch(100% 0 0 / 26%)),
+    color-mix(in oklab, var(--legacy-accent), transparent 84%);
+  box-shadow:
+    inset 0 1px 0 oklch(100% 0 0 / 72%),
+    0 3px 10px oklch(26% 0.02 255deg / 14%);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+}
+
+/* 4. header 高光下边缘加强 */
+.shell-header {
+  box-shadow:
+    inset 0 -1px 0 oklch(100% 0 0 / 20%),
+    0 1px 0 oklch(20% 0.015 255deg / 6%);
+}
+
+/* 5. 设置面板同步强化 */
+.settings-panel {
+  box-shadow:
+    var(--glass-card-shadow),
+    inset 0 1px 0 oklch(100% 0 0 / 66%),
+    inset 1px 0 0 oklch(100% 0 0 / 22%),
+    inset -1px 0 0 oklch(100% 0 0 / 14%);
+}
+
+/* 6. dark mode 对应强化 */
+.theme-root[data-theme-mode="dark"] .aiimage-tool,
+.theme-root[data-theme-mode="dark"] .base64-tool,
+.theme-root[data-theme-mode="dark"] .music-tool,
+.theme-root[data-theme-mode="dark"] .zippng-tool,
+.theme-root[data-theme-mode="dark"] .directdownloader-tool,
+.theme-root[data-theme-mode="dark"] .imageconvert-tool,
+.theme-root[data-theme-mode="dark"] .mp4mp3-tool,
+.theme-root[data-theme-mode="dark"] .pdftools-tool,
+.theme-root[data-theme-mode="dark"] .wordformatter-tool,
+.theme-root[data-theme-mode="dark"] .batchrename-tool,
+.theme-root[data-theme-mode="dark"] .filesorter-tool,
+.theme-root[data-theme-mode="dark"] .same-tool,
+.theme-root[data-theme-mode="dark"] .empty-tool-panel,
+.theme-root[data-theme-mode="dark"] .settings-panel {
+  box-shadow:
+    0 18px 46px oklch(0% 0 0 / 24%),
+    inset 0 1px 0 oklch(100% 0 0 / 12%),
+    inset 1px 0 0 oklch(100% 0 0 / 8%),
+    inset -1px 0 0 oklch(100% 0 0 / 5%);
+}
+
+.theme-root[data-theme-mode="dark"] .tool-item.active {
+  background:
+    linear-gradient(140deg, oklch(100% 0 0 / 10%), oklch(100% 0 0 / 4%)),
+    color-mix(in oklab, var(--legacy-accent), transparent 72%);
+  box-shadow:
+    inset 0 1px 0 oklch(100% 0 0 / 16%),
+    0 3px 10px oklch(0% 0 0 / 22%);
+}
+
+/* ── 光影增强 ── */
+
+/* 1. 窗口顶部光晕：模拟从上方照入的光源 */
+.window-surface::after {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    radial-gradient(ellipse 80% 28% at 50% 0%, oklch(100% 0 0 / 18%), transparent),
+    radial-gradient(ellipse 36% 18% at 14% 0%, oklch(100% 0 0 / 22%), transparent),
+    radial-gradient(ellipse 26% 12% at 88% 2%, color-mix(in oklab, var(--legacy-accent), white 60%) / 12%, transparent);
+  mix-blend-mode: soft-light;
+  z-index: 0;
+}
+
+/* 2. 工具面板内部光：右上角柔光点 */
+.base64-tool,
+.music-tool,
+.zippng-tool,
+.directdownloader-tool,
+.imageconvert-tool,
+.mp4mp3-tool,
+.pdftools-tool,
+.wordformatter-tool,
+.batchrename-tool,
+.filesorter-tool,
+.same-tool,
+.empty-tool-panel {
+  background-image:
+    radial-gradient(circle at 88% 6%, oklch(100% 0 0 / 28%), transparent 36%),
+    radial-gradient(circle at 8% 92%, oklch(62% 0.06 252deg / 8%), transparent 28%),
+    linear-gradient(145deg, oklch(100% 0 0 / 18%), transparent 38%),
+    var(--glass-panel-bg);
+}
+
+/* 3. primary-button 悬停辉光 */
+.primary-button:hover:not(:disabled) {
+  box-shadow:
+    0 0 0 3px color-mix(in oklab, var(--accent), transparent 72%),
+    0 6px 18px color-mix(in oklab, var(--accent), transparent 58%);
+}
+
+/* 4. ghost-button 悬停微光 */
+.ghost-button:hover:not(:disabled) {
+  box-shadow:
+    inset 0 1px 0 oklch(100% 0 0 / 62%),
+    0 4px 12px oklch(26% 0.02 255deg / 10%);
+}
+
+/* 5. 侧边栏底部阴影渐隐（depth感） */
+.tool-list::after {
+  content: "";
+  pointer-events: none;
+  position: sticky;
+  bottom: 0;
+  display: block;
+  height: 32px;
+  margin-top: -32px;
+  background: linear-gradient(to bottom, transparent, oklch(90% 0.006 255deg / 32%));
+  flex-shrink: 0;
+}
+
+/* 6. running dot 脉冲光晕动画 */
+@keyframes dot-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 oklch(80% 0.16 86deg / 60%); }
+  50%       { box-shadow: 0 0 0 5px oklch(80% 0.16 86deg / 0%); }
+}
+.tool-dot.running {
+  animation: dot-pulse 1.4s ease-in-out infinite;
+}
+
+/* 7. active tool item：顶部细高光线 */
+.tool-item.active::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, oklch(100% 0 0 / 28%) 0%, transparent 40%);
+  pointer-events: none;
+}
+.tool-item { position: relative; }
+
+/* dark mode 补丁 */
+.theme-root[data-theme-mode="dark"] .tool-list::after {
+  background: linear-gradient(to bottom, transparent, oklch(18% 0.01 255deg / 36%));
+}
+
+.theme-root[data-theme-mode="dark"] .primary-button:hover:not(:disabled) {
+  box-shadow:
+    0 0 0 3px color-mix(in oklab, var(--legacy-accent), transparent 68%),
+    0 6px 20px color-mix(in oklab, var(--legacy-accent), transparent 52%);
+}
+
+/* ── 过渡动画增强 v2 ── */
+
+/* === keyframes === */
+
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes title-in {
+  from { opacity: 0; transform: translateX(-8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes dot-pop {
+  0%   { transform: scale(0.4); opacity: 0; }
+  60%  { transform: scale(1.3); }
+  100% { transform: scale(1);   opacity: 1; }
+}
+
+@keyframes dot-pulse {
+  0%, 100% { box-shadow: 0 0 0 0   oklch(80% 0.16 86deg / 60%); }
+  50%       { box-shadow: 0 0 0 6px oklch(80% 0.16 86deg / 0%);  }
+}
+
+@keyframes btn-bounce {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(0.93) translateY(2px); }
+  70%  { transform: scale(1.03) translateY(-1px); }
+  100% { transform: scale(1); }
+}
+
+/* === 工具面板切换（View Transitions） === */
+.tool-panel > * {
+  view-transition-name: tool-panel;
+  /* panel-in 由 view transition 接管，此处禁用 */
+  animation: none !important;
+}
+
+@keyframes vt-out-up {
+  to { transform: translateY(-100%); opacity: 0.4; }
+}
+@keyframes vt-in-from-below {
+  from { transform: translateY(100%); opacity: 0.4; }
+}
+
+::view-transition-old(tool-panel) {
+  animation: vt-out-up 220ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+::view-transition-new(tool-panel) {
+  animation: vt-in-from-below 280ms var(--ease-out) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(tool-panel),
+  ::view-transition-new(tool-panel) {
+    animation-duration: 1ms !important;
+  }
+}
+
+/* === 内部元素错开进入 === */
+.tool-heading       { animation: fade-up 240ms 40ms  var(--ease-out) both; }
+.file-mode-card     { animation: fade-up 240ms 80ms  var(--ease-out) both; }
+.actions-row        { animation: fade-up 240ms 100ms var(--ease-out) both; }
+.editor-grid        { animation: fade-up 240ms 60ms  var(--ease-out) both; }
+.result-card        { animation: fade-up 240ms 120ms var(--ease-out) both; }
+.log-panel          { animation: fade-up 240ms 140ms var(--ease-out) both; }
+
+/* === header 标题 === */
+.title-stack h1 {
+  animation: title-in 280ms var(--ease-out) both;
+}
+
+/* === 侧边栏 tool-item === */
+.tool-item {
+  transition:
+    background  180ms var(--ease-out),
+    box-shadow  180ms var(--ease-out),
+    transform   180ms var(--ease-out),
+    color       180ms var(--ease-out);
+}
+.tool-item:hover:not(:disabled) {
+  transform: translateX(3px) translateY(-1px);
+}
+.tool-item.active {
+  transform: translateX(2px);
+}
+
+/* === tool-dot 状态切换 === */
+.tool-dot {
+  transition:
+    background 320ms var(--ease-out),
+    box-shadow 320ms var(--ease-out),
+    transform  200ms var(--ease-out),
+    opacity    200ms var(--ease-out);
+}
+.tool-dot.ready,
+.tool-dot.success,
+.tool-dot.error {
+  animation: dot-pop 260ms var(--ease-out) both;
+}
+.tool-dot.running {
+  animation: dot-pulse 1.4s ease-in-out infinite;
+}
+
+/* === 卡片 hover 浮起 === */
+.settings-card,
+.settings-group-card,
+.file-mode-card,
+.result-card {
+  transition:
+    transform   200ms var(--ease-out),
+    box-shadow  200ms var(--ease-out),
+    background  200ms var(--ease-out);
+}
+.settings-card:hover,
+.settings-group-card:hover {
+  transform: translateY(-3px);
+  box-shadow:
+    0 14px 32px oklch(24% 0.02 255deg / 12%),
+    inset 0 1px 0 oklch(100% 0 0 / 56%);
+}
+
+/* === mode-switch === */
+.mode-switch button {
+  transition:
+    background 200ms var(--ease-out),
+    color      200ms var(--ease-out),
+    box-shadow 200ms var(--ease-out),
+    transform  200ms var(--ease-out);
+}
+.mode-switch button:hover { transform: scale(1.04); }
+.mode-switch button.active { transform: scale(1); }
+
+/* === settings-nav === */
+.settings-nav-button {
+  transition:
+    background  160ms var(--ease-out),
+    box-shadow  160ms var(--ease-out),
+    transform   160ms var(--ease-out),
+    color       160ms var(--ease-out);
+}
+.settings-nav-button:hover:not(.active) { transform: translateX(4px); }
+.settings-nav-button.active             { transform: translateX(4px); }
+
+/* === filter-chip === */
+.filter-chip {
+  transition:
+    background 160ms var(--ease-out),
+    color      160ms var(--ease-out),
+    transform  140ms var(--ease-out),
+    box-shadow 160ms var(--ease-out);
+}
+.filter-chip:hover:not(.active) { transform: scale(1.06) translateY(-1px); }
+.filter-chip.active             { transform: scale(1.03); }
+
+/* === buttons === */
+.primary-button,
+.ghost-button,
+.path-pick-button,
+.settings-button {
+  transition:
+    background  180ms var(--ease-out),
+    box-shadow  180ms var(--ease-out),
+    transform   180ms var(--ease-out),
+    filter      180ms var(--ease-out),
+    color       180ms var(--ease-out);
+}
+
+.primary-button:active:not(:disabled) {
+  animation: btn-bounce 320ms var(--ease-out) both;
+}
+
+/* === window-controls === */
+.window-control {
+  transition:
+    transform  140ms var(--ease-out),
+    filter     140ms var(--ease-out),
+    background 200ms var(--ease-out);
+}
+
+.tool-panel-viewport {
+  min-height: 100%;
+}
+
+.keep-alive-tool-stack,
+.keep-alive-tool-panel {
+  display: contents;
+}
+
+.keep-alive-tool-stack.hidden,
+.keep-alive-tool-panel[hidden] {
+  display: none !important;
+}
+
+.floating-popover {
+  position: absolute;
+  right: 24px;
+  top: 78px;
+  z-index: 20;
+  min-width: 220px;
+  padding: 18px;
+  border-radius: 18px;
+  color: var(--legacy-text-primary);
+  background: var(--glass-panel-bg);
+  box-shadow:
+    var(--glass-card-shadow),
+    inset 0 1px 0 oklch(100% 0 0 / 54%);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+}
+
+.user-menu-popover {
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+}
+
+.user-menu-avatar,
+.avatar-button {
+  display: grid;
+  place-items: center;
+}
+
+.user-menu-avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 999px;
+  color: white;
+  font-weight: 780;
+  background: linear-gradient(135deg, var(--legacy-accent), var(--accent-strong));
+}
+
+.modal-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: oklch(0% 0 0 / 42%);
+}
+
+.support-popup {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  width: min(420px, calc(100vw - 48px));
+  padding: 22px;
+  border-radius: 22px;
+  color: var(--legacy-text-primary);
+  text-align: center;
+  background: var(--glass-panel-bg);
+  box-shadow:
+    var(--glass-card-shadow),
+    inset 0 1px 0 oklch(100% 0 0 / 54%);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+}
+
+.support-popup img {
+  max-width: 100%;
+  max-height: 420px;
+  object-fit: contain;
+}
+
+.popover-close {
+  justify-self: end;
+  color: var(--legacy-text-secondary);
+  background: transparent;
+}
+.image-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.image-card {
+  display: grid;
+  gap: 10px;
+  border-radius: 18px;
+  padding: 12px;
+  background: color-mix(in oklab, var(--legacy-input-bg), transparent 24%);
+  box-shadow: inset 0 1px 0 oklch(100% 0 0 / 34%);
+}
+
+.image-preview-button {
+  border-radius: 16px;
+  overflow: hidden;
+  padding: 0;
+  background: color-mix(in oklab, var(--legacy-window-bg), transparent 8%);
+}
+
+.image-preview-button img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+}
+
+.image-card-meta {
+  display: grid;
+  gap: 2px;
+}
+
+.image-card-meta strong {
+  color: var(--legacy-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.image-card-meta small {
+  color: var(--legacy-text-secondary);
 }

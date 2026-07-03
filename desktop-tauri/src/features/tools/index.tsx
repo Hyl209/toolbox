@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { SettingsSnapshot, ToolItem } from "../../api/tauri";
 import toolManifest from "../../tools/manifest";
+import { ToolErrorBoundary } from "./components/ToolErrorBoundary";
 import PluginPlaceholderPanel from "./PluginPlaceholderPanel";
 import { builtinPanelRenderers, pluginPanelRenderers } from "./panels";
 
@@ -82,4 +83,31 @@ export function renderToolPanel(activeTool: ToolItem, snapshot: SettingsSnapshot
     return pluginPanelRenderers[activeTool.id]?.(snapshot) ?? <PluginPlaceholderPanel tool={activeTool} />;
   }
   return builtinPanelRenderers[activeTool.id]?.(snapshot) ?? renderBuiltinPlaceholder(activeTool);
+}
+
+export function renderKeepAliveToolPanels(
+  tools: readonly ToolItem[],
+  activeToolId: string,
+  visitedToolIds: readonly string[],
+  snapshot: SettingsSnapshot | null,
+): ReactNode {
+  const visited = new Set([...visitedToolIds, activeToolId]);
+  return (
+    <>
+      {tools
+        .filter((tool) => visited.has(tool.id))
+        .map((tool) => (
+          <section
+            aria-hidden={tool.id !== activeToolId}
+            className="keep-alive-tool-panel"
+            hidden={tool.id !== activeToolId}
+            key={tool.id}
+          >
+            <ToolErrorBoundary>
+              {renderToolPanel(tool, snapshot)}
+            </ToolErrorBoundary>
+          </section>
+        ))}
+    </>
+  );
 }

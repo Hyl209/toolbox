@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { pickDirectory, runTool, type ToolResult, type ToolSettings } from "../api/tauri";
+import { uiText } from "../uiText";
 
 type SameGroup = {
   keeper?: string;
@@ -229,10 +230,10 @@ function SameTool({ initialSettings = {} }: { initialSettings?: ToolSettings }) 
         </section>
       ) : null}
 
-      <section className="log-panel" aria-label="运行日志">
+      <section className="log-panel" aria-label={uiText.common.runtime}>
         <div>
-          <div className="panel-title">Runtime</div>
-          <p className="muted">最近 5 条本地执行记录</p>
+          <div className="panel-title">{uiText.common.runtime}</div>
+          <p className="muted">{uiText.common.recentLocal}</p>
         </div>
         <div className="log-content">
           {error ? <div className="error-box">{error}</div> : null}
@@ -243,7 +244,7 @@ function SameTool({ initialSettings = {} }: { initialSettings?: ToolSettings }) 
               ))}
             </ul>
           ) : (
-            <p className="muted">暂无日志</p>
+            <p className="muted">{uiText.common.noLogs}</p>
           )}
         </div>
       </section>

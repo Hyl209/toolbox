@@ -32,8 +32,6 @@ function MusicTool({ initialOutputDir = "" }: { initialOutputDir?: string }) {
     setInputText,
     outputDir,
     setOutputDir,
-    available,
-    backendMessage,
     files: songs,
     results,
     running,
@@ -42,7 +40,6 @@ function MusicTool({ initialOutputDir = "" }: { initialOutputDir?: string }) {
     paths,
     canList,
     canConvert,
-    backendLabel,
     handleList,
     handleConvert,
     clearAll,
@@ -52,7 +49,6 @@ function MusicTool({ initialOutputDir = "" }: { initialOutputDir?: string }) {
   } = useLegacyBatchTool<SongItem>({
     toolId: "music",
     initialOutputDir,
-    probeLabel: (value) => (value === null ? "检测中" : value ? "可转换" : "缺少依赖"),
     parseFiles: resultFiles,
     parseResults: resultRows,
     fileTitle: "选择 NCM 文件",
@@ -76,9 +72,7 @@ function MusicTool({ initialOutputDir = "" }: { initialOutputDir?: string }) {
         eyebrow="Legacy NCM converter"
         title="NCM 转 MP3"
         description="将 NCM 转为 MP3。"
-        statusLabel={backendLabel}
-        ready={Boolean(available)}
-        message={backendMessage}
+        statusLabel=""
       />
 
       <div className="editor-grid">
@@ -105,14 +99,19 @@ function MusicTool({ initialOutputDir = "" }: { initialOutputDir?: string }) {
             onChange={setOutputDir}
             onPick={chooseOutputDir}
           />
-          <label className="check-row">
-            <input checked={overwrite} disabled={running} onChange={(event) => setOverwrite(event.currentTarget.checked)} type="checkbox" />
-            覆盖同名 MP3
-          </label>
-          <label className="check-row">
-            <input checked={deleteSource} disabled={running} onChange={(event) => setDeleteSource(event.currentTarget.checked)} type="checkbox" />
-            转换成功后删除源 NCM
-          </label>
+          <details className="direct-advanced-options">
+            <summary>高级选项</summary>
+            <div className="tool-result-grid field-button-row">
+              <label className="check-row">
+                <input checked={overwrite} disabled={running} onChange={(event) => setOverwrite(event.currentTarget.checked)} type="checkbox" />
+                覆盖同名 MP3
+              </label>
+              <label className="check-row">
+                <input checked={deleteSource} disabled={running} onChange={(event) => setDeleteSource(event.currentTarget.checked)} type="checkbox" />
+                转换后删除源 NCM
+              </label>
+            </div>
+          </details>
         </div>
       </div>
 

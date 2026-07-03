@@ -22,6 +22,7 @@ class ToolDef:
 
 
 TOOL_DEFINITIONS: list[ToolDef] = [
+    ToolDef('aiimage', 'AI生图', 'AI 生图', 'modules/ai-image-gen', 'converter.py', 'tab.py'),
     ToolDef('music', 'NCM转换', 'NCM 转 MP3', 'modules/ncm-converter', 'ncm_to_mp3.py', 'tab.py'),
     ToolDef('zipandpng', 'PNG伪装', '图片伪装', 'modules/file-disguise', 'zipandpng.py', 'tab.py'),
     ToolDef('mp4mp3', 'MP4转MP3', 'MP4 转 MP3', 'modules/audio-extractor', 'converter.py', 'tab.py',
@@ -46,6 +47,7 @@ TOOL_IDS = [t.id for t in TOOL_DEFINITIONS]
 SIDEBAR_LABELS = [t.sidebar_label for t in TOOL_DEFINITIONS]
 
 _CONVERTER_KEYS_BY_TOOL_ID = {
+    'aiimage': ('aiimage',),
     'music': ('ncm', 'music'),
     'zipandpng': ('zip', 'zipandpng'),
     'mp4mp3': ('mp4', 'mp4mp3'),
@@ -62,6 +64,7 @@ _CONVERTER_KEYS_BY_TOOL_ID = {
 }
 
 _TAB_KEYS_BY_TOOL_ID = {
+    'aiimage': ('aiimage_tab',),
     'music': ('music_tab',),
     'zipandpng': ('zip_tab', 'zipandpng_tab'),
     'mp4mp3': ('mp4_tab', 'mp4mp3_tab'),
@@ -105,7 +108,6 @@ def get_packaging_datas() -> list[tuple[str, str]]:
     Returns list of (source_path, dest_dir) tuples with forward slashes.
     Includes sub-modules for packages that have been split (video-downloader, same).
     """
-    # Sub-modules that must be included alongside converter.py
     _EXTRA_SUB_MODULES: dict[str, list[str]] = {
         'modules/video-downloader': [
             'models.py', '_shared.py', 'source_parser.py',
@@ -130,7 +132,6 @@ def get_packaging_datas() -> list[tuple[str, str]]:
         _add(f'{d}/{t.tab_file}', d)
         for extra in t.extra_files:
             _add(f'{d}/{extra}', d)
-        # Include sub-modules for split packages
         for sub in _EXTRA_SUB_MODULES.get(d, []):
             _add(f'{d}/{sub}', d)
 

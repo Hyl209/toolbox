@@ -5,6 +5,7 @@ import { DEFAULT_THEME_COLORS, pluginConfigKey, type ThemeColors, type ThemeName
 import { useSettingsPanelController } from "./useSettingsPanelController";
 import AccountPreferencesSection from "./sections/AccountPreferencesSection";
 import DownloaderSettingsSection from "./sections/DownloaderSettingsSection";
+import EnvironmentDependenciesSection from "./sections/EnvironmentDependenciesSection";
 import SettingsSummarySection from "./sections/SettingsSummarySection";
 import ThemeModeSection from "./sections/ThemeModeSection";
 import ThemePaletteSection from "./sections/ThemePaletteSection";
@@ -27,6 +28,7 @@ const SETTINGS_SECTIONS = [
   { id: "appearance", label: "外观", title: "外观", description: "主题和配色。" },
   { id: "paths", label: "目录", title: "目录", description: "默认输入输出位置。" },
   { id: "downloaders", label: "下载", title: "下载", description: "下载器默认行为。" },
+  { id: "dependencies", label: "环境", title: "环境依赖", description: "集中查看外部运行时与后端依赖状态。" },
   { id: "wordformatter", label: uiText.settings.wordSection, title: uiText.settings.wordSectionTitle, description: "排版默认参数。" },
   { id: "tools", label: "工具", title: "工具", description: "工具与插件开关。" },
   { id: "sidebar", label: "侧栏", title: "侧栏", description: "工具显示顺序。" },
@@ -159,6 +161,8 @@ export default function SettingsPanel({
         {activeSection === "downloaders" ? (
           <DownloaderSettingsSection saving={saving} downloader={drafts.downloader} onChange={updateDownloader} />
         ) : null}
+
+        {activeSection === "dependencies" ? <EnvironmentDependenciesSection /> : null}
 
         {activeSection === "wordformatter" ? (
           <WordFormatterSection

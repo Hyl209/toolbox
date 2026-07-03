@@ -1,4 +1,5 @@
 pub mod dialogs;
+mod shell;
 mod sidecar;
 
 #[tauri::command]
@@ -14,6 +15,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             greet,
             dialogs::pick_path,
+            shell::load_support_image,
+            shell::logout_current_user,
             sidecar::run_tool,
             sidecar::start_tool_session,
             sidecar::poll_tool_session,

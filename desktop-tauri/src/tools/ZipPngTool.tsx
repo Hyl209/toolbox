@@ -240,10 +240,10 @@ function ZipPngTool({ initialOutputDir = "" }: { initialOutputDir?: string }) {
         </div>
       </div>
 
-      <section className="log-panel" aria-label="运行日志">
+      <section className="log-panel" aria-label={uiText.common.runtime}>
         <div>
           <div className="panel-title">{uiText.common.runtime}</div>
-          <p className="muted">最近 5 条本地执行记录</p>
+          <p className="muted">{uiText.common.recentLocal}</p>
         </div>
         <div className="log-content">
           {error ? <div className="error-box">{error}</div> : null}
@@ -254,7 +254,7 @@ function ZipPngTool({ initialOutputDir = "" }: { initialOutputDir?: string }) {
               ))}
             </ul>
           ) : (
-            <p className="muted">暂无日志</p>
+            <p className="muted">{uiText.common.noLogs}</p>
           )}
         </div>
       </section>

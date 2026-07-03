@@ -17,6 +17,7 @@ try:
         apply_settings_update,
         build_settings_snapshot,
     )
+    from .tools.aiimage_tool import run_aiimage
     from .tools.batchrename_tool import run_batchrename
     from .tools.base64_tool import run_base64
     from .tools.directdownloader_tool import run_directdownloader
@@ -49,6 +50,7 @@ except ImportError:  # direct script execution: python sidecar\hyl_sidecar.py
         apply_settings_update,
         build_settings_snapshot,
     )
+    from tools.aiimage_tool import run_aiimage
     from tools.batchrename_tool import run_batchrename
     from tools.base64_tool import run_base64
     from tools.directdownloader_tool import run_directdownloader
@@ -120,6 +122,7 @@ def run_tool(tool_id: str, input_path: Path, control_path: Path | None = None) -
             emit_error(task_id, "INVALID_CONTROL_PATH", str(exc))
             return 1
     runners = {
+        "aiimage": run_aiimage,
         "batchrename": run_batchrename,
         "base64": run_base64,
         "directdownloader": run_directdownloader,

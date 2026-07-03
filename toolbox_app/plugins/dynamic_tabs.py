@@ -9,6 +9,7 @@ logger = get_logger(__name__)
 
 # tab 名称 -> builder 函数 的默认注册表
 _BUILTIN_TABS: dict[str, str] = {
+    'aiimage': 'modules.ai-image-gen.tab.build_aiimage_tab_class',
     'image-convert': 'modules.image-converter.tab.build_image_convert_tab_class',
     'pdf-tools': 'modules.pdf-tools.tab.build_pdf_tools_tab_class',
     'zipandpng': 'modules.file-disguise.tab.build_zip_tab_class',

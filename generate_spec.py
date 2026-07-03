@@ -92,7 +92,7 @@ a = Analysis(
 {datas_block}
     ] + music_datas,
     hiddenimports=[
-        'ncmdump', 'yt_dlp', 'telethon',
+        'keyring', 'ncmdump', 'yt_dlp', 'telethon',
         'fitz', 'pypdf', 'pytesseract', 'PIL', 'PIL.Image',
         'docx', 'docx.oxml', 'docx.oxml.ns', 'docx.shared',
     ],

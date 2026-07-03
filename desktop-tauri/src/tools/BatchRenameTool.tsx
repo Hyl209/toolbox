@@ -200,36 +200,35 @@ function BatchRenameTool({ initialSettings = {} }: { initialSettings?: ToolSetti
         </div>
 
         <div className="file-mode-card compact-card">
-          <label className="field-block">
-            <span>分组方式</span>
-            <select disabled={running} onChange={(event) => setGroupMode(event.currentTarget.value)} value={groupMode}>
-              {groupOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="field-block">
-            <span>排序方式</span>
-            <select disabled={running} onChange={(event) => setSortMode(event.currentTarget.value)} value={sortMode}>
-              {sortOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="field-block">
-            <span>排序方向</span>
-            <select disabled={running} onChange={(event) => setSortOrder(event.currentTarget.value)} value={sortOrder}>
-              {orderOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <details className="direct-advanced-options" open>
+            <summary>排序 / 分组</summary>
+            <div className="tool-result-grid">
+              <label className="field-block">
+                <span>分组方式</span>
+                <select disabled={running} onChange={(event) => setGroupMode(event.currentTarget.value)} value={groupMode}>
+                  {groupOptions.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="field-block">
+                <span>排序方式</span>
+                <select disabled={running} onChange={(event) => setSortMode(event.currentTarget.value)} value={sortMode}>
+                  {sortOptions.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="field-block">
+                <span>排序方向</span>
+                <select disabled={running} onChange={(event) => setSortOrder(event.currentTarget.value)} value={sortOrder}>
+                  {orderOptions.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </details>
         </div>
       </div>
 
@@ -275,10 +274,10 @@ function BatchRenameTool({ initialSettings = {} }: { initialSettings?: ToolSetti
         </section>
       ) : null}
 
-      <section className="log-panel" aria-label="运行日志">
+      <section className="log-panel" aria-label={uiText.common.runtime}>
         <div>
           <div className="panel-title">{uiText.common.runtime}</div>
-          <p className="muted">最近 5 条本地执行记录</p>
+          <p className="muted">{uiText.common.recentLocal}</p>
         </div>
         <div className="log-content">
           {error ? <div className="error-box">{error}</div> : null}
@@ -289,7 +288,7 @@ function BatchRenameTool({ initialSettings = {} }: { initialSettings?: ToolSetti
               ))}
             </ul>
           ) : (
-            <p className="muted">暂无日志</p>
+            <p className="muted">{uiText.common.noLogs}</p>
           )}
         </div>
       </section>

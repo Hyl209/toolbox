@@ -1,9 +1,17 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
-import { loadSettingsSnapshot, TOOL_ACTIVITY_EVENT, type SettingsSnapshot, type ToolActivityState, type ToolItem } from "./api/tauri";
+import {
+  loadSettingsSnapshot,
+  loadSupportImage,
+  logoutCurrentUser,
+  TOOL_ACTIVITY_EVENT,
+  type SettingsSnapshot,
+  type ToolActivityState,
+  type ToolItem,
+} from "./api/tauri";
 import ToolShell from "./components/ToolShell";
 import SettingsPanel from "./features/settings/SettingsPanel";
 import { firstSelectableTool, themeStyle, themeStyleFromColors, type ThemeColors, type ThemeName } from "./features/settings";
-import { fallbackTools, renderToolPanel, sidebarToolsFromSnapshot } from "./features/tools";
+import { fallbackTools, renderKeepAliveToolPanels, sidebarToolsFromSnapshot } from "./features/tools";
 import { uiText } from "./uiText";
 import "./styles.css";
 
@@ -15,9 +23,11 @@ function App() {
   const [snapshot, setSnapshot] = useState<SettingsSnapshot | null>(null);
   const [settingsError, setSettingsError] = useState("");
   const [activeToolId, setActiveToolId] = useState(fallbackTools[0].id);
+  const [visitedToolIds, setVisitedToolIds] = useState<string[]>([fallbackTools[0].id]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [previewTheme, setPreviewTheme] = useState<{ mode: ThemeName; style: CSSProperties } | null>(null);
   const [toolActivity, setToolActivity] = useState<Record<string, ToolActivityState>>({});
+  const [supportImage, setSupportImage] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -27,9 +37,11 @@ function App() {
           return;
         }
         const sidebarTools = sidebarToolsFromSnapshot(data.tools);
+        const firstTool = pickFirstTool(sidebarTools);
         setSnapshot(data);
         setSettingsError("");
-        setActiveToolId(pickFirstTool(sidebarTools).id);
+        setActiveToolId(firstTool.id);
+        setVisitedToolIds([firstTool.id]);
       })
       .catch((caught: unknown) => {
         if (cancelled) {
@@ -37,6 +49,18 @@ function App() {
         }
         setSettingsError(caught instanceof Error ? caught.message : String(caught));
       });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadSupportImage().then((image) => {
+      if (!cancelled) {
+        setSupportImage(image);
+      }
+    });
     return () => {
       cancelled = true;
     };
@@ -62,20 +86,38 @@ function App() {
     [activeToolId, sidebarTools],
   );
 
+  useEffect(() => {
+    setVisitedToolIds((current) => (current.includes(activeTool.id) ? current : [...current, activeTool.id]));
+  }, [activeTool.id]);
+
+  function withTransition(update: () => void) {
+    if ("startViewTransition" in document) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (document as any).startViewTransition(update);
+    } else {
+      update();
+    }
+  }
+
   function selectTool(toolId: string) {
-    setSettingsOpen(false);
-    setPreviewTheme(null);
-    setActiveToolId(toolId);
-    setToolActivity((current) => ({ ...current, [toolId]: "ready" }));
+    withTransition(() => {
+      setSettingsOpen(false);
+      setPreviewTheme(null);
+      setActiveToolId(toolId);
+      setVisitedToolIds((current) => (current.includes(toolId) ? current : [...current, toolId]));
+      setToolActivity((current) => ({ ...current, [toolId]: "ready" }));
+    });
   }
 
   function toggleSettings() {
-    setSettingsOpen((value) => {
-      const next = !value;
-      if (!next) {
-        setPreviewTheme(null);
-      }
-      return next;
+    withTransition(() => {
+      setSettingsOpen((value) => {
+        const next = !value;
+        if (!next) {
+          setPreviewTheme(null);
+        }
+        return next;
+      });
     });
   }
 
@@ -85,11 +127,25 @@ function App() {
 
   function handleSettingsSaved(nextSnapshot: SettingsSnapshot) {
     const nextSidebarTools = sidebarToolsFromSnapshot(nextSnapshot.tools);
+    const nextActiveTool = nextSidebarTools.some((tool) => tool.id === activeToolId)
+      ? activeToolId
+      : pickFirstTool(nextSidebarTools).id;
     setSnapshot(nextSnapshot);
     setPreviewTheme(null);
-    if (!nextSidebarTools.some((tool) => tool.id === activeToolId)) {
-      setActiveToolId(pickFirstTool(nextSidebarTools).id);
+    setVisitedToolIds((current) => {
+      const available = new Set(nextSidebarTools.map((tool) => tool.id));
+      const kept = current.filter((toolId) => available.has(toolId));
+      return kept.includes(nextActiveTool) ? kept : [...kept, nextActiveTool];
+    });
+    if (nextActiveTool !== activeToolId) {
+      setActiveToolId(nextActiveTool);
     }
+  }
+
+  async function handleLogout() {
+    await logoutCurrentUser();
+    const nextSnapshot = await loadSettingsSnapshot();
+    setSnapshot(nextSnapshot);
   }
 
   return (
@@ -99,22 +155,28 @@ function App() {
         tools={sidebarTools}
         toolActivity={toolActivity}
         activeToolId={activeTool.id}
+        lastUser={snapshot?.auth.last_user ?? ""}
+        supportImage={supportImage}
+        onLogout={handleLogout}
         onSelectTool={selectTool}
         onOpenSettings={toggleSettings}
         settingsOpen={settingsOpen}
       >
-        {settingsOpen ? (
-          <SettingsPanel
-            snapshot={snapshot}
-            fallbackTools={allTools}
-            loading={!snapshot && !settingsError}
-            error={settingsError}
-            onSaved={handleSettingsSaved}
-            onPreviewThemeChange={handlePreviewThemeChange}
-          />
-        ) : (
-          renderToolPanel(activeTool, snapshot)
-        )}
+        <div className="tool-panel-viewport">
+          <div className={settingsOpen ? "keep-alive-tool-stack hidden" : "keep-alive-tool-stack"} aria-hidden={settingsOpen}>
+            {renderKeepAliveToolPanels(sidebarTools, activeTool.id, visitedToolIds, snapshot)}
+          </div>
+          {settingsOpen ? (
+            <SettingsPanel
+              snapshot={snapshot}
+              fallbackTools={allTools}
+              loading={!snapshot && !settingsError}
+              error={settingsError}
+              onSaved={handleSettingsSaved}
+              onPreviewThemeChange={handlePreviewThemeChange}
+            />
+          ) : null}
+        </div>
       </ToolShell>
     </div>
   );

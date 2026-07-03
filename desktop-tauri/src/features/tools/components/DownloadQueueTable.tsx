@@ -17,6 +17,7 @@ type DownloadQueueTableProps = {
   onPause: () => void;
   onResume: () => void;
   onCancel: () => void;
+  onReconnect?: () => void;
   onRename?: (index: number, nextName: string) => void;
   onDelete?: (index: number) => void;
   className?: string;
@@ -48,7 +49,7 @@ function fileExt(name: string) {
   return (ext || "FILE").slice(0, 4).toUpperCase();
 }
 
-export function DownloadQueueTable({ rows, active, paused, onPause, onResume, onCancel, onRename, onDelete, className = "", iconActions = false }: DownloadQueueTableProps) {
+export function DownloadQueueTable({ rows, active, paused, onPause, onResume, onCancel, onReconnect, onRename, onDelete, className = "", iconActions = false }: DownloadQueueTableProps) {
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editingName, setEditingName] = useState("");
 
@@ -146,6 +147,17 @@ export function DownloadQueueTable({ rows, active, paused, onPause, onResume, on
                     >
                       {iconActions ? "✕" : "取消"}
                     </button>
+                    {onReconnect ? (
+                      <button
+                        aria-label="重连"
+                        className={`ghost-button mini-pill${iconActions ? " icon-mini-pill" : ""}`}
+                        onClick={onReconnect}
+                        title="重连"
+                        type="button"
+                      >
+                        {iconActions ? "R" : "重连"}
+                      </button>
+                    ) : null}
                   </>
                 ) : canDelete ? (
                   <button

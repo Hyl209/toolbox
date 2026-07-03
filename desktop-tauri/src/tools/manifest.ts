@@ -14,6 +14,19 @@ export type ToolManifestItem = {
 
 export const toolManifest = [
   {
+    "id": "aiimage",
+    "title": "AI生图",
+    "category": "image",
+    "supported_in_tauri": true,
+    "status": "ready",
+    "sidebar_label": "AI 生图",
+    "dir_name": "modules/ai-image-gen",
+    "converter_file": "converter.py",
+    "tab_file": "tab.py",
+    "extra_files": [],
+    "tab_kwargs": {}
+  },
+  {
     "id": "music",
     "title": "NCM转换",
     "category": "audio",
