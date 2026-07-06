@@ -4,6 +4,7 @@ import configparser
 import importlib.util
 import json
 import math
+import os
 import re
 import sys
 import tempfile
@@ -132,6 +133,29 @@ DEFAULT_COLORS = {
         "input_bg": "#eef1f5",
     },
 }
+
+
+def _validate_background_image_path(value: str) -> str:
+    cleaned = value.strip()
+    if not cleaned:
+        return ""
+    image_path = Path(cleaned).expanduser()
+    if not image_path.is_absolute():
+        raise SettingsUpdateError("ui/background_image must be an absolute path")
+    appdata = Path(os.environ.get("APPDATA", str(Path.home() / "AppData" / "Roaming"))).expanduser()
+    allowed_dir = appdata / "hyl-toolbox" / "backgrounds"
+    try:
+        common = os.path.commonpath(
+            [
+                os.path.normcase(os.path.abspath(str(allowed_dir))),
+                os.path.normcase(os.path.abspath(str(image_path))),
+            ]
+        )
+    except ValueError as exc:
+        raise SettingsUpdateError(f"ui/background_image must be under {allowed_dir}") from exc
+    if common != os.path.normcase(os.path.abspath(str(allowed_dir))):
+        raise SettingsUpdateError(f"ui/background_image must be under {allowed_dir}")
+    return cleaned
 
 
 class SettingsUpdateError(ValueError):
@@ -340,6 +364,20 @@ def _validate_update(key: str, value: Any) -> str:
         if type(value) is not bool:
             raise SettingsUpdateError("ui/custom_theme_enabled must be boolean")
         return "1" if value else "0"
+    if key == "ui/background_enabled":
+        if type(value) is not bool:
+            raise SettingsUpdateError("ui/background_enabled must be boolean")
+        return "1" if value else "0"
+    if key == "ui/background_image":
+        if not isinstance(value, str):
+            raise SettingsUpdateError("ui/background_image must be a string")
+        return _validate_background_image_path(value)
+    if key == "ui/background_opacity":
+        opacity = _validate_number_setting(key, value)
+        number = float(opacity)
+        if number < 0 or number > 100:
+            raise SettingsUpdateError("ui/background_opacity must be between 0 and 100")
+        return str(int(number))
     if key in {"auth/remember_password", "auth/auto_login"}:
         if type(value) is not bool:
             raise SettingsUpdateError(f"{key} must be boolean")
@@ -431,6 +469,16 @@ def _float_or_default(value: str, default: float) -> float:
         return float(value)
     except ValueError:
         return default
+
+
+def _int_range_or_default(value: str, default: int, minimum: int, maximum: int) -> int:
+    if not value:
+        return default
+    try:
+        number = int(float(value))
+    except ValueError:
+        return default
+    return max(minimum, min(maximum, number))
 
 
 def _legacy_bool_or_default(value: str, default: bool) -> bool:
@@ -718,6 +766,9 @@ def build_settings_snapshot(
         "ui": {
             "theme": theme,
             "custom_theme_enabled": custom_enabled,
+            "background_enabled": _value(parser, "ui", "background_enabled", "0") == "1",
+            "background_image": _value(parser, "ui", "background_image", ""),
+            "background_opacity": _int_range_or_default(_value(parser, "ui", "background_opacity", ""), 100, 0, 100),
         },
         "auth": {
             "remember_password": _value(parser, "auth", "remember_password", "0") == "1",

@@ -87,6 +87,8 @@ npm run tauri -- build --debug --no-bundle
 - Tauri Debug 构建
 - Base64 工具在桌面端和 Web 预览下运行
 - 玻璃拟态无边框 UI 渲染
+- AI 生图在前端和 sidecar 两侧限制为后端支持尺寸：`auto`、`1024x1024`、`1536x1024`、`1024x1536`
+- 设置页支持本地背景图，桌面端通过 Tauri asset protocol 读取绝对路径
 
 ## 技术栈
 

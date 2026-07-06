@@ -3,7 +3,9 @@ import { DEFAULT_THEME_COLORS, THEME_ZONE_LABELS, THEME_ZONES, type ThemeName, t
 type ThemePaletteSectionProps = {
   theme: ThemeName;
   themeColors: Record<ThemeName, Record<ThemeZone, string>>;
+  backgroundOpacity: number;
   onChange: (zone: ThemeZone, value: string) => void;
+  onBackgroundOpacityChange: (value: number) => void;
 };
 
 const GLASS_MIN_ALPHA = 10;
@@ -59,7 +61,13 @@ function rgbaWithAlpha(value: string, alphaPercent: number): string {
   return `rgba(${red}, ${green}, ${blue}, ${(clampGlassAlpha(alphaPercent) / 100).toFixed(2)})`;
 }
 
-export default function ThemePaletteSection({ theme, themeColors, onChange }: ThemePaletteSectionProps) {
+export default function ThemePaletteSection({
+  theme,
+  themeColors,
+  backgroundOpacity,
+  onChange,
+  onBackgroundOpacityChange,
+}: ThemePaletteSectionProps) {
   const cardValue = themeColors[theme]?.card_bg ?? DEFAULT_THEME_COLORS[theme].card_bg;
   const cardAlpha = colorAlpha(cardValue);
 
@@ -105,6 +113,20 @@ export default function ThemePaletteSection({ theme, themeColors, onChange }: Th
             step="1"
             type="range"
             value={cardAlpha}
+          />
+        </label>
+        <label className="theme-opacity-control background-opacity-control">
+          <span className="theme-color-dot background-opacity-dot" />
+          <b>背景图透明度</b>
+          <small>{backgroundOpacity}%</small>
+          <input
+            aria-label="背景图透明度"
+            max="100"
+            min="0"
+            onChange={(event) => onBackgroundOpacityChange(Number(event.currentTarget.value))}
+            step="1"
+            type="range"
+            value={backgroundOpacity}
           />
         </label>
       </div>

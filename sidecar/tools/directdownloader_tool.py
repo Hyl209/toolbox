@@ -11,14 +11,17 @@ from typing import Any
 try:
     from ..runtime_paths import project_root
     from ..runtime_state import current_download_token, emit_runtime_progress
+    from ..history_store import append_history, history_action
 except ImportError:  # direct script execution support
     from runtime_paths import project_root
     from runtime_state import current_download_token, emit_runtime_progress
+    from history_store import append_history, history_action
 
 
 ROOT = project_root(__file__, 2)
 CONVERTER_PATH = ROOT / "modules" / "direct-downloader" / "converter.py"
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+TOOL_ID = "directdownloader"
 
 
 def _load_converter_module() -> ModuleType:
@@ -126,6 +129,10 @@ def run_directdownloader(task: dict) -> dict:
     if payload is None:
         return _error("INVALID_PAYLOAD", "payload object is required")
 
+    history = history_action(TOOL_ID, str(action), payload)
+    if history is not None:
+        return {"ok": True, "data": history}
+
     if action == "parse":
         return _run_parse(payload)
     if action == "validate":
@@ -207,7 +214,13 @@ def _run_download(payload: dict[str, Any]) -> dict:
         {key: _clean_text(value) for key, value in dict(item).items()}
         for item in results
     ]
-    return {
+    files = [
+        str(path)
+        for item in clean_results
+        if item.get("success")
+        for path in (item.get("files") or item.get("paths") or [])
+    ]
+    data = {
         "ok": True,
         "data": {
             "results": clean_results,
@@ -216,3 +229,29 @@ def _run_download(payload: dict[str, Any]) -> dict:
             "logs": [str(_clean_text(item)) for item in logs[-50:]],
         },
     }
+    append_history(
+        TOOL_ID,
+        {
+            "status": "success" if data["data"]["fail_count"] == 0 else "error",
+            "input": {
+                "url_text": _payload_str(payload, "url_text"),
+                "output_dir": _payload_str(payload, "output_dir"),
+                "output_name": _payload_str(payload, "output_name"),
+                "connections": _payload_str(payload, "connections", str(module.DEFAULT_CONNECTIONS)),
+                "proxy_host": _payload_str(payload, "proxy_host"),
+                "proxy_port": _payload_str(payload, "proxy_port"),
+                "proxy_url": _payload_str(payload, "proxy_url"),
+                "referer": _payload_str(payload, "referer"),
+                "extra_headers": list(_payload_headers(payload)),
+                "overwrite": _payload_bool(payload, "overwrite", False),
+                "output_subdir_by_filename": _payload_bool(payload, "output_subdir_by_filename", False),
+            },
+            "output_dir": _payload_str(payload, "output_dir"),
+            "files": files,
+            "success_count": data["data"]["success_count"],
+            "fail_count": data["data"]["fail_count"],
+            "results": clean_results,
+        },
+        settings_path=payload.get("settings_path"),
+    )
+    return data

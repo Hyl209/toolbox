@@ -1,3 +1,4 @@
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
   loadSettingsSnapshot,
@@ -17,6 +18,27 @@ import "./styles.css";
 
 function pickFirstTool(tools: readonly ToolItem[]): ToolItem {
   return firstSelectableTool(tools) ?? tools[0] ?? fallbackTools[0];
+}
+
+function backgroundFileUrl(filePath: string): string {
+  if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
+    return convertFileSrc(filePath);
+  }
+  const normalized = filePath.replace(/\\/g, "/");
+  return normalized.startsWith("/") ? `file://${normalized}` : `file:///${normalized}`;
+}
+
+function backgroundImageStyle(snapshot: SettingsSnapshot | null): CSSProperties {
+  const imagePath = snapshot?.ui.background_enabled ? snapshot.ui.background_image.trim() : "";
+  if (!imagePath) {
+    return {};
+  }
+  const imageUrl = backgroundFileUrl(imagePath).replace(/"/g, '\\"');
+  const opacity = Math.max(0, Math.min(100, snapshot?.ui.background_opacity ?? 100)) / 100;
+  return {
+    "--window-background-image": `url("${imageUrl}")`,
+    "--window-background-opacity": String(opacity),
+  } as CSSProperties;
 }
 
 function App() {
@@ -148,8 +170,22 @@ function App() {
     setSnapshot(nextSnapshot);
   }
 
+  const rootStyle = useMemo(
+    () => ({
+      ...(previewTheme?.style ?? themeStyle(snapshot)),
+      ...backgroundImageStyle(snapshot),
+    }),
+    [previewTheme?.style, snapshot],
+  );
+  const backgroundImageActive = Boolean(snapshot?.ui.background_enabled && snapshot.ui.background_image.trim());
+
   return (
-    <div className="theme-root" style={previewTheme?.style ?? themeStyle(snapshot)} data-theme-mode={previewTheme?.mode ?? snapshot?.ui.theme ?? "light"}>
+    <div
+      className="theme-root"
+      style={rootStyle}
+      data-theme-mode={previewTheme?.mode ?? snapshot?.ui.theme ?? "light"}
+      data-background-image={backgroundImageActive ? "true" : "false"}
+    >
       <ToolShell
         title={uiText.app.title}
         tools={sidebarTools}

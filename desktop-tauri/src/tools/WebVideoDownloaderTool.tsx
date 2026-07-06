@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { pickDirectory, pickFiles, runTool, type ToolInput, type ToolResult, type ToolSessionSnapshot, type ToolSettings } from "../api/tauri";
+import { pickDirectory, pickFiles, runTool, type ToolHistoryItem, type ToolInput, type ToolResult, type ToolSessionSnapshot, type ToolSettings } from "../api/tauri";
 import { DownloadQueueTable, type DownloadQueueRow } from "../features/tools/components/DownloadQueueTable";
 import { queueOverviewFromSession, queueRowsFromSession as buildQueueRows } from "../features/tools/downloadQueueState";
 import { useDownloadRuntimeSession } from "../features/tools/hooks/useDownloadRuntimeSession";
@@ -67,6 +67,21 @@ function text(error: unknown): string {
 function dataOf(result: ToolResult | null | undefined): WebVideoResult {
   const direct = (result ?? {}) as WebVideoResult;
   return (direct.data ?? direct) as WebVideoResult;
+}
+
+function historyItemsOf(result: ToolResult | null | undefined): ToolHistoryItem[] {
+  const direct = (result ?? {}) as ToolResult;
+  return ((direct.data?.items ?? direct.items ?? []) as ToolHistoryItem[]);
+}
+
+function historyInputText(item: ToolHistoryItem, key: string): string {
+  const value = item.input?.[key];
+  return typeof value === "string" ? value : value == null ? "" : String(value);
+}
+
+function historyInputOptions(item: ToolHistoryItem): Record<string, unknown> {
+  const value = item.input?.options;
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
 function effectiveProxyUrl(proxyUrl: string, proxyHost: string, proxyPort: string): string {
@@ -287,6 +302,7 @@ function WebVideoDownloaderTool({ initialSettings = {} }: { initialSettings?: To
   const [logs, setLogs] = useState<string[]>([]);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
+  const [history, setHistory] = useState<ToolHistoryItem[]>([]);
 
   const busy = running || runtime.active;
   const paused = runtime.paused;
@@ -346,6 +362,10 @@ function WebVideoDownloaderTool({ initialSettings = {} }: { initialSettings?: To
   }, [initialSettings]);
 
   useEffect(() => {
+    void loadHistory();
+  }, []);
+
+  useEffect(() => {
     if (!runtime.session) {
       return;
     }
@@ -354,6 +374,7 @@ function WebVideoDownloaderTool({ initialSettings = {} }: { initialSettings?: To
       setDownloadRows((data.results ?? []) as DownloadResult[]);
       setDownloadedFiles(data.files ?? []);
       setError("");
+      void loadHistory();
     } else if (runtime.session.status === "failed") {
       setError(runtime.session.error ?? "download failed");
     } else if (runtime.session.status === "cancelled") {
@@ -525,6 +546,39 @@ function WebVideoDownloaderTool({ initialSettings = {} }: { initialSettings?: To
     setError("");
   }
 
+  async function loadHistory() {
+    try {
+      const result = await runTool("webvideodownloader", { task_id: `webvideo-history-load-${Date.now()}`, action: "load_history", payload: {} });
+      setHistory(historyItemsOf(result));
+    } catch (caught) {
+      setLogs((items) => [`history failed: ${text(caught)}`, ...items].slice(0, 20));
+    }
+  }
+
+  async function deleteHistoryItem(id: string) {
+    const result = await runTool("webvideodownloader", { task_id: `webvideo-history-delete-${Date.now()}`, action: "delete_history", payload: { id } });
+    setHistory(historyItemsOf(result));
+  }
+
+  async function clearHistory() {
+    const result = await runTool("webvideodownloader", { task_id: `webvideo-history-clear-${Date.now()}`, action: "clear_history", payload: {} });
+    setHistory(historyItemsOf(result));
+  }
+
+  function reuseHistoryItem(item: ToolHistoryItem) {
+    const options = historyInputOptions(item);
+    const urls = item.input?.urls;
+    const textValue = historyInputText(item, "text") || (Array.isArray(urls) ? urls.map(String).join("\n") : "");
+    setUrlText(textValue);
+    setOutputDir(historyInputText(item, "output_dir"));
+    setProxyUrl(typeof options.proxy_url === "string" ? options.proxy_url : "");
+    setProxyHost(typeof options.proxy_host === "string" ? options.proxy_host : proxyHost);
+    setProxyPort(typeof options.proxy_port === "string" ? options.proxy_port : proxyPort);
+    setOverwrite(Boolean(options.overwrite));
+    setOutputSubdirByTitle(Boolean(options.output_subdir_by_title));
+    setConcurrent(String(options.max_concurrent_downloads ?? concurrent));
+  }
+
   return (
     <div className="base64-tool">
       <div className="tool-heading">
@@ -669,6 +723,23 @@ function WebVideoDownloaderTool({ initialSettings = {} }: { initialSettings?: To
           </div>
         </section>
       ) : null}
+
+      <section className="table-panel">
+        <div className="web-video-log-header">
+          <div className="panel-title">历史记录</div>
+          <button className="ghost-button" disabled={!history.length || busy} onClick={() => void clearHistory()} type="button">清空历史</button>
+        </div>
+        <div className="result-list">
+          {history.length ? history.map((item) => (
+            <div className="result-row" key={item.id}>
+              <span>{historyInputText(item, "text") || (Array.isArray(item.input?.urls) ? item.input?.urls.map(String).join("\n") : item.files?.[0] || item.id)}</span>
+              <strong>{item.status === "success" ? `成功 ${item.success_count ?? 0}` : `失败 ${item.fail_count ?? 0}`}</strong>
+              <button className="ghost-button" disabled={busy} onClick={() => reuseHistoryItem(item)} type="button">复用</button>
+              <button className="ghost-button" disabled={busy} onClick={() => void deleteHistoryItem(item.id)} type="button">删除</button>
+            </div>
+          )) : <p className="muted">暂无历史记录</p>}
+        </div>
+      </section>
 
       <section className="log-panel web-video-log-panel" aria-label={uiText.common.runtime}>
         <div className="web-video-log-header">

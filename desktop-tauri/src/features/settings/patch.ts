@@ -23,6 +23,9 @@ export function buildSettingsUpdates({ snapshot, drafts, toolsById }: BuildSetti
   const updates: SettingsPatch["updates"] = {
     "ui/theme": drafts.theme,
     "ui/custom_theme_enabled": drafts.customThemeEnabled,
+    "ui/background_enabled": drafts.backgroundEnabled,
+    "ui/background_image": drafts.backgroundImage,
+    "ui/background_opacity": drafts.backgroundOpacity,
     "auth/remember_password": drafts.rememberPassword,
     "auth/auto_login": drafts.autoLogin,
     "tools/disabled": [...drafts.disabledTools].sort(),

@@ -58,6 +58,9 @@ const browserCustomThemeColors: Record<"dark" | "light", SettingsSnapshot["theme
 };
 
 let browserCustomThemeEnabled = false;
+let browserBackgroundEnabled = false;
+let browserBackgroundImage = "";
+let browserBackgroundOpacity = 100;
 let browserRememberPassword = false;
 let browserAutoLogin = false;
 const browserLastUser = "";
@@ -123,6 +126,9 @@ let browserSnapshot: SettingsSnapshot | null = null;
 
 type BrowserSettingsState = {
   customThemeEnabled: boolean;
+  backgroundEnabled: boolean;
+  backgroundImage: string;
+  backgroundOpacity: number;
   rememberPassword: boolean;
   autoLogin: boolean;
   customThemeColors: Record<"dark" | "light", SettingsSnapshot["theme"]["colors"]>;
@@ -150,6 +156,9 @@ function cloneToolSettings(settings: SettingsSnapshot["tool_settings"]): Setting
 function currentBrowserSettingsState(): BrowserSettingsState {
   return {
     customThemeEnabled: browserCustomThemeEnabled,
+    backgroundEnabled: browserBackgroundEnabled,
+    backgroundImage: browserBackgroundImage,
+    backgroundOpacity: browserBackgroundOpacity,
     rememberPassword: browserRememberPassword,
     autoLogin: browserAutoLogin,
     customThemeColors: {
@@ -180,6 +189,9 @@ function buildBrowserSettingsSnapshot(
     ui: {
       theme,
       custom_theme_enabled: state.customThemeEnabled,
+      background_enabled: state.backgroundEnabled,
+      background_image: state.backgroundImage,
+      background_opacity: state.backgroundOpacity,
     },
     auth: {
       remember_password: state.rememberPassword,
@@ -232,6 +244,9 @@ export function saveBrowserSettingsPatch(patch: SettingsPatch): SettingsSnapshot
     nextRememberPassword = true;
   }
   const nextCustomThemeEnabled = typeof patch.updates["ui/custom_theme_enabled"] === "boolean" ? patch.updates["ui/custom_theme_enabled"] : current.ui.custom_theme_enabled;
+  const nextBackgroundEnabled = typeof patch.updates["ui/background_enabled"] === "boolean" ? patch.updates["ui/background_enabled"] : current.ui.background_enabled;
+  const nextBackgroundImage = typeof patch.updates["ui/background_image"] === "string" ? patch.updates["ui/background_image"] : current.ui.background_image;
+  const nextBackgroundOpacity = typeof patch.updates["ui/background_opacity"] === "number" ? patch.updates["ui/background_opacity"] : current.ui.background_opacity;
   const nextToolSettings: SettingsSnapshot["tool_settings"] = {
     ...current.tool_settings,
     base64: { output_dir: typeof patch.updates["base64/output_dir"] === "string" ? patch.updates["base64/output_dir"] : current.tool_settings.base64?.output_dir ?? "" },
@@ -288,6 +303,9 @@ export function saveBrowserSettingsPatch(patch: SettingsPatch): SettingsSnapshot
   });
   const nextState: BrowserSettingsState = {
     customThemeEnabled: nextCustomThemeEnabled,
+    backgroundEnabled: nextBackgroundEnabled,
+    backgroundImage: nextBackgroundImage,
+    backgroundOpacity: Math.max(0, Math.min(100, Math.round(nextBackgroundOpacity))),
     rememberPassword: nextRememberPassword,
     autoLogin: nextAutoLogin,
     customThemeColors: nextCustomThemeColors,
@@ -297,6 +315,9 @@ export function saveBrowserSettingsPatch(patch: SettingsPatch): SettingsSnapshot
   browserRememberPassword = nextState.rememberPassword;
   browserAutoLogin = nextState.autoLogin;
   browserCustomThemeEnabled = nextState.customThemeEnabled;
+  browserBackgroundEnabled = nextState.backgroundEnabled;
+  browserBackgroundImage = nextState.backgroundImage;
+  browserBackgroundOpacity = nextState.backgroundOpacity;
   browserCustomThemeColors.dark = { ...nextState.customThemeColors.dark };
   browserCustomThemeColors.light = { ...nextState.customThemeColors.light };
   browserToolSettings = cloneToolSettings(nextState.toolSettings);

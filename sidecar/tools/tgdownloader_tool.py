@@ -12,10 +12,12 @@ from typing import Any
 try:
     from ..runtime_paths import project_root
     from ..runtime_state import emit_runtime_progress
+    from ..history_store import append_history, history_action
     from ._cancel_support import add_cancel_token_kwarg
 except ImportError:  # direct script execution support
     from runtime_paths import project_root
     from runtime_state import emit_runtime_progress
+    from history_store import append_history, history_action
     from tools._cancel_support import add_cancel_token_kwarg
 
 
@@ -23,6 +25,7 @@ ROOT = project_root(__file__, 2)
 MODULE_DIR = ROOT / "modules" / "video-downloader"
 PACKAGE_NAME = "hyl_legacy_video_downloader"
 logger = logging.getLogger(__name__)
+TOOL_ID = "tgdownloader"
 
 
 def _load_converter_module() -> ModuleType:
@@ -184,6 +187,10 @@ def run_tgdownloader(task: dict) -> dict:
     if payload is None:
         return _error("INVALID_PAYLOAD", "payload object is required")
 
+    history = history_action(TOOL_ID, str(action), payload)
+    if history is not None:
+        return {"ok": True, "data": history}
+
     if action == "parse":
         return _run_parse(payload)
     if action == "validate":
@@ -290,7 +297,7 @@ def _run_download(payload: dict[str, Any]) -> dict:
         legacy_errors = _validation_errors(payload, tasks, module)
         errors = [*input_errors, *_clean(legacy_errors)]
         if errors:
-            return {"ok": True, "data": _download_data(logs=logs, errors=errors)}
+            return _with_download_history(payload, {"ok": True, "data": _download_data(logs=logs, errors=errors)})
         options = _download_options(payload, module)
         kwargs = {
             "telegram_config": _config(payload, module),
@@ -299,11 +306,37 @@ def _run_download(payload: dict[str, Any]) -> dict:
         }
         add_cancel_token_kwarg(module, kwargs, logger)
         results = module.download_batch(tasks, _payload_str(payload, "output_dir"), **kwargs)
-        return {"ok": True, "data": _download_data(results=results, logs=logs)}
+        return _with_download_history(payload, {"ok": True, "data": _download_data(results=results, logs=logs)})
     except ValueError as exc:
-        return {"ok": True, "data": _download_data(logs=logs, errors=[str(exc)])}
+        return _with_download_history(payload, {"ok": True, "data": _download_data(logs=logs, errors=[str(exc)])})
     except Exception as exc:
         return _error("TOOL_ERROR", str(exc))
+
+
+def _with_download_history(payload: dict[str, Any], response: dict) -> dict:
+    data = response.get("data", {})
+    append_history(
+        TOOL_ID,
+        {
+            "status": "success" if data.get("fail_count", 0) == 0 and not data.get("errors") else "error",
+            "input": {
+                "text": _payload_str(payload, "text"),
+                "url": _payload_str(payload, "url"),
+                "urls": _clean(payload.get("urls", [])),
+                "output_dir": _payload_str(payload, "output_dir"),
+                "credentials": _clean(_credential_payload(payload)),
+                "options": _clean(_options_payload(payload)),
+            },
+            "output_dir": _payload_str(payload, "output_dir"),
+            "files": data.get("files", []),
+            "success_count": data.get("success_count", 0),
+            "fail_count": data.get("fail_count", 0),
+            "errors": data.get("errors", []),
+            "results": data.get("results", []),
+        },
+        settings_path=payload.get("settings_path"),
+    )
+    return response
 
 
 def _run_auth_status(payload: dict[str, Any]) -> dict:

@@ -24,6 +24,8 @@ README_MD = ROOT / "README.md"
 GITIGNORE = ROOT / ".gitignore"
 PYPROJECT = ROOT / "pyproject.toml"
 TAURI_SIDECAR_RS = ROOT / "desktop-tauri" / "src-tauri" / "src" / "sidecar.rs"
+TAURI_CARGO_TOML = ROOT / "desktop-tauri" / "src-tauri" / "Cargo.toml"
+TAURI_CONF_JSON = ROOT / "desktop-tauri" / "src-tauri" / "tauri.conf.json"
 TOOL_SHELL_TSX = ROOT / "desktop-tauri" / "src" / "components" / "ToolShell.tsx"
 TOOLS_PANELS_TSX = ROOT / "desktop-tauri" / "src" / "features" / "tools" / "panels.tsx"
 SETTINGS_PANEL_TSX = ROOT / "desktop-tauri" / "src" / "features" / "settings" / "SettingsPanel.tsx"
@@ -274,6 +276,9 @@ def test_settings_models_define_expected_draft_structures() -> None:
 
     for marker in (
         "THEME_ZONES",
+        "backgroundEnabled",
+        "backgroundImage",
+        "backgroundOpacity",
         "TOOL_OUTPUT_DIRS",
         "FILESORTER_CATEGORIES",
         "DownloaderSettingsDraft",
@@ -294,6 +299,9 @@ def test_settings_patch_builds_theme_auth_disabled_tool_and_sidebar_updates() ->
 
     for marker in (
         '"ui/custom_theme_enabled": drafts.customThemeEnabled',
+        '"ui/background_enabled": drafts.backgroundEnabled',
+        '"ui/background_image": drafts.backgroundImage',
+        '"ui/background_opacity": drafts.backgroundOpacity',
         '"auth/remember_password": drafts.rememberPassword',
         '"auth/auto_login": drafts.autoLogin',
         '"tools/disabled": [...drafts.disabledTools].sort()',
@@ -316,6 +324,12 @@ def test_browser_settings_fallback_keeps_custom_colors_auth_disabled_plugins_and
     source = BROWSER_FALLBACK_TS.read_text(encoding="utf-8")
 
     for marker in (
+        "background_enabled",
+        "background_image",
+        "background_opacity",
+        'patch.updates["ui/background_enabled"]',
+        'patch.updates["ui/background_image"]',
+        'patch.updates["ui/background_opacity"]',
         "custom_colors: {",
         "disabled_plugins: [...disabledPluginSet].sort()",
         'patch.updates["plugins/disabled"]',
@@ -359,6 +373,7 @@ def test_settings_panel_wires_sections_and_controller_callbacks() -> None:
     for marker in (
         "SettingsSummarySection",
         "AccountPreferencesSection",
+        "BackgroundImageSection",
         "ThemeModeSection",
         "ToolOutputDirsSection",
         "DownloaderSettingsSection",
@@ -379,10 +394,100 @@ def test_settings_panel_wires_sections_and_controller_callbacks() -> None:
         "toolDisplayName",
         "toolMetadata",
         "setPluginEnabled",
+        "updateBackgroundEnabled",
+        "updateBackgroundImage",
+        "updateBackgroundOpacity",
         "updateDownloader",
         "updateWordFormatterStyle",
     ):
         assert marker in controller_source
+
+
+def test_settings_background_image_contract_is_wired() -> None:
+    api_source = TAURI_TS.read_text(encoding="utf-8")
+    app_source = APP_TSX.read_text(encoding="utf-8")
+    cargo_source = TAURI_CARGO_TOML.read_text(encoding="utf-8")
+    tauri_conf = json.loads(TAURI_CONF_JSON.read_text(encoding="utf-8"))
+    models_source = SETTINGS_MODELS_TS.read_text(encoding="utf-8")
+    selectors_source = SETTINGS_SELECTORS_TS.read_text(encoding="utf-8")
+    panel_source = SETTINGS_PANEL_TSX.read_text(encoding="utf-8")
+    primitives_source = (ROOT / "desktop-tauri" / "src" / "features" / "settings" / "sections" / "primitives.tsx").read_text(encoding="utf-8")
+    background_section_source = (
+        ROOT / "desktop-tauri" / "src" / "features" / "settings" / "sections" / "BackgroundImageSection.tsx"
+    ).read_text(encoding="utf-8")
+    theme_palette_source = (
+        ROOT / "desktop-tauri" / "src" / "features" / "settings" / "sections" / "ThemePaletteSection.tsx"
+    ).read_text(encoding="utf-8")
+    styles_source = STYLES_CSS.read_text(encoding="utf-8")
+
+    for marker in (
+        "background_enabled",
+        "background_image",
+        "background_opacity",
+        '"ui/background_enabled"',
+        '"ui/background_image"',
+        '"ui/background_opacity"',
+    ):
+        assert marker in api_source
+
+    for marker in (
+        "backgroundEnabled",
+        "backgroundImage",
+        "backgroundOpacity",
+        "snapshot?.ui.background_enabled",
+        "snapshot?.ui.background_image",
+        "snapshot?.ui.background_opacity",
+    ):
+        assert marker in models_source + selectors_source
+
+    for marker in (
+        "BackgroundImageSection",
+        "ThemePaletteSection",
+        "backgroundEnabled={drafts.backgroundEnabled}",
+        "backgroundImage={drafts.backgroundImage}",
+        "backgroundOpacity={drafts.backgroundOpacity}",
+        "onBackgroundEnabledChange={updateBackgroundEnabled}",
+        "onBackgroundImageChange={updateBackgroundImage}",
+        "onBackgroundOpacityChange={updateBackgroundOpacity}",
+    ):
+        assert marker in panel_source
+
+    assert "backgroundOpacity" not in background_section_source
+    assert "background-opacity-control" not in background_section_source
+    for marker in (
+        "backgroundOpacity",
+        "onBackgroundOpacityChange",
+        "background-opacity-control",
+        "背景图透明度",
+    ):
+        assert marker in theme_palette_source
+
+    for marker in (
+        "SettingFileField",
+        "pickFile",
+        "png",
+        "jpg",
+        "jpeg",
+        "webp",
+        "bmp",
+    ):
+        assert marker in primitives_source + panel_source + background_section_source
+
+    for marker in (
+        "data-background-image",
+        "--window-background-image",
+        "--window-background-opacity",
+        "window-background-image",
+        ".window-surface",
+    ):
+        assert marker in styles_source
+
+    assert "convertFileSrc" in app_source
+    assert 'features = ["protocol-asset"]' in cargo_source
+    asset_protocol = tauri_conf["app"]["security"]["assetProtocol"]
+    assert asset_protocol["enable"] is True
+    assert "**" not in asset_protocol["scope"]
+    assert "$APPDATA/hyl-toolbox/backgrounds/**" in asset_protocol["scope"]
 
 
 
@@ -994,6 +1099,8 @@ def test_gitignore_excludes_codex_artifacts_and_pytest_tmp() -> None:
         ".codex-review-tmp*/",
         ".codex-*.json",
         ".codex-*.ini",
+        ".playwright-cli/",
+        "output/",
         "desktop-tauri/test-results/",
     ):
         assert pattern in source
@@ -1480,6 +1587,32 @@ def test_video_downloaders_stream_runtime_progress_and_render_queue_controls() -
         'kwargs["token"] = current_download_token()',
     ):
         assert marker in cancel_support_source
+
+
+def test_downloaders_load_and_manage_persistent_history() -> None:
+    api_source = TAURI_TS.read_text(encoding="utf-8")
+    direct_source = DIRECT_DOWNLOADER_TSX.read_text(encoding="utf-8")
+    web_source = WEB_VIDEO_TSX.read_text(encoding="utf-8")
+    tg_source = TG_DOWNLOADER_TSX.read_text(encoding="utf-8")
+
+    assert "export type ToolHistoryItem" in api_source
+    for source, tool_id in (
+        (direct_source, "directdownloader"),
+        (web_source, "webvideodownloader"),
+        (tg_source, "tgdownloader"),
+    ):
+        for marker in (
+            "loadHistory",
+            "deleteHistoryItem",
+            "clearHistory",
+            "reuseHistoryItem",
+            'action: "load_history"',
+            'action: "delete_history"',
+            'action: "clear_history"',
+            "历史记录",
+            f'runTool("{tool_id}"',
+        ):
+            assert marker in source
 
 
 def test_download_runtime_reconnect_control_is_wired() -> None:

@@ -52,15 +52,24 @@ def run_aiimage(task: dict) -> dict:
     settings_path = _settings_path(task)
     try:
         module = _load_converter_module()
-        store = module.KeyringSecretStore()
+        store = module.default_secret_store(settings_path)
         if action == "load_config":
             data = module.load_config(settings_path=settings_path, secret_store=store)
+            return {"ok": True, "data": data}
+        if action == "load_history":
+            data = {"items": module.load_history(settings_path=settings_path)}
             return {"ok": True, "data": data}
         if action == "save_config":
             data = module.save_config(payload, settings_path=settings_path, secret_store=store)
             return {"ok": True, "data": data}
         if action == "generate":
             data = module.generate_images(payload, settings_path=settings_path, secret_store=store)
+            return {"ok": True, "data": data}
+        if action == "delete_history":
+            data = {"items": module.delete_history(str(payload.get("id", "")), settings_path=settings_path)}
+            return {"ok": True, "data": data}
+        if action == "clear_history":
+            data = {"items": module.clear_history(settings_path=settings_path)}
             return {"ok": True, "data": data}
         return _error("UNKNOWN_ACTION", f"unknown action: {action}")
     except Exception as exc:

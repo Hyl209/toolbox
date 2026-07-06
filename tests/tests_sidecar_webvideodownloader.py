@@ -242,6 +242,47 @@ def test_webvideodownloader_download_batch_monkeypatch_passes_legacy_arguments(m
     assert result["data"]["logs"] == ["download started"]
 
 
+def test_webvideodownloader_download_appends_persistent_history(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from sidecar.history_store import load_history
+    from sidecar.tools import webvideodownloader_tool as tool
+
+    module = tool._load_converter_module()
+    settings_path = tmp_path / "hyl_toolbox.ini"
+
+    def fake_download_batch(tasks, output_dir, telegram_config=None, options=None, progress_cb=None):
+        task_list = list(tasks)
+        return [
+            {
+                "source_url": task_list[0].source_url,
+                "source_kind": task_list[0].source_kind,
+                "success": True,
+                "error": "",
+                "files": [str(tmp_path / "sample.mp4")],
+            }
+        ]
+
+    monkeypatch.setattr(module, "download_batch", fake_download_batch)
+    result = tool.run_webvideodownloader(
+        {
+            "task_id": "web-history",
+            "action": "download",
+            "payload": {
+                "settings_path": str(settings_path),
+                "urls": ["https://example.com/a"],
+                "output_dir": str(tmp_path),
+                "options": {"proxy_url": "http://127.0.0.1:7890", "overwrite": True},
+            },
+        }
+    )
+
+    history = load_history("webvideodownloader", settings_path=settings_path)
+    assert result["ok"] is True
+    assert history[0]["status"] == "success"
+    assert history[0]["input"]["urls"] == ["https://example.com/a"]
+    assert history[0]["input"]["options"] == {"proxy_url": "http://127.0.0.1:7890", "overwrite": True}
+    assert history[0]["files"] == [str(tmp_path / "sample.mp4")]
+
+
 def test_webvideodownloader_warns_when_cancel_token_support_is_not_declared(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     from sidecar.tools import webvideodownloader_tool as tool
 

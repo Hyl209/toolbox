@@ -157,6 +157,9 @@ export function createSettingsDraftState(snapshot: SettingsSnapshot | null, fall
   return {
     theme: snapshot?.ui.theme ?? "light",
     customThemeEnabled: snapshot?.ui.custom_theme_enabled ?? false,
+    backgroundEnabled: snapshot?.ui.background_enabled ?? false,
+    backgroundImage: snapshot?.ui.background_image ?? "",
+    backgroundOpacity: snapshot?.ui.background_opacity ?? 100,
     rememberPassword: snapshot?.auth.remember_password ?? false,
     autoLogin: snapshot?.auth.auto_login ?? false,
     themeColors: themeColorDraftsFromSnapshot(snapshot),

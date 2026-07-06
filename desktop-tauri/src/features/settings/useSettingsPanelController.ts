@@ -17,6 +17,9 @@ import {
   toggleBuiltinTool,
   togglePlugin,
   updateAutoLogin as updateAutoLoginDraft,
+  updateBackgroundEnabled as updateBackgroundEnabledDraft,
+  updateBackgroundImage as updateBackgroundImageDraft,
+  updateBackgroundOpacity as updateBackgroundOpacityDraft,
   updateCustomThemeEnabled as updateCustomThemeEnabledDraft,
   updateDownloader as updateDownloaderDraft,
   updateFilesorterCategory as updateFilesorterCategoryDraft,
@@ -111,6 +114,18 @@ export function useSettingsPanelController({ snapshot, fallbackTools, onSaved }:
     applyDraftMutation((current) => updateCustomThemeEnabledDraft(current, checked));
   }
 
+  function updateBackgroundEnabled(checked: boolean) {
+    applyDraftMutation((current) => updateBackgroundEnabledDraft(current, checked));
+  }
+
+  function updateBackgroundImage(value: string) {
+    applyDraftMutation((current) => updateBackgroundImageDraft(current, value));
+  }
+
+  function updateBackgroundOpacity(value: number) {
+    applyDraftMutation((current) => updateBackgroundOpacityDraft(current, value));
+  }
+
   function updateThemeColor(zone: ThemeZone, value: string) {
     applyDraftMutation((current) => updateThemeColorDraft(current, zone, value));
   }
@@ -188,6 +203,9 @@ export function useSettingsPanelController({ snapshot, fallbackTools, onSaved }:
     moveSidebarItem,
     updateTheme,
     updateCustomThemeEnabled,
+    updateBackgroundEnabled,
+    updateBackgroundImage,
+    updateBackgroundOpacity,
     updateThemeColor,
     updateToolOutputDir,
     updateToolBehavior,

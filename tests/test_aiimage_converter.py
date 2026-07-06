@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import base64
+import builtins
 import importlib.util
+import json
+import threading
 from dataclasses import dataclass
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 import pytest
@@ -24,6 +28,18 @@ def load_converter_module():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def block_imports(monkeypatch: pytest.MonkeyPatch, blocked_roots: set[str]) -> None:
+    real_import = builtins.__import__
+
+    def guarded_import(name, globals=None, locals=None, fromlist=(), level=0):
+        root = name.split(".", 1)[0]
+        if root in blocked_roots:
+            raise ModuleNotFoundError(f"No module named '{root}'")
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", guarded_import)
 
 
 class MemorySecretStore:
@@ -81,6 +97,7 @@ def test_aiimage_load_config_uses_defaults_and_hides_secrets(tmp_path: Path) -> 
 
     assert config["selected_profile_id"] == ""
     assert config["default_size"] == "1024x1024"
+    assert module.DEFAULT_MODEL == "gpt-image-2"
     assert config["default_count"] == 1
     assert config["profiles"] == []
     assert "AI Images" in config["output_dir"]
@@ -120,6 +137,59 @@ def test_aiimage_save_config_persists_profiles_and_writes_secret_store(tmp_path:
 
     loaded = module.load_config(settings_path=settings_path, secret_store=store)
     assert loaded == saved
+
+
+def test_aiimage_save_config_does_not_require_generation_dependencies(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    block_imports(monkeypatch, {"requests", "PIL"})
+    module = load_converter_module()
+
+    saved = module.save_config(
+        {
+            "selected_profile_id": "main",
+            "profiles": [
+                {
+                    "id": "main",
+                    "name": "Main",
+                    "base_url": "https://example.test/v1",
+                    "model": "gpt-image-2",
+                }
+            ],
+        },
+        settings_path=tmp_path / "hyl_toolbox.ini",
+        secret_store=MemorySecretStore(),
+    )
+
+    assert saved["selected_profile_id"] == "main"
+    assert saved["profiles"][0]["name"] == "Main"
+
+
+def test_aiimage_save_config_uses_file_secret_store_when_keyring_is_unavailable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    block_imports(monkeypatch, {"keyring"})
+    module = load_converter_module()
+    settings_path = tmp_path / "hyl_toolbox.ini"
+
+    saved = module.save_config(
+        {
+            "selected_profile_id": "main",
+            "profiles": [
+                {
+                    "id": "main",
+                    "name": "Main",
+                    "base_url": "https://example.test/v1",
+                    "model": "gpt-image-2",
+                    "api_key": "sk-test",
+                }
+            ],
+        },
+        settings_path=settings_path,
+    )
+
+    assert saved["selected_profile_id"] == "main"
+    assert "api_key" not in saved["profiles"][0]
+    assert module.FileSecretStore(settings_path).get_secret("hyl-toolbox/aiimage/main", "main") == "sk-test"
 
 
 def test_aiimage_save_config_keeps_ini_unchanged_when_secret_write_fails(tmp_path: Path) -> None:
@@ -186,6 +256,10 @@ def test_aiimage_generate_images_saves_b64_results_and_includes_negative_prompt(
             "negative_prompt": "blurry",
             "size": "1024x1024",
             "n": 1,
+            "quality": "high",
+            "output_format": "webp",
+            "background": "transparent",
+            "moderation": "low",
             "output_dir": str(output_dir),
         },
         settings_path=settings_path,
@@ -201,6 +275,405 @@ def test_aiimage_generate_images_saves_b64_results_and_includes_negative_prompt(
     assert session.post_calls[0]["url"] == "https://example.test/v1/images/generations"
     assert session.post_calls[0]["json"]["negative_prompt"] == "blurry"
     assert session.post_calls[0]["json"]["response_format"] == "b64_json"
+    assert session.post_calls[0]["json"]["quality"] == "high"
+    assert session.post_calls[0]["json"]["output_format"] == "webp"
+    assert session.post_calls[0]["json"]["background"] == "transparent"
+    assert session.post_calls[0]["json"]["moderation"] == "low"
+
+
+def test_aiimage_generate_images_appends_persistent_history(tmp_path: Path) -> None:
+    module = load_converter_module()
+    store = MemorySecretStore()
+    settings_path = tmp_path / "hyl_toolbox.ini"
+    output_dir = tmp_path / "output"
+    module.save_config(
+        {
+            "selected_profile_id": "main",
+            "profiles": [
+                {
+                    "id": "main",
+                    "name": "Main",
+                    "base_url": "https://example.test/v1",
+                    "model": "gpt-image-2",
+                    "api_key": "sk-test",
+                }
+            ],
+        },
+        settings_path=settings_path,
+        secret_store=store,
+    )
+    session = FakeSession(post_response=FakeResponse({"data": [{"b64_json": PNG_1X1_BASE64}]}))
+
+    result = module.generate_images(
+        {
+            "profile_id": "main",
+            "prompt": "persistent cat",
+            "size": "1024x1024",
+            "n": 1,
+            "output_dir": str(output_dir),
+        },
+        settings_path=settings_path,
+        secret_store=store,
+        session=session,
+    )
+
+    history = module.load_history(settings_path=settings_path)
+    assert result["history_id"] == history[0]["id"]
+    assert history[0]["prompt"] == "persistent cat"
+    assert history[0]["status"] == "success"
+    assert history[0]["images"] == result["images"]
+    assert history[0]["outputDir"] == result["output_dir"]
+
+
+def test_aiimage_generate_images_uses_stdlib_http_when_requests_is_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = load_converter_module()
+    store = MemorySecretStore()
+    settings_path = tmp_path / "hyl_toolbox.ini"
+    output_dir = tmp_path / "output"
+    requests_seen: list[dict] = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            body = self.rfile.read(int(self.headers.get("Content-Length", "0")))
+            requests_seen.append(
+                {
+                    "path": self.path,
+                    "authorization": self.headers.get("Authorization"),
+                    "body": json.loads(body.decode("utf-8")),
+                }
+            )
+            payload = json.dumps({"data": [{"b64_json": PNG_1X1_BASE64}]}).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def log_message(self, format, *args):
+            return
+
+    server = HTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        module.save_config(
+            {
+                "selected_profile_id": "main",
+                "profiles": [
+                    {
+                        "id": "main",
+                        "name": "Main",
+                        "base_url": f"http://127.0.0.1:{server.server_port}/v1",
+                        "model": "gpt-image-2",
+                        "api_key": "sk-test",
+                    }
+                ],
+            },
+            settings_path=settings_path,
+            secret_store=store,
+        )
+        block_imports(monkeypatch, {"requests"})
+
+        result = module.generate_images(
+            {
+                "profile_id": "main",
+                "prompt": "cat astronaut",
+                "size": "1024x1024",
+                "n": 1,
+                "output_dir": str(output_dir),
+            },
+            settings_path=settings_path,
+            secret_store=store,
+        )
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+
+    assert result["count"] == 1
+    assert Path(result["images"][0]["path"]).exists()
+    assert requests_seen[0]["path"] == "/v1/images/generations"
+    assert requests_seen[0]["authorization"] == "Bearer sk-test"
+    assert requests_seen[0]["body"]["prompt"] == "cat astronaut"
+
+
+def test_aiimage_generate_images_forwards_output_compression_for_lossy_formats(tmp_path: Path) -> None:
+    module = load_converter_module()
+    store = MemorySecretStore()
+    settings_path = tmp_path / "hyl_toolbox.ini"
+    module.save_config(
+        {
+            "selected_profile_id": "main",
+            "profiles": [
+                {
+                    "id": "main",
+                    "name": "Main",
+                    "base_url": "https://example.test/v1",
+                    "model": "gpt-image-1",
+                    "api_key": "sk-test",
+                }
+            ],
+        },
+        settings_path=settings_path,
+        secret_store=store,
+    )
+    session = FakeSession(post_response=FakeResponse({"data": [{"b64_json": PNG_1X1_BASE64}]}))
+
+    module.generate_images(
+        {
+            "profile_id": "main",
+            "prompt": "cat astronaut",
+            "size": "1024x1024",
+            "n": 1,
+            "output_format": "webp",
+            "output_compression": 72,
+            "output_dir": str(tmp_path / "output"),
+        },
+        settings_path=settings_path,
+        secret_store=store,
+        session=session,
+    )
+
+    assert session.post_calls[0]["json"]["output_compression"] == 72
+
+
+def test_aiimage_generate_images_rejects_invalid_output_compression_before_request(tmp_path: Path) -> None:
+    module = load_converter_module()
+    store = MemorySecretStore()
+    settings_path = tmp_path / "hyl_toolbox.ini"
+    module.save_config(
+        {
+            "selected_profile_id": "main",
+            "profiles": [
+                {
+                    "id": "main",
+                    "name": "Main",
+                    "base_url": "https://example.test/v1",
+                    "model": "gpt-image-1",
+                    "api_key": "sk-test",
+                }
+            ],
+        },
+        settings_path=settings_path,
+        secret_store=store,
+    )
+    session = FakeSession(post_response=FakeResponse({"data": [{"b64_json": PNG_1X1_BASE64}]}))
+
+    with pytest.raises(module.AiImageError, match="output compression"):
+        module.generate_images(
+            {
+                "profile_id": "main",
+                "prompt": "cat astronaut",
+                "size": "1024x1024",
+                "n": 1,
+                "output_format": "jpeg",
+                "output_compression": 101,
+                "output_dir": str(tmp_path / "output"),
+            },
+            settings_path=settings_path,
+            secret_store=store,
+            session=session,
+        )
+
+    assert session.post_calls == []
+
+
+def test_aiimage_generate_images_rejects_unsupported_size_before_request(tmp_path: Path) -> None:
+    module = load_converter_module()
+    store = MemorySecretStore()
+    settings_path = tmp_path / "hyl_toolbox.ini"
+    module.save_config(
+        {
+            "selected_profile_id": "main",
+            "profiles": [
+                {
+                    "id": "main",
+                    "name": "Main",
+                    "base_url": "https://example.test/v1",
+                    "model": "gpt-image-1",
+                    "api_key": "sk-test",
+                }
+            ],
+        },
+        settings_path=settings_path,
+        secret_store=store,
+    )
+    session = FakeSession(post_response=FakeResponse({"data": [{"b64_json": PNG_1X1_BASE64}]}))
+
+    with pytest.raises(module.AiImageError, match="size is invalid"):
+        module.generate_images(
+            {
+                "profile_id": "main",
+                "prompt": "cat astronaut",
+                "size": "4096x4096",
+                "n": 1,
+                "output_dir": str(tmp_path / "output"),
+            },
+            settings_path=settings_path,
+            secret_store=store,
+            session=session,
+        )
+
+    assert session.post_calls == []
+
+
+def test_aiimage_generate_images_accepts_all_1k_ratio_preset_sizes() -> None:
+    module = load_converter_module()
+    expected_sizes = {
+        "1024x1024",
+        "1536x1024",
+        "1024x1536",
+        "1280x720",
+        "720x1280",
+        "1024x768",
+        "768x1024",
+        "1920x816",
+    }
+
+    assert expected_sizes <= module.SUPPORTED_SIZES
+
+
+def test_aiimage_generate_images_accepts_gpt_image_2_high_resolution_sizes() -> None:
+    module = load_converter_module()
+
+    expected_sizes = {
+        "2048x2048",
+        "2560x1440",
+        "1440x2560",
+        "3840x2160",
+        "2160x3840",
+    }
+
+    assert expected_sizes <= module.SUPPORTED_SIZES
+
+
+def test_aiimage_generate_images_sends_4k_size_for_gpt_image_2(tmp_path: Path) -> None:
+    module = load_converter_module()
+    store = MemorySecretStore()
+    settings_path = tmp_path / "hyl_toolbox.ini"
+    module.save_config(
+        {
+            "selected_profile_id": "main",
+            "profiles": [
+                {
+                    "id": "main",
+                    "name": "Main",
+                    "base_url": "https://example.test/v1",
+                    "model": "gpt-image-2",
+                    "api_key": "sk-test",
+                }
+            ],
+        },
+        settings_path=settings_path,
+        secret_store=store,
+    )
+    session = FakeSession(post_response=FakeResponse({"data": [{"b64_json": PNG_1X1_BASE64}]}))
+
+    module.generate_images(
+        {
+            "profile_id": "main",
+            "prompt": "cat astronaut",
+            "size": "3840x2160",
+            "n": 1,
+            "output_dir": str(tmp_path / "output"),
+        },
+        settings_path=settings_path,
+        secret_store=store,
+        session=session,
+    )
+
+    assert session.post_calls[0]["json"]["model"] == "gpt-image-2"
+    assert session.post_calls[0]["json"]["size"] == "3840x2160"
+
+
+def test_aiimage_generate_images_accepts_dynamic_gpt_image_2_dimensions(tmp_path: Path) -> None:
+    module = load_converter_module()
+    store = MemorySecretStore()
+    settings_path = tmp_path / "hyl_toolbox.ini"
+    module.save_config(
+        {
+            "selected_profile_id": "main",
+            "profiles": [
+                {
+                    "id": "main",
+                    "name": "Main",
+                    "base_url": "https://example.test/v1",
+                    "model": "gpt-image-2",
+                    "api_key": "sk-test",
+                }
+            ],
+        },
+        settings_path=settings_path,
+        secret_store=store,
+    )
+    session = FakeSession(post_response=FakeResponse({"data": [{"b64_json": PNG_1X1_BASE64}]}))
+
+    module.generate_images(
+        {
+            "profile_id": "main",
+            "prompt": "cat astronaut",
+            "size": "2880x2880",
+            "n": 1,
+            "output_dir": str(tmp_path / "output"),
+        },
+        settings_path=settings_path,
+        secret_store=store,
+        session=session,
+    )
+
+    assert session.post_calls[0]["json"]["size"] == "2880x2880"
+
+
+def test_aiimage_generate_images_rejects_gpt_image_2_dimensions_over_pixel_limit(tmp_path: Path) -> None:
+    module = load_converter_module()
+    store = MemorySecretStore()
+    settings_path = tmp_path / "hyl_toolbox.ini"
+    module.save_config(
+        {
+            "selected_profile_id": "main",
+            "profiles": [
+                {
+                    "id": "main",
+                    "name": "Main",
+                    "base_url": "https://example.test/v1",
+                    "model": "gpt-image-2",
+                    "api_key": "sk-test",
+                }
+            ],
+        },
+        settings_path=settings_path,
+        secret_store=store,
+    )
+    session = FakeSession(post_response=FakeResponse({"data": [{"b64_json": PNG_1X1_BASE64}]}))
+
+    with pytest.raises(module.AiImageError, match="size is invalid"):
+        module.generate_images(
+            {
+                "profile_id": "main",
+                "prompt": "cat astronaut",
+                "size": "3840x2560",
+                "n": 1,
+                "output_dir": str(tmp_path / "output"),
+            },
+            settings_path=settings_path,
+            secret_store=store,
+            session=session,
+        )
+
+    assert session.post_calls == []
+
+
+def test_aiimage_generate_images_accepts_reference_source_size_table() -> None:
+    module = load_converter_module()
+    expected_sizes = {
+        "1024x1024", "1536x1024", "1024x1536", "1280x720", "720x1280", "1024x768", "768x1024", "1920x816",
+        "2048x2048", "2160x1440", "1440x2160", "2560x1440", "1440x2560", "2048x1536", "1536x2048", "3120x1344",
+        "2880x2880", "3456x2304", "2304x3456", "3840x2160", "2160x3840", "3200x2400", "2400x3200", "3840x1648",
+    }
+
+    assert expected_sizes <= module.SUPPORTED_SIZES
 
 
 def test_aiimage_generate_images_downloads_url_fallback(tmp_path: Path) -> None:

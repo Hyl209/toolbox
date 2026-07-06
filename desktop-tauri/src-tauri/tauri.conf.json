@@ -23,7 +23,14 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "$APPDATA/hyl-toolbox/backgrounds/**",
+          "$HOME/Pictures/Hyl Toolbox/AI Images/**/*"
+        ]
+      }
     }
   },
   "bundle": {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { pickDirectory, runTool, type ToolInput, type ToolResult, type ToolSessionSnapshot, type ToolSettings } from "../api/tauri";
+import { pickDirectory, runTool, type ToolHistoryItem, type ToolInput, type ToolResult, type ToolSessionSnapshot, type ToolSettings } from "../api/tauri";
 import { ActionBar, DirectoryPickerRow, RuntimeLogPanel, ToolHeading } from "../features/tools/components/CommonToolParts";
 import { DownloadQueueTable, type DownloadQueueRow } from "../features/tools/components/DownloadQueueTable";
 import { queueOverviewFromSession, queueRowsFromSession as buildQueueRows } from "../features/tools/downloadQueueState";
@@ -42,6 +42,16 @@ function errorText(error: unknown): string {
 function dataOf(result: ToolResult | null | undefined): DirectResult {
   const direct = (result ?? {}) as DirectResult;
   return (direct.data ?? direct) as DirectResult;
+}
+
+function historyItemsOf(result: ToolResult | null | undefined): ToolHistoryItem[] {
+  const direct = (result ?? {}) as ToolResult;
+  return ((direct.data?.items ?? direct.items ?? []) as ToolHistoryItem[]);
+}
+
+function historyInputText(item: ToolHistoryItem, key: string): string {
+  const value = item.input?.[key];
+  return typeof value === "string" ? value : value == null ? "" : String(value);
 }
 
 function headerLines(text: string): string[] {
@@ -114,6 +124,7 @@ function DirectDownloaderTool({ initialOutputDir = "", initialSettings = {} }: {
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
   const [logs, setLogs] = useState<string[]>([]);
+  const [history, setHistory] = useState<ToolHistoryItem[]>([]);
 
   const parsedHeaders = useMemo(() => headerLines(extraHeaders), [extraHeaders]);
   const busy = running || runtime.active;
@@ -129,6 +140,16 @@ function DirectDownloaderTool({ initialOutputDir = "", initialSettings = {} }: {
     }
     setOutputDir((current) => current || initialOutputDir);
   }, [initialOutputDir]);
+
+  useEffect(() => {
+    void loadHistory();
+  }, []);
+
+  useEffect(() => {
+    if (runtime.session?.status === "completed") {
+      void loadHistory();
+    }
+  }, [runtime.session?.status]);
 
   useEffect(() => {
     if (didApplyInitial.current || !Object.keys(initialSettings).length) {
@@ -227,6 +248,35 @@ function DirectDownloaderTool({ initialOutputDir = "", initialSettings = {} }: {
     setLogs([]);
   }
 
+  async function loadHistory() {
+    try {
+      const result = await runTool("directdownloader", { task_id: `direct-history-load-${Date.now()}`, action: "load_history", payload: {} });
+      setHistory(historyItemsOf(result));
+    } catch (caught) {
+      setLogs((items) => [`历史加载失败：${errorText(caught)}`, ...items].slice(0, 8));
+    }
+  }
+
+  async function deleteHistoryItem(id: string) {
+    const result = await runTool("directdownloader", { task_id: `direct-history-delete-${Date.now()}`, action: "delete_history", payload: { id } });
+    setHistory(historyItemsOf(result));
+  }
+
+  async function clearHistory() {
+    const result = await runTool("directdownloader", { task_id: `direct-history-clear-${Date.now()}`, action: "clear_history", payload: {} });
+    setHistory(historyItemsOf(result));
+  }
+
+  function reuseHistoryItem(item: ToolHistoryItem) {
+    setUrlText(historyInputText(item, "url_text"));
+    setOutputDir(historyInputText(item, "output_dir"));
+    setOutputName(historyInputText(item, "output_name"));
+    setConnections(historyInputText(item, "connections") || "16");
+    setProxyHost(historyInputText(item, "proxy_host"));
+    setProxyPort(historyInputText(item, "proxy_port"));
+    setReferer(historyInputText(item, "referer"));
+  }
+
   return (
     <div className="directdownloader-tool">
       <ToolHeading
@@ -323,6 +373,23 @@ function DirectDownloaderTool({ initialOutputDir = "", initialSettings = {} }: {
         paused={runtime.paused}
         rows={queueRows}
       />
+
+      <section className="table-panel">
+        <div className="web-video-log-header">
+          <div className="panel-title">历史记录</div>
+          <button className="ghost-button" disabled={!history.length || busy} onClick={() => void clearHistory()} type="button">清空历史</button>
+        </div>
+        <div className="result-list">
+          {history.length ? history.map((item) => (
+            <div className="result-row" key={item.id}>
+              <span>{historyInputText(item, "url_text") || item.files?.[0] || item.id}</span>
+              <strong>{item.status === "success" ? `成功 ${item.success_count ?? 0}` : `失败 ${item.fail_count ?? 0}`}</strong>
+              <button className="ghost-button" disabled={busy} onClick={() => reuseHistoryItem(item)} type="button">复用</button>
+              <button className="ghost-button" disabled={busy} onClick={() => void deleteHistoryItem(item.id)} type="button">删除</button>
+            </div>
+          )) : <p className="muted">暂无历史记录</p>}
+        </div>
+      </section>
 
       <RuntimeLogPanel error={error || runtime.sessionError} logs={runtimeLogs} />
     </div>

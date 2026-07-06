@@ -144,6 +144,9 @@ export type DownloaderSettingsDraft = {
 export type SettingsDraftState = {
   theme: ThemeName;
   customThemeEnabled: boolean;
+  backgroundEnabled: boolean;
+  backgroundImage: string;
+  backgroundOpacity: number;
   rememberPassword: boolean;
   autoLogin: boolean;
   themeColors: Record<ThemeName, ThemeColors>;

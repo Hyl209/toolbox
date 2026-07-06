@@ -12,10 +12,12 @@ from typing import Any
 try:
     from ..runtime_paths import project_root
     from ..runtime_state import emit_runtime_progress
+    from ..history_store import append_history, history_action
     from ._cancel_support import add_cancel_token_kwarg
 except ImportError:  # direct script execution support
     from runtime_paths import project_root
     from runtime_state import emit_runtime_progress
+    from history_store import append_history, history_action
     from tools._cancel_support import add_cancel_token_kwarg
 
 
@@ -23,6 +25,7 @@ ROOT = project_root(__file__, 2)
 MODULE_DIR = ROOT / "modules" / "video-downloader"
 PACKAGE_NAME = "hyl_legacy_video_downloader"
 logger = logging.getLogger(__name__)
+TOOL_ID = "webvideodownloader"
 
 
 def _load_converter_module() -> ModuleType:
@@ -165,6 +168,10 @@ def run_webvideodownloader(task: dict) -> dict:
     payload = _payload(task)
     if payload is None:
         return _error("INVALID_PAYLOAD", "payload object is required")
+
+    history = history_action(TOOL_ID, str(action), payload)
+    if history is not None:
+        return {"ok": True, "data": history}
 
     if action == "parse":
         return _run_parse(payload)
@@ -385,11 +392,11 @@ def _run_download(payload: dict[str, Any]) -> dict:
         if str(getattr(task, "source_kind", "")) != "web"
     ]
     if web_errors:
-        return _download_data(errors=web_errors)
+        return _with_download_history(payload, _download_data(errors=web_errors))
 
     validation_errors = module.validate_download_request(tasks, output_dir)
     if validation_errors:
-        return _download_data(errors=validation_errors)
+        return _with_download_history(payload, _download_data(errors=validation_errors))
 
     logs: list[str] = []
     def _progress(message: str) -> None:
@@ -404,7 +411,32 @@ def _run_download(payload: dict[str, Any]) -> dict:
         add_cancel_token_kwarg(module, kwargs, logger)
         results = module.download_batch(tasks, output_dir, **kwargs)
     except ValueError as exc:
-        return _download_data(logs=logs, errors=[str(exc)])
+        return _with_download_history(payload, _download_data(logs=logs, errors=[str(exc)]))
     except Exception as exc:
         return _error("TOOL_ERROR", str(exc))
-    return _download_data(results=results, logs=logs)
+    return _with_download_history(payload, _download_data(results=results, logs=logs))
+
+
+def _with_download_history(payload: dict[str, Any], response: dict) -> dict:
+    data = response.get("data", {})
+    append_history(
+        TOOL_ID,
+        {
+            "status": "success" if data.get("fail_count", 0) == 0 and not data.get("errors") else "error",
+            "input": {
+                "text": _payload_str(payload, "text"),
+                "urls": _clean(payload.get("urls", [])),
+                "tasks": _clean(payload.get("tasks", [])),
+                "output_dir": _payload_str(payload, "output_dir"),
+                "options": _clean(payload.get("options", {})),
+            },
+            "output_dir": _payload_str(payload, "output_dir"),
+            "files": data.get("files", []),
+            "success_count": data.get("success_count", 0),
+            "fail_count": data.get("fail_count", 0),
+            "errors": data.get("errors", []),
+            "results": data.get("results", []),
+        },
+        settings_path=payload.get("settings_path"),
+    )
+    return response

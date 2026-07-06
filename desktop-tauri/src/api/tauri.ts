@@ -33,6 +33,40 @@ export type AiImageArtifact = {
   height?: number;
 };
 
+export type AiImageHistoryItem = {
+  id: string;
+  created_at?: string;
+  title?: string;
+  prompt: string;
+  negativePrompt?: string;
+  size: string;
+  quality?: string;
+  outputFormat?: string;
+  outputCompression?: number;
+  background?: string;
+  moderation?: string;
+  count?: number;
+  status?: "running" | "success" | "error";
+  startedAt?: number;
+  finishedAt?: number;
+  outputDir?: string;
+  images?: Array<AiImageArtifact>;
+  error?: string;
+};
+
+export type ToolHistoryItem = {
+  id: string;
+  created_at?: string;
+  status?: "success" | "error" | string;
+  input?: Record<string, unknown>;
+  output_dir?: string;
+  files?: string[];
+  success_count?: number;
+  fail_count?: number;
+  errors?: string[];
+  results?: Array<Record<string, unknown>>;
+};
+
 export type ToolResult = {
   text?: string;
   output_path?: string;
@@ -60,6 +94,8 @@ export type ToolResult = {
   group_counts?: Record<string, number>;
   summary?: ToolResult;
   deleted?: Array<{ path: string; ok: boolean; message?: string }>;
+  items?: Array<ToolHistoryItem | AiImageHistoryItem>;
+  history_id?: string;
   data?: {
     text?: string;
     output_path?: string;
@@ -82,6 +118,8 @@ export type ToolResult = {
     group_counts?: ToolResult["group_counts"];
     summary?: ToolResult;
     deleted?: ToolResult["deleted"];
+    items?: Array<ToolHistoryItem | AiImageHistoryItem>;
+    history_id?: string;
   };
 };
 
@@ -176,6 +214,9 @@ export type SettingsSnapshot = {
   ui: {
     theme: "dark" | "light";
     custom_theme_enabled: boolean;
+    background_enabled: boolean;
+    background_image: string;
+    background_opacity: number;
   };
   auth: {
     remember_password: boolean;
@@ -199,6 +240,9 @@ export type SettingsPatch = {
   updates: {
     "ui/theme"?: "dark" | "light";
     "ui/custom_theme_enabled"?: boolean;
+    "ui/background_enabled"?: boolean;
+    "ui/background_image"?: string;
+    "ui/background_opacity"?: number;
     "auth/remember_password"?: boolean;
     "auth/auto_login"?: boolean;
     "tools/disabled"?: string[];

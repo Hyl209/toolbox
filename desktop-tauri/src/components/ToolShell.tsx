@@ -108,6 +108,7 @@ function ToolShell({
   return (
     <main className="app-shell">
       <section className="window-surface">
+        <div className="window-background-image" aria-hidden="true" />
         <header className="shell-header" data-tauri-drag-region onDoubleClick={() => runWindowAction("maximize")}>
           <div className="window-controls" aria-label="窗口控制" onDoubleClick={(event) => event.stopPropagation()}>
             <button aria-label="关闭窗口" className="window-control close" onClick={() => runWindowAction("close")} title="关闭" type="button" />

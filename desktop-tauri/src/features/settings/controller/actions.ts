@@ -148,6 +148,18 @@ export function updateCustomThemeEnabled(current: SettingsDraftState, checked: b
   return { ...current, customThemeEnabled: checked };
 }
 
+export function updateBackgroundEnabled(current: SettingsDraftState, checked: boolean): SettingsDraftState {
+  return { ...current, backgroundEnabled: checked };
+}
+
+export function updateBackgroundImage(current: SettingsDraftState, value: string): SettingsDraftState {
+  return { ...current, backgroundImage: value };
+}
+
+export function updateBackgroundOpacity(current: SettingsDraftState, value: number): SettingsDraftState {
+  return { ...current, backgroundOpacity: Math.max(0, Math.min(100, Math.round(value))) };
+}
+
 export function updateThemeColor(current: SettingsDraftState, zone: ThemeZone, value: string): SettingsDraftState {
   return {
     ...current,

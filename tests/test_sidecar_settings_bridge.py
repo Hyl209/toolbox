@@ -321,6 +321,75 @@ def test_snapshot_maps_legacy_auth_preferences(tmp_path: Path) -> None:
     }
 
 
+def test_snapshot_and_update_support_background_image_settings(tmp_path: Path) -> None:
+    settings_path = tmp_path / "hyl_toolbox.ini"
+    settings_path.write_text(
+        "\n".join(
+            [
+                "[ui]",
+                "background_enabled=1",
+                "background_image=E:\\\\wallpapers\\\\bg.webp",
+                "background_opacity=42",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    snapshot = build_settings_snapshot(settings_path=settings_path, plugins_dir=tmp_path / "plugins")
+
+    assert snapshot["ui"]["background_enabled"] is True
+    assert snapshot["ui"]["background_image"] == "E:\\\\wallpapers\\\\bg.webp"
+    assert snapshot["ui"]["background_opacity"] == 42
+
+    snapshot = apply_settings_update(
+        {
+            "ui/background_enabled": False,
+            "ui/background_image": "",
+            "ui/background_opacity": 65,
+        },
+        settings_path=settings_path,
+        plugins_dir=tmp_path / "plugins",
+    )
+
+    assert snapshot["ui"]["background_enabled"] is False
+    assert snapshot["ui"]["background_image"] == ""
+    assert snapshot["ui"]["background_opacity"] == 65
+    parser_text = settings_path.read_text(encoding="utf-8")
+    assert "background_enabled=0" in parser_text
+    assert "background_image=" in parser_text
+    assert "background_opacity=65" in parser_text
+
+
+def test_settings_update_allows_background_images_inside_tauri_asset_scope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    settings_path = tmp_path / "hyl_toolbox.ini"
+    settings_path.write_text("[ui]\nbackground_image=\n", encoding="utf-8")
+    appdata = tmp_path / "AppData" / "Roaming"
+    monkeypatch.setenv("APPDATA", str(appdata))
+    background = appdata / "hyl-toolbox" / "backgrounds" / "bg.webp"
+
+    snapshot = apply_settings_update(
+        {"ui/background_image": str(background)},
+        settings_path=settings_path,
+        plugins_dir=tmp_path / "plugins",
+    )
+
+    assert snapshot["ui"]["background_image"] == str(background)
+
+
+def test_settings_update_rejects_background_images_outside_tauri_asset_scope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    settings_path = tmp_path / "hyl_toolbox.ini"
+    settings_path.write_text("[ui]\nbackground_image=\n", encoding="utf-8")
+    monkeypatch.setenv("APPDATA", str(tmp_path / "AppData" / "Roaming"))
+
+    with pytest.raises(SettingsUpdateError, match="ui/background_image must be under"):
+        apply_settings_update(
+            {"ui/background_image": "D:\\wallpapers\\bg.webp"},
+            settings_path=settings_path,
+            plugins_dir=tmp_path / "plugins",
+        )
+
+
 def test_snapshot_maps_legacy_tool_output_dirs(tmp_path: Path) -> None:
     settings_path = tmp_path / "hyl_toolbox.ini"
     settings_path.write_text(
@@ -979,7 +1048,7 @@ def test_sidecar_settings_update_cli_writes_legacy_keys_and_snapshot_reflects_th
     assert len(events) == 1
     assert events[0]["type"] == "result"
     snapshot = events[0]["data"]
-    assert snapshot["ui"] == {"theme": "light", "custom_theme_enabled": False}
+    assert snapshot["ui"] == {"theme": "light", "custom_theme_enabled": False, "background_enabled": False, "background_image": "", "background_opacity": 100}
     assert snapshot["disabled_tools"] == ["base64", "music"]
     assert snapshot["disabled_plugins"] == ["hello_world", "json_tools"]
     assert snapshot["sidebar_order"] == ["music", "plugin:json_tools", "base64"]

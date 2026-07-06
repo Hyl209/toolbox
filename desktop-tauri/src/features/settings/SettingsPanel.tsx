@@ -4,6 +4,7 @@ import { uiText } from "../../uiText";
 import { DEFAULT_THEME_COLORS, pluginConfigKey, type ThemeColors, type ThemeName } from ".";
 import { useSettingsPanelController } from "./useSettingsPanelController";
 import AccountPreferencesSection from "./sections/AccountPreferencesSection";
+import BackgroundImageSection from "./sections/BackgroundImageSection";
 import DownloaderSettingsSection from "./sections/DownloaderSettingsSection";
 import EnvironmentDependenciesSection from "./sections/EnvironmentDependenciesSection";
 import SettingsSummarySection from "./sections/SettingsSummarySection";
@@ -61,6 +62,9 @@ export default function SettingsPanel({
     moveSidebarItem,
     updateTheme,
     updateCustomThemeEnabled,
+    updateBackgroundEnabled,
+    updateBackgroundImage,
+    updateBackgroundOpacity,
     updateThemeColor,
     updateToolOutputDir,
     updateToolBehavior,
@@ -146,10 +150,19 @@ export default function SettingsPanel({
               onThemeChange={updateTheme}
               onCustomThemeEnabledChange={updateCustomThemeEnabled}
             />
+            <BackgroundImageSection
+              saving={saving}
+              backgroundEnabled={drafts.backgroundEnabled}
+              backgroundImage={drafts.backgroundImage}
+              onBackgroundEnabledChange={updateBackgroundEnabled}
+              onBackgroundImageChange={updateBackgroundImage}
+            />
             <ThemePaletteSection
               theme={drafts.theme}
               themeColors={drafts.themeColors}
+              backgroundOpacity={drafts.backgroundOpacity}
               onChange={updateThemeColor}
+              onBackgroundOpacityChange={updateBackgroundOpacity}
             />
           </div>
         ) : null}

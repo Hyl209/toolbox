@@ -358,6 +358,51 @@ def test_tgdownloader_download_calls_legacy_batch_with_telegram_options(monkeypa
     assert result["data"]["logs"] == [f"log-{index}" for index in range(10, 60)]
 
 
+def test_tgdownloader_download_appends_persistent_history_without_secrets(monkeypatch, tmp_path: Path) -> None:
+    from sidecar.history_store import history_path, load_history
+    from sidecar.tools import tgdownloader_tool as tool
+
+    module = tool._load_converter_module()
+    settings_path = tmp_path / "hyl_toolbox.ini"
+
+    def fake_download_batch(tasks, output_dir, telegram_config=None, options=None, progress_cb=None):
+        return [{"success": True, "source_url": "https://t.me/example/42", "files": [tmp_path / "a.mp4"]}]
+
+    monkeypatch.setattr(module, "download_batch", fake_download_batch)
+    result = tool.run_tgdownloader(
+        {
+            "task_id": "tg-history",
+            "action": "download",
+            "payload": {
+                "settings_path": str(settings_path),
+                "text": "https://t.me/example/42",
+                "output_dir": str(tmp_path),
+                "credentials": {
+                    "api_id": "12345",
+                    "api_hash": "hash-secret",
+                    "phone": "+10000000000",
+                    "phone_code_hash": "code-hash",
+                },
+                "code": "12345",
+                "password": "pw",
+                "options": {"recent_limit": "12", "include_videos": True, "include_photos": False},
+            },
+        }
+    )
+
+    history = load_history("tgdownloader", settings_path=settings_path)
+    raw_history = history_path(settings_path).read_text(encoding="utf-8")
+    assert result["ok"] is True
+    assert history[0]["status"] == "success"
+    assert history[0]["input"]["text"] == "https://t.me/example/42"
+    assert history[0]["input"]["credentials"] == {"api_id": "12345", "phone": "+10000000000"}
+    assert history[0]["files"] == [str(tmp_path / "a.mp4")]
+    assert "hash-secret" not in raw_history
+    assert "code-hash" not in raw_history
+    assert '"password"' not in raw_history
+    assert '"code"' not in raw_history
+
+
 def test_tgdownloader_warns_when_cancel_token_support_is_not_declared(monkeypatch, tmp_path: Path, caplog) -> None:
     from sidecar.tools import tgdownloader_tool as tool
 

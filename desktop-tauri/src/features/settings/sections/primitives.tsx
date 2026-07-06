@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { pickDirectory } from "../../../api/tauri";
+import { pickDirectory, pickFile, type DialogFilter } from "../../../api/tauri";
 
 type BaseFieldProps = {
   label: ReactNode;
@@ -93,6 +93,69 @@ export function SettingDirectoryField({
         <button className="path-pick-button" disabled={disabled} onClick={handleBrowse} type="button">
           {buttonLabel}
         </button>
+      </div>
+    </label>
+  );
+}
+
+type SettingFileFieldProps = BaseFieldProps & {
+  value: string;
+  placeholder?: string;
+  buttonLabel?: string;
+  clearLabel?: string;
+  dialogTitle?: string;
+  filters?: DialogFilter[];
+  onChange: (value: string) => void;
+  onClear?: () => void;
+};
+
+export function SettingFileField({
+  label,
+  description,
+  meta,
+  value,
+  disabled,
+  placeholder,
+  buttonLabel = "选择文件",
+  clearLabel = "清除",
+  dialogTitle,
+  filters,
+  onChange,
+  onClear,
+}: SettingFileFieldProps) {
+  async function handleBrowse() {
+    if (disabled) {
+      return;
+    }
+    const path = await pickFile({
+      defaultPath: value || undefined,
+      filters,
+      title: dialogTitle ?? (typeof label === "string" ? `选择${label}` : "选择文件"),
+    });
+    if (path) {
+      onChange(path);
+    }
+  }
+
+  return (
+    <label className="field-block settings-field-card">
+      <FieldHead description={description} label={label} meta={meta} />
+      <div className="path-input-row">
+        <input
+          disabled={disabled}
+          onChange={(event) => onChange(event.currentTarget.value)}
+          placeholder={placeholder}
+          type="text"
+          value={value}
+        />
+        <button className="path-pick-button" disabled={disabled} onClick={handleBrowse} type="button">
+          {buttonLabel}
+        </button>
+        {onClear ? (
+          <button className="path-pick-button" disabled={disabled || !value} onClick={onClear} type="button">
+            {clearLabel}
+          </button>
+        ) : null}
       </div>
     </label>
   );

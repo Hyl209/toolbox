@@ -164,6 +164,47 @@ def test_directdownloader_download_emits_runtime_progress(monkeypatch: pytest.Mo
     assert captured == ["__HYL_PROGRESS__|direct_aria2|index=0|name=hello.txt|percent=50|speed=1.0MiB/s|eta=00:05"]
 
 
+def test_directdownloader_download_appends_persistent_history(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from sidecar.history_store import load_history
+    from sidecar.tools import directdownloader_tool as tool
+
+    module = tool._load_converter_module()
+    settings_path = tmp_path / "hyl_toolbox.ini"
+
+    def fake_iter_download_requests(
+        requests,
+        options,
+        progress_cb=None,
+        root=None,
+        process_cb=None,
+        should_stop=None,
+        structured_progress_cb=None,
+    ):
+        return [{"url": requests[0].url, "success": True, "returncode": 0, "output": "ok", "files": [str(tmp_path / "hello.txt")]}]
+
+    monkeypatch.setattr(module, "iter_download_requests", fake_iter_download_requests)
+    result = tool.run_directdownloader(
+        {
+            "task_id": "direct-history",
+            "action": "download",
+            "payload": {
+                "settings_path": str(settings_path),
+                "url_text": "https://cdn.example.com/hello.txt",
+                "output_dir": str(tmp_path),
+                "connections": 1,
+                "referer": "https://example.test/",
+            },
+        }
+    )
+
+    history = load_history("directdownloader", settings_path=settings_path)
+    assert result["ok"] is True
+    assert history[0]["status"] == "success"
+    assert history[0]["input"]["url_text"] == "https://cdn.example.com/hello.txt"
+    assert history[0]["input"]["referer"] == "https://example.test/"
+    assert history[0]["files"] == [str(tmp_path / "hello.txt")]
+
+
 def test_directdownloader_unknown_action_returns_error() -> None:
     event = last_event({"task_id": "direct-bogus-001", "action": "bogus", "payload": {}})
 

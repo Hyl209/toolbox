@@ -32,6 +32,7 @@ dist/
 # Local config and private files
 mp4-mp3/mp4mp3_config.json
 hyl_toolbox.ini
+hyl_toolbox_history.json
 users.json
 .claude/
 .hermes/
@@ -54,6 +55,8 @@ archive_*.txt
 desktop-tauri/test-results/
 tests/pytest-tmp/
 .codex-pytest-tmp/
+.playwright-cli/
+output/
 
 # Media / archives
 *.mp3
