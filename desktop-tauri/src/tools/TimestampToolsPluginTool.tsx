@@ -13,7 +13,6 @@ const actionLabels: Record<TimestampAction, string> = {
 
 const text = {
   title: "\u65f6\u95f4\u6233\u5de5\u5177",
-  desc: "转换时间和时间戳。",
   input: "\u8f93\u5165",
   inputHint: "\u8f93\u5165\u65f6\u95f4\u6233\u6216\u65f6\u95f4\u6587\u672c",
   timezone: "\u65f6\u533a\u504f\u79fb",
@@ -101,7 +100,6 @@ function TimestampToolsPluginTool() {
         <div>
           <p className="eyebrow">{uiText.common.pluginLabel("timestamp_tools")}</p>
           <h2>{text.title}</h2>
-          <p>{text.desc}</p>
         </div>
         <div className="mode-switch" role="group" aria-label={text.title}>
           {(["to_datetime", "to_timestamp", "current_time"] as TimestampAction[]).map((item) => (
@@ -123,7 +121,6 @@ function TimestampToolsPluginTool() {
       </div>
 
       <div className="actions-row">
-        <div className="action-hint">{text.current}\uff1a{actionLabels[action]}</div>
         <div className="button-cluster">
           <button className="ghost-button" disabled={running || (!inputText && !outputText)} onClick={clearAll} type="button">{text.clear}</button>
           <button className="ghost-button" disabled={!outputText} onClick={copyOutput} type="button">{text.copy}</button>
@@ -132,7 +129,7 @@ function TimestampToolsPluginTool() {
       </div>
 
       <section className="log-panel" aria-label={text.log}>
-        <div><div className="panel-title">{uiText.common.runtime}</div><p className="muted">{text.recent}</p></div>
+        <div><div className="panel-title">{uiText.common.runtime}</div></div>
         <div className="log-content">
           {error ? <div className="error-box">{error}</div> : null}
           {logs.length ? <ul>{logs.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul> : <p className="muted">{text.emptyLog}</p>}

@@ -143,7 +143,6 @@ function SameTool({ initialSettings = {} }: { initialSettings?: ToolSettings }) 
         <div>
           <p className="eyebrow">Legacy duplicate finder</p>
           <h2>重复文件</h2>
-          <p>查找重复文件。</p>
         </div>
         <span className="settings-mode-pill">{recursive ? "递归扫描" : "仅第一层"}</span>
       </div>
@@ -170,12 +169,10 @@ function SameTool({ initialSettings = {} }: { initialSettings?: ToolSettings }) 
             <input checked={recursive} disabled={running} onChange={(event) => setRecursive(event.currentTarget.checked)} type="checkbox" />
             <span>递归扫描子目录</span>
           </label>
-          <p className="muted">扫描不会移动文件；点击移动后会保留每组第一个文件，其他重复件进入目标目录。</p>
         </div>
       </div>
 
       <div className="actions-row">
-        <div className="action-hint">重复结果以旧 converter 的 keeper / duplicates 为准。</div>
         <div className="button-cluster">
           <button className="ghost-button" disabled={running || (!scanResult && !results.length && !error)} onClick={clearAll} type="button">
             清空

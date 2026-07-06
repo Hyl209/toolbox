@@ -1519,8 +1519,9 @@ button:disabled {
   }
 
   .task-detail-media {
-    width: 100%;
-    max-height: 320px;
+    justify-self: center;
+    width: min(100%, var(--task-detail-media-column, 440px));
+    max-height: min(70vh, calc(100vh - 64px));
     min-height: 0;
   }
 
@@ -3448,13 +3449,13 @@ textarea {
 }
 
 .aiimage-profile-strip {
-  grid-template-columns: minmax(280px, 1.2fr) auto;
-  align-items: end;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
 }
 
 .aiimage-profile-actions {
-  justify-content: flex-end;
-  align-self: center;
+  justify-content: stretch;
+  align-self: stretch;
 }
 
 .aiimage-main-grid {
@@ -3482,6 +3483,82 @@ textarea {
 
 .prompt-main-panel textarea {
   min-height: 240px;
+}
+
+.aiimage-reference-panel {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.aiimage-reference-head {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.aiimage-reference-head > span {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  color: var(--legacy-text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.aiimage-reference-head .button-cluster {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(76px, 1fr));
+  width: min(100%, 176px);
+}
+
+.aiimage-control-rail .aiimage-reference-head .button-cluster button {
+  min-height: 34px;
+}
+
+.aiimage-reference-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+}
+
+.aiimage-reference-thumb {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.aiimage-reference-thumb img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: 12px;
+  background: var(--legacy-input-bg);
+}
+
+.aiimage-reference-thumb button {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 999px;
+  color: white;
+  background: oklch(25% 0.03 260deg / 78%);
+}
+
+.aiimage-reference-thumb small {
+  overflow: hidden;
+  color: var(--legacy-text-secondary);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .prompt-side-panel {
@@ -3830,9 +3907,9 @@ textarea {
 
 .task-detail-card {
   display: grid;
-  grid-template-columns: minmax(280px, 360px) minmax(320px, 1fr);
-  width: min(860px, calc(100vw - 96px));
-  max-height: min(680px, calc(100vh - 96px));
+  grid-template-columns: minmax(260px, var(--task-detail-media-column, 440px)) minmax(320px, 1fr);
+  width: min(var(--task-detail-width, 960px), calc(100vw - 64px));
+  max-height: min(760px, calc(100vh - 64px));
   gap: 0;
   overflow: hidden;
   border-radius: 20px;
@@ -3846,9 +3923,11 @@ textarea {
 }
 
 .task-detail-media {
-  width: 360px;
   min-height: 0;
-  aspect-ratio: 1 / 1;
+  max-height: min(760px, calc(100vh - 64px));
+  aspect-ratio: var(--task-detail-image-aspect, 1 / 1);
+  box-sizing: border-box;
+  padding: 15px;
   background: color-mix(in oklab, var(--legacy-window-bg), transparent 8%);
 }
 
@@ -3861,23 +3940,71 @@ textarea {
 
 .task-detail-content {
   display: grid;
-  gap: 14px;
+  gap: 10px;
   align-content: start;
   min-height: 0;
   overflow: auto;
-  padding: 20px;
+  padding: 16px;
+}
+
+.task-detail-content > .result-card {
+  justify-content: flex-start;
+  min-height: 104px;
+  padding: 14px 16px;
+  border-radius: 12px;
 }
 
 .task-detail-content .result-card p {
   margin: 0;
   color: var(--legacy-text-primary);
-  line-height: 1.6;
+  line-height: 1.45;
 }
 
 .aiimage-task-meta-grid {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.aiimage-task-meta-grid .result-card {
+  min-height: 76px;
+  padding: 12px 14px;
+}
+
+.task-reference-card {
+  gap: 10px;
+}
+
+.task-reference-list {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+}
+
+.task-reference-item {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 0;
+  color: var(--legacy-text-primary);
+  background: transparent;
+}
+
+.task-reference-item img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: 10px;
+  background: var(--legacy-input-bg);
+}
+
+.task-reference-item strong {
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .image-grid {
@@ -3960,7 +4087,13 @@ textarea {
 
 .aiimage-profile-strip {
   gap: 12px;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.aiimage-profile-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: 100%;
 }
 
 .aiimage-main-grid {
@@ -4158,6 +4291,14 @@ textarea {
 
   .aiimage-control-rail .button-cluster {
     grid-template-columns: 1fr;
+  }
+
+  .aiimage-control-rail .aiimage-profile-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .aiimage-control-rail .aiimage-reference-head .button-cluster {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

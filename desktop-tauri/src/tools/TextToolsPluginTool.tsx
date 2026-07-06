@@ -14,7 +14,6 @@ const actionLabels: Record<TextAction, string> = {
 
 const text = {
   title: "\u6587\u672c\u5de5\u5177",
-  desc: "清理和转换文本。",
   start: "\u8fd0\u884c",
   done: "\u8fd0\u884c\u5b8c\u6210",
   copied: "\u5df2\u590d\u5236",
@@ -104,7 +103,6 @@ function TextToolsPluginTool() {
         <div>
           <p className="eyebrow">{uiText.common.pluginLabel("text_tools")}</p>
           <h2>{text.title}</h2>
-          <p>{text.desc}</p>
         </div>
         <div className="mode-switch" role="group" aria-label={text.title}>
           {(["clean_lines", "dedupe_lines", "sort_lines", "transform_case"] as TextAction[]).map((item) => (
@@ -129,7 +127,6 @@ function TextToolsPluginTool() {
       </div>
 
       <div className="actions-row">
-        <div className="action-hint">{text.current}\uff1a{actionLabels[action]}</div>
         <div className="button-cluster">
           <button className="ghost-button" disabled={running || (!inputText && !outputText)} onClick={clearAll} type="button">{text.clear}</button>
           <button className="ghost-button" disabled={!outputText} onClick={copyOutput} type="button">{text.copy}</button>
@@ -138,7 +135,7 @@ function TextToolsPluginTool() {
       </div>
 
       <section className="log-panel" aria-label={text.log}>
-        <div><div className="panel-title">{uiText.common.runtime}</div><p className="muted">{text.recent}</p></div>
+        <div><div className="panel-title">{uiText.common.runtime}</div></div>
         <div className="log-content">
           {error ? <div className="error-box">{error}</div> : null}
           {logs.length ? <ul>{logs.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul> : <p className="muted">{text.emptyLog}</p>}

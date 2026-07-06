@@ -1,9 +1,10 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { openPath as open } from "@tauri-apps/plugin-opener";
 import {
   pickDirectory,
+  pickFiles,
   runTool,
   type AiImageArtifact,
   type AiImageConfig,
@@ -52,6 +53,7 @@ type GenerationTask = {
   finishedAt?: number;
   outputDir?: string;
   images: AiImageArtifact[];
+  referenceImages: string[];
   error?: string;
 };
 
@@ -164,6 +166,39 @@ function localImageSrc(path: string): string {
     return convertFileSrc(path);
   }
   return fileUrl(path);
+}
+
+
+function referenceImageSrc(path: string): string {
+  return localImageSrc(path);
+}
+
+
+function filenameFromPath(path: string): string {
+  return path.replace(/\\/g, "/").split("/").pop() || path;
+}
+
+
+function imageDetailLayout(image?: AiImageArtifact): { orientation: "portrait" | "landscape" | "square"; style: CSSProperties } {
+  const width = Number(image?.width);
+  const height = Number(image?.height);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return { orientation: "square", style: {} };
+  }
+
+  const ratio = width / height;
+  const orientation = ratio < 0.85 ? "portrait" : ratio > 1.2 ? "landscape" : "square";
+  const mediaColumn = orientation === "portrait" ? 420 : orientation === "landscape" ? 560 : 460;
+  const contentColumn = orientation === "portrait" ? 500 : 460;
+
+  return {
+    orientation,
+    style: {
+      "--task-detail-image-aspect": `${width} / ${height}`,
+      "--task-detail-media-column": `${mediaColumn}px`,
+      "--task-detail-width": `${mediaColumn + contentColumn}px`,
+    } as CSSProperties,
+  };
 }
 
 
@@ -319,6 +354,7 @@ function historyTaskFromItem(item: AiImageHistoryItem): GenerationTask {
     finishedAt: item.finishedAt ?? startedAt,
     outputDir: item.outputDir,
     images: item.images ?? [],
+    referenceImages: item.referenceImages ?? [],
     error: item.error,
   };
 }
@@ -336,6 +372,7 @@ function AiImageTool() {
   const [outputCompression, setOutputCompression] = useState(80);
   const [background, setBackground] = useState<BackgroundOption>("false");
   const [moderation, setModeration] = useState<ModerationOption>("auto");
+  const [referenceImages, setReferenceImages] = useState<string[]>([]);
   const [size, setSize] = useState("1024x1024");
   const [sizeMode, setSizeMode] = useState<SizeMode>("ratio");
   const [selectedRatio, setSelectedRatio] = useState<RatioOption>("1:1");
@@ -374,6 +411,8 @@ function AiImageTool() {
     () => sizePreviewFor(draftSizeMode, draftSelectedBaseResolution, draftSelectedRatio, draftCustomWidth, draftCustomHeight),
     [draftSizeMode, draftSelectedBaseResolution, draftSelectedRatio, draftCustomWidth, draftCustomHeight],
   );
+  const selectedTaskImage = selectedTask?.images[0];
+  const taskDetailLayout = useMemo(() => imageDetailLayout(selectedTaskImage), [selectedTaskImage]);
   const canGenerate = !running && Boolean(activeProfile?.id) && Boolean(prompt.trim()) && Boolean(outputDir.trim()) && count > 0;
 
   useEffect(() => {
@@ -591,6 +630,21 @@ function AiImageTool() {
     }
   }
 
+  async function chooseReferenceImages() {
+    const paths = await pickFiles({
+      title: "选择参考图片",
+      filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp"] }],
+      multiple: true,
+    });
+    if (paths?.length) {
+      setReferenceImages((current) => Array.from(new Set([...current, ...paths])));
+    }
+  }
+
+  function removeReferenceImage(path: string) {
+    setReferenceImages((current) => current.filter((item) => item !== path));
+  }
+
   async function generate() {
     if (!activeProfile || !canGenerate) {
       return;
@@ -612,6 +666,7 @@ function AiImageTool() {
       status: "running",
       startedAt,
       images: [],
+      referenceImages,
     };
     setRunning(true);
     setError("");
@@ -633,6 +688,7 @@ function AiImageTool() {
           ...(outputFormat === "png" ? {} : { output_compression: outputCompression }),
           background: background === "true" ? "transparent" : "auto",
           moderation,
+          reference_image_paths: referenceImages,
           output_dir: outputDir,
         },
       });
@@ -685,6 +741,7 @@ function AiImageTool() {
     setOutputCompression(task.outputCompression);
     setBackground(task.background);
     setModeration(task.moderation);
+    setReferenceImages(task.referenceImages ?? []);
     setSize(task.size);
     if (task.size === "auto") {
       setSizeMode("auto");
@@ -735,7 +792,6 @@ function AiImageTool() {
       <ToolHeading
         eyebrow="AI image"
         title="AI 生图"
-        description="参数区参考 GPT Image Playground 的工作台节奏，高频输入放大，低频配置收起。"
         statusLabel={activeProfile ? activeProfile.name : "未配置"}
       />
 
@@ -780,6 +836,32 @@ function AiImageTool() {
                   value={prompt}
                 />
               </label>
+              <div className="aiimage-reference-panel">
+                <div className="aiimage-reference-head">
+                  <span>参考图</span>
+                  <div className="button-cluster">
+                    <button className="ghost-button" disabled={running} onClick={chooseReferenceImages} type="button">
+                      上传图片
+                    </button>
+                    <button className="ghost-button" disabled={running || !referenceImages.length} onClick={() => setReferenceImages([])} type="button">
+                      清空
+                    </button>
+                  </div>
+                </div>
+                {referenceImages.length ? (
+                  <div className="aiimage-reference-grid">
+                    {referenceImages.map((path) => (
+                      <div className="aiimage-reference-thumb" key={path}>
+                        <img alt={filenameFromPath(path)} src={referenceImageSrc(path)} />
+                        <button aria-label={`移除 ${filenameFromPath(path)}`} disabled={running} onClick={() => removeReferenceImage(path)} type="button">
+                          ×
+                        </button>
+                        <small>{filenameFromPath(path)}</small>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             </div>
 
             <div className="file-mode-card compact-card prompt-side-panel">
@@ -859,13 +941,12 @@ function AiImageTool() {
               <div className="result-card aiimage-summary-card">
                 <span>当前结果</span>
                 <strong>{images.length ? `${images.length} 张` : "等待生成"}</strong>
-                <p>{generatedOutputDir || "生成成功后会自动保存到时间戳子目录"}</p>
+                {generatedOutputDir ? <p>{generatedOutputDir}</p> : null}
               </div>
             </div>
           </section>
 
           <ActionBar
-            hint="先写提示词，再按需调参数；结果会在右侧画布持续保留。"
             secondary={
               <button className="ghost-button" disabled={!generatedOutputDir} onClick={() => void open(generatedOutputDir)} type="button">
                 打开输出目录
@@ -940,7 +1021,6 @@ function AiImageTool() {
           ) : (
             <div className="aiimage-empty-state">
               <strong>输入提示词开始生成图片</strong>
-              <p>右侧专注预览和历史结果，左侧保留生成必需参数。</p>
             </div>
           )}
         </section>
@@ -954,7 +1034,6 @@ function AiImageTool() {
             <div className="tool-heading profile-modal-head">
               <div>
                 <h2>{profileModalMode === "create" ? "新建配置" : "编辑配置"}</h2>
-                <p>低频配置项收在弹窗里，不占主工作区。</p>
               </div>
             </div>
 
@@ -1023,7 +1102,6 @@ function AiImageTool() {
               <div className="size-mode-body size-mode-auto">
                 <div className="empty-orb" aria-hidden="true" />
                 <strong>自动尺寸</strong>
-                <p>不同模型传递具体分辨率参数时，可能会由模型自行调整为合适尺寸。</p>
               </div>
             ) : null}
 
@@ -1113,15 +1191,17 @@ function AiImageTool() {
 
       {selectedTask ? createPortal((
         <div className="modal-scrim task-detail-modal" onClick={() => setSelectedTaskId("")}>
-          <div className="task-detail-card" onClick={(event) => event.stopPropagation()}>
+          <div className="task-detail-card" data-image-orientation={taskDetailLayout.orientation} onClick={(event) => event.stopPropagation()} style={taskDetailLayout.style}>
             <div className="task-detail-media">
-              {selectedTask.images[0] ? <img alt={selectedTask.title} src={localImageSrc(selectedTask.images[0].path)} /> : <div className="generation-card-placeholder">{selectedTask.status === "running" ? "生成中..." : selectedTask.status === "error" ? "失败" : "无图"}</div>}
+              {selectedTaskImage ? <img alt={selectedTask.title} src={localImageSrc(selectedTaskImage.path)} /> : <div className="generation-card-placeholder">{selectedTask.status === "running" ? "生成中..." : selectedTask.status === "error" ? "失败" : "无图"}</div>}
             </div>
             <div className="task-detail-content">
               <div className="size-modal-head">
                 <div>
                   <h3>{selectedTask.title}</h3>
-                  <p>{selectedTask.status === "running" ? "生成中..." : selectedTask.status === "error" ? selectedTask.error || "生成失败" : "任务详情"}</p>
+                  {selectedTask.status !== "success" ? (
+                    <p>{selectedTask.status === "running" ? "生成中..." : selectedTask.error || "生成失败"}</p>
+                  ) : null}
                 </div>
                 <button className="ghost-button size-close-button" onClick={() => setSelectedTaskId("")} type="button">
                   ×
@@ -1132,6 +1212,20 @@ function AiImageTool() {
                 <span>输入内容</span>
                 <p>{selectedTask.prompt}</p>
               </div>
+
+              {selectedTask.referenceImages.length ? (
+                <div className="result-card task-reference-card">
+                  <span>参考图</span>
+                  <div className="task-reference-list">
+                    {selectedTask.referenceImages.map((path) => (
+                      <button className="task-reference-item" key={path} onClick={() => void open(path)} type="button">
+                        <img alt={filenameFromPath(path)} src={referenceImageSrc(path)} />
+                        <strong>{filenameFromPath(path)}</strong>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
 
               <div className="aiimage-task-meta-grid">
                 <div className="result-card"><span>尺寸</span><strong>{selectedTask.size}</strong></div>

@@ -584,7 +584,6 @@ function WebVideoDownloaderTool({ initialSettings = {} }: { initialSettings?: To
       <div className="tool-heading">
         <div>
           <h2>{"网页视频下载"}</h2>
-          <p>下载网页视频。</p>
         </div>
       </div>
 

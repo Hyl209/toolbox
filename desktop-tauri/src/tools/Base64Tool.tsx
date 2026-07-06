@@ -31,7 +31,6 @@ function Base64Tool({ initialOutputDir = "" }: { initialOutputDir?: string }) {
 
   const inputStats = useMemo(() => uiText.common.charCount(inputText.length), [inputText.length]);
   const outputStats = useMemo(() => uiText.common.charCount(outputText.length), [outputText.length]);
-  const fileActionLabel = fileMode === "encode_file" ? "文件 → Base64 文本" : "Base64 文本 → 文件";
   const canRunText = Boolean(inputText) && !running;
   const canRunFile = !running && Boolean(outputDir) && Boolean(outputName) && (fileMode === "encode_file" ? Boolean(filePath) : Boolean(inputText));
 
@@ -149,7 +148,6 @@ function Base64Tool({ initialOutputDir = "" }: { initialOutputDir?: string }) {
         <div>
           <p className="eyebrow">Base64 converter</p>
           <h2>Base64 编解码</h2>
-          <p>文本和文件互转。</p>
         </div>
         <div className="mode-switch" role="group" aria-label="Base64 工作模式">
           <button className={workMode === "text" ? "active" : ""} disabled={running} onClick={() => setWorkMode("text")} type="button">
@@ -191,7 +189,6 @@ function Base64Tool({ initialOutputDir = "" }: { initialOutputDir?: string }) {
           </div>
 
           <ActionBar
-            hint={textMode === "encode" ? "Plain text → Base64" : "Base64 → Plain text"}
             secondary={<button className="ghost-button" disabled={running || (!inputText && !outputText)} onClick={clearText} type="button">清空</button>}
             tertiary={<button className="ghost-button" disabled={!outputText} onClick={copyOutput} type="button">复制</button>}
             primary={<button className="primary-button" disabled={!canRunText} onClick={handleRunText} type="button">{running ? "运行中" : "转换"}</button>}
@@ -252,12 +249,10 @@ function Base64Tool({ initialOutputDir = "" }: { initialOutputDir?: string }) {
             <div className="result-card">
               <span>输出路径</span>
               <strong>{outputPath || "等待运行"}</strong>
-              <p>{fileActionLabel}</p>
             </div>
           </div>
 
           <ActionBar
-            hint={fileActionLabel}
             secondary={<button className="ghost-button" disabled={running || (!inputText && !outputText && !outputPath)} onClick={clearText} type="button">清空</button>}
             tertiary={<button className="ghost-button" disabled={!outputText} onClick={copyOutput} type="button">复制</button>}
             primary={<button className="primary-button" disabled={!canRunFile} onClick={handleRunFile} type="button">{running ? "运行中" : "处理"}</button>}

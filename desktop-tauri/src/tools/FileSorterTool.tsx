@@ -147,7 +147,6 @@ function FileSorterTool({ initialSettings = {} }: { initialSettings?: ToolSettin
         <div>
           <p className="eyebrow">Legacy file sorter</p>
           <h2>文件分类</h2>
-          <p>按类别整理文件。</p>
         </div>
         <span className="settings-mode-pill">{mode === "resolution" ? "按分辨率" : "按大类"}</span>
       </div>
@@ -186,12 +185,10 @@ function FileSorterTool({ initialSettings = {} }: { initialSettings?: ToolSettin
               </button>
             ))}
           </div>
-          <p className="muted">未勾选的文件保持原位；执行会真实移动文件。</p>
         </div>
       </div>
 
       <ActionBar
-        hint="预览只读取摘要；执行会创建分类目录并移动文件。"
         secondary={<button className="ghost-button" disabled={running || (!summary && !results.length && !error)} onClick={clearAll} type="button">清空</button>}
         tertiary={<button className="ghost-button" disabled={!canRun} onClick={handlePreview} type="button">预览</button>}
         primary={<button className="primary-button" disabled={!canRun} onClick={handleSort} type="button">{running ? "运行中" : "分类"}</button>}

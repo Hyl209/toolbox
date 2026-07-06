@@ -720,6 +720,97 @@ def test_aiimage_generate_images_downloads_url_fallback(tmp_path: Path) -> None:
     assert session.get_calls[0]["url"] == "https://cdn.example.test/a.png"
 
 
+def test_aiimage_generate_images_uses_edits_endpoint_for_reference_images(tmp_path: Path) -> None:
+    module = load_converter_module()
+    store = MemorySecretStore()
+    settings_path = tmp_path / "hyl_toolbox.ini"
+    ref_one = tmp_path / "ref-one.png"
+    ref_two = tmp_path / "ref-two.webp"
+    ref_one.write_bytes(PNG_1X1_BYTES)
+    ref_two.write_bytes(PNG_1X1_BYTES)
+    module.save_config(
+        {
+            "selected_profile_id": "main",
+            "profiles": [
+                {
+                    "id": "main",
+                    "name": "Main",
+                    "base_url": "https://example.test/v1",
+                    "model": "gpt-image-2",
+                    "api_key": "sk-test",
+                }
+            ],
+        },
+        settings_path=settings_path,
+        secret_store=store,
+    )
+    session = FakeSession(post_response=FakeResponse({"data": [{"b64_json": PNG_1X1_BASE64}]}))
+
+    result = module.generate_images(
+        {
+            "profile_id": "main",
+            "prompt": "turn these into a poster",
+            "size": "1024x1024",
+            "n": 1,
+            "reference_image_paths": [str(ref_one), str(ref_two)],
+            "output_dir": str(tmp_path / "output"),
+        },
+        settings_path=settings_path,
+        secret_store=store,
+        session=session,
+    )
+
+    post_call = session.post_calls[0]
+    assert result["count"] == 1
+    assert post_call["url"] == "https://example.test/v1/images/edits"
+    assert "json" not in post_call
+    assert post_call["data"]["prompt"] == "turn these into a poster"
+    assert post_call["data"]["model"] == "gpt-image-2"
+    assert "response_format" not in post_call["data"]
+    assert [item[0] for item in post_call["files"]] == ["image[]", "image[]"]
+    assert [item[1][0] for item in post_call["files"]] == ["ref-one.png", "ref-two.webp"]
+    history = module.load_history(settings_path=settings_path)
+    assert history[0]["referenceImages"] == [str(ref_one), str(ref_two)]
+
+
+def test_aiimage_generate_images_rejects_invalid_reference_image_before_request(tmp_path: Path) -> None:
+    module = load_converter_module()
+    store = MemorySecretStore()
+    settings_path = tmp_path / "hyl_toolbox.ini"
+    module.save_config(
+        {
+            "selected_profile_id": "main",
+            "profiles": [
+                {
+                    "id": "main",
+                    "name": "Main",
+                    "base_url": "https://example.test/v1",
+                    "model": "gpt-image-2",
+                    "api_key": "sk-test",
+                }
+            ],
+        },
+        settings_path=settings_path,
+        secret_store=store,
+    )
+    session = FakeSession(post_response=FakeResponse({"data": [{"b64_json": PNG_1X1_BASE64}]}))
+
+    with pytest.raises(module.AiImageError, match="reference image"):
+        module.generate_images(
+            {
+                "profile_id": "main",
+                "prompt": "cat astronaut",
+                "reference_image_paths": [str(tmp_path / "missing.gif")],
+                "output_dir": str(tmp_path / "output"),
+            },
+            settings_path=settings_path,
+            secret_store=store,
+            session=session,
+        )
+
+    assert session.post_calls == []
+
+
 def test_aiimage_generate_images_requires_profile_secret_and_base_url(tmp_path: Path) -> None:
     module = load_converter_module()
     store = MemorySecretStore()

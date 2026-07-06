@@ -13,7 +13,6 @@ const actionLabels: Record<UuidAction, string> = {
 
 const ui = {
   title: "UUID \u5de5\u5177",
-  subtitle: "生成和校验 UUID。",
   actionAria: "UUID \u52a8\u4f5c",
   count: "\u751f\u6210\u6570\u91cf",
   uppercase: "\u5927\u5199",
@@ -34,7 +33,6 @@ const ui = {
   failed: "\u8fd0\u884c\u5931\u8d25",
   copied: "\u5df2\u590d\u5236",
   logAria: "\u8fd0\u884c\u65e5\u5fd7",
-  recentLogs: "\u6700\u8fd1 5 \u6761\u672c\u5730\u6267\u884c\u8bb0\u5f55",
   noLogs: "\u6682\u65e0\u65e5\u5fd7",
 };
 
@@ -96,7 +94,7 @@ function UuidToolsPluginTool() {
   return (
     <div className="base64-tool uuid-plugin-tool">
       <div className="tool-heading">
-        <div><p className="eyebrow">{uiText.common.pluginLabel("uuid_tools")}</p><h2>{ui.title}</h2><p>{ui.subtitle}</p></div>
+        <div><p className="eyebrow">{uiText.common.pluginLabel("uuid_tools")}</p><h2>{ui.title}</h2></div>
         <div className="mode-switch" role="group" aria-label={ui.actionAria}>
           {(["generate", "normalize", "validate", "describe"] as UuidAction[]).map((item) => (
             <button className={action === item ? "active" : ""} disabled={running} key={item} onClick={() => setAction(item)} type="button">{actionLabels[item]}</button>
@@ -116,7 +114,6 @@ function UuidToolsPluginTool() {
       </div>
 
       <div className="actions-row">
-        <div className="action-hint">{ui.currentAction}: {actionLabels[action]}</div>
         <div className="button-cluster">
           <button className="ghost-button" disabled={running || (!inputText && !outputText)} onClick={clearAll} type="button">{ui.clear}</button>
           <button className="ghost-button" disabled={!outputText} onClick={copyOutput} type="button">{ui.copy}</button>
@@ -125,7 +122,7 @@ function UuidToolsPluginTool() {
       </div>
 
       <section className="log-panel" aria-label={ui.logAria}>
-        <div><div className="panel-title">{uiText.common.runtime}</div><p className="muted">{ui.recentLogs}</p></div>
+        <div><div className="panel-title">{uiText.common.runtime}</div></div>
         <div className="log-content">{error ? <div className="error-box">{error}</div> : null}{logs.length ? <ul>{logs.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul> : <p className="muted">{ui.noLogs}</p>}</div>
       </section>
     </div>

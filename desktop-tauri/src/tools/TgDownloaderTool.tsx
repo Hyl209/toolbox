@@ -323,7 +323,6 @@ function TgDownloaderTool({ initialSettings = {} }: { initialSettings?: ToolSett
       <div className="tool-heading">
         <div>
           <h2>{"TG下载"}</h2>
-          <p>下载 Telegram 链接。</p>
         </div>
       </div>
 

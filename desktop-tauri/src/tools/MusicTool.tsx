@@ -71,7 +71,6 @@ function MusicTool({ initialOutputDir = "" }: { initialOutputDir?: string }) {
       <ToolHeading
         eyebrow="Legacy NCM converter"
         title="NCM 转 MP3"
-        description="将 NCM 转为 MP3。"
         statusLabel=""
       />
 
@@ -116,7 +115,6 @@ function MusicTool({ initialOutputDir = "" }: { initialOutputDir?: string }) {
       </div>
 
       <ActionBar
-        hint="文件后转换。"
         secondary={<button className="ghost-button" disabled={running || (!songs.length && !results.length && !error)} onClick={clearAll} type="button">清空</button>}
         tertiary={<button className="ghost-button" disabled={!canList} onClick={handleList} type="button">扫描</button>}
         primary={<button className="primary-button" disabled={!canConvert} onClick={() => void handleConvert()} type="button">{running ? "运行中" : "转换"}</button>}

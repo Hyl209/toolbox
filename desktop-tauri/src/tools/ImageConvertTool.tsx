@@ -76,7 +76,6 @@ function ImageConvertTool({ initialOutputDir = "" }: { initialOutputDir?: string
       <ToolHeading
         eyebrow="Legacy image converter"
         title="图片格式互转"
-        description="批量转换图片格式。"
         statusLabel=""
       />
 
@@ -135,7 +134,6 @@ function ImageConvertTool({ initialOutputDir = "" }: { initialOutputDir?: string
       </div>
 
       <ActionBar
-        hint="选择图片和格式后开始。"
         secondary={<button className="ghost-button" disabled={running || (!files.length && !results.length && !error)} onClick={clearAll} type="button">清空</button>}
         tertiary={<button className="ghost-button" disabled={!canList} onClick={handleList} type="button">扫描</button>}
         primary={<button className="primary-button" disabled={!canConvert} onClick={() => void handleConvert()} type="button">{running ? "运行中" : "转换"}</button>}

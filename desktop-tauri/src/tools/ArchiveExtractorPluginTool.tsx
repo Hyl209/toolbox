@@ -20,7 +20,6 @@ const actionLabels: Record<ArchiveAction, string> = {
 
 const text = {
   title: "\u538b\u7f29\u5305\u89e3\u538b",
-  desc: "识别并解压压缩包。",
   archivePath: "\u538b\u7f29\u5305\u8def\u5f84",
   outputDir: "\u8f93\u51fa\u76ee\u5f55",
   password: "\u5bc6\u7801\uff08\u53ef\u9009\uff09",
@@ -163,7 +162,6 @@ function ArchiveExtractorPluginTool({ initialSettings = {} }: { initialSettings?
         <div>
           <p className="eyebrow">{uiText.common.pluginLabel("archive_extractor")}</p>
           <h2>{text.title}</h2>
-          <p>{text.desc}</p>
         </div>
         <div className="mode-switch" role="group" aria-label={text.title}>
           {(["detect", "extract"] as ArchiveAction[]).map((item) => (
@@ -228,7 +226,6 @@ function ArchiveExtractorPluginTool({ initialSettings = {} }: { initialSettings?
       </div>
 
       <div className="actions-row">
-        <div className="action-hint">{text.current}\uff1a{actionLabels[action]}</div>
         <div className="button-cluster">
           <button className="ghost-button" disabled={running || (!archivePath && !outputDir && !outputText)} onClick={clearAll} type="button">{text.clear}</button>
           <button className="ghost-button" disabled={!outputText} onClick={copyOutput} type="button">{text.copy}</button>
@@ -237,7 +234,7 @@ function ArchiveExtractorPluginTool({ initialSettings = {} }: { initialSettings?
       </div>
 
       <section className="log-panel" aria-label={text.log}>
-        <div><div className="panel-title">{uiText.common.runtime}</div><p className="muted">{text.recent}</p></div>
+        <div><div className="panel-title">{uiText.common.runtime}</div></div>
         <div className="log-content">
           {error ? <div className="error-box">{error}</div> : null}
           {logs.length ? <ul>{logs.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul> : <p className="muted">{text.emptyLog}</p>}

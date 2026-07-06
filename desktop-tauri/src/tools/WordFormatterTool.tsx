@@ -208,7 +208,6 @@ function WordFormatterTool({ initialSettings = {} }: { initialSettings?: ToolSet
       <ToolHeading
         eyebrow="Legacy Word formatter"
         title="Word 排版统一"
-        description="统一 Word 文档排版。"
         statusLabel={outputMode === "overwrite" ? "原地覆盖" : "另存副本"}
       />
 
@@ -300,7 +299,6 @@ function WordFormatterTool({ initialSettings = {} }: { initialSettings?: ToolSet
       </div>
 
       <ActionBar
-        hint="选择文档和输出方式。"
         secondary={<button className="ghost-button" disabled={running || (!files.length && !results.length && !error)} onClick={clearAll} type="button">清空</button>}
         primary={<button className="primary-button" disabled={!canFormat} onClick={handleFormat} type="button">{running ? "运行中" : "排版"}</button>}
       />

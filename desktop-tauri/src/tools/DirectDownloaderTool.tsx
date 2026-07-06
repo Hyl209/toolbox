@@ -282,7 +282,6 @@ function DirectDownloaderTool({ initialOutputDir = "", initialSettings = {} }: {
       <ToolHeading
         eyebrow="Legacy direct downloader"
         title="直链下载"
-        description="粘贴真实直链，先校验，再直接下载。"
         statusLabel=""
       />
 
@@ -346,7 +345,6 @@ function DirectDownloaderTool({ initialOutputDir = "", initialSettings = {} }: {
       </details>
 
       <ActionBar
-        hint="先校验，再下载。"
         secondary={<button className="ghost-button" disabled={busy || (!requests.length && !tasks.length && !error && !runtimeLogs.length)} onClick={() => void clearResults()} type="button">清空</button>}
         tertiary={<button className="ghost-button" disabled={!canInspect} onClick={handleParseValidate} type="button">校验</button>}
         primary={<button className="primary-button" disabled={!canBuild} onClick={handleDownload} type="button">{busy ? "运行中" : "下载"}</button>}

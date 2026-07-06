@@ -144,7 +144,6 @@ function ZipPngTool({ initialOutputDir = "" }: { initialOutputDir?: string }) {
         <div>
           <p className="eyebrow">Legacy file disguise</p>
           <h2>PNG 伪装</h2>
-          <p>把文件藏进图片。</p>
         </div>
         <div className="mode-switch" role="group" aria-label="PNG 伪装模式">
           <button className={mode === "disguise" ? "active" : ""} disabled={running} onClick={() => setMode("disguise")} type="button">
@@ -229,7 +228,6 @@ function ZipPngTool({ initialOutputDir = "" }: { initialOutputDir?: string }) {
       </div>
 
       <div className="actions-row">
-        <div className="action-hint">{mode === "disguise" ? "任意文件 → 图片伪装" : "伪装图片 → 原始文件"}</div>
         <div className="button-cluster">
           <button className="ghost-button" disabled={running || (!resultPath && !error)} onClick={clearResult} type="button">
             清空

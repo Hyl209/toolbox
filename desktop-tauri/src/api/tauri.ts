@@ -45,6 +45,7 @@ export type AiImageHistoryItem = {
   outputCompression?: number;
   background?: string;
   moderation?: string;
+  referenceImages?: string[];
   count?: number;
   status?: "running" | "success" | "error";
   startedAt?: number;

@@ -12,7 +12,6 @@ const actionLabels: Record<JsonAction, string> = {
 
 const ui = {
   title: "JSON \u5de5\u5177",
-  subtitle: "格式化和校验 JSON。",
   actionAria: "JSON \u52a8\u4f5c",
   indent: "\u7f29\u8fdb",
   sortKeys: "\u6309 key \u6392\u5e8f",
@@ -30,7 +29,6 @@ const ui = {
   failed: "\u8fd0\u884c\u5931\u8d25",
   copied: "\u5df2\u590d\u5236",
   logAria: "\u8fd0\u884c\u65e5\u5fd7",
-  recentLogs: "\u6700\u8fd1 5 \u6761\u672c\u5730\u6267\u884c\u8bb0\u5f55",
   noLogs: "\u6682\u65e0\u65e5\u5fd7",
 };
 
@@ -99,7 +97,6 @@ function JsonToolsPluginTool() {
         <div>
           <p className="eyebrow">{uiText.common.pluginLabel("json_tools")}</p>
           <h2>{ui.title}</h2>
-          <p>{ui.subtitle}</p>
         </div>
         <div className="mode-switch" role="group" aria-label={ui.actionAria}>
           {(["format", "minify", "validate"] as JsonAction[]).map((item) => (
@@ -133,7 +130,6 @@ function JsonToolsPluginTool() {
       </div>
 
       <div className="actions-row">
-        <div className="action-hint">{ui.currentAction}: {actionLabels[action]}</div>
         <div className="button-cluster">
           <button className="ghost-button" disabled={running || (!inputText && !outputText)} onClick={clearAll} type="button">{ui.clear}</button>
           <button className="ghost-button" disabled={!outputText} onClick={copyOutput} type="button">{ui.copy}</button>
@@ -142,7 +138,7 @@ function JsonToolsPluginTool() {
       </div>
 
       <section className="log-panel" aria-label={ui.logAria}>
-        <div><div className="panel-title">{uiText.common.runtime}</div><p className="muted">{ui.recentLogs}</p></div>
+        <div><div className="panel-title">{uiText.common.runtime}</div></div>
         <div className="log-content">
           {error ? <div className="error-box">{error}</div> : null}
           {logs.length ? <ul>{logs.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul> : <p className="muted">{ui.noLogs}</p>}

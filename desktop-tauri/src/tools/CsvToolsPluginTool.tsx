@@ -13,7 +13,6 @@ const actionLabels: Record<CsvAction, string> = {
 
 const text = {
   title: "CSV \u5de5\u5177",
-  desc: "格式化和转换 CSV。",
   delimiter: "\u5206\u9694\u7b26",
   hasHeader: "\u9996\u884c\u4f5c\u4e3a\u8868\u5934",
   input: "\u8f93\u5165",
@@ -99,7 +98,6 @@ function CsvToolsPluginTool() {
         <div>
           <p className="eyebrow">{uiText.common.pluginLabel("csv_tools")}</p>
           <h2>{text.title}</h2>
-          <p>{text.desc}</p>
         </div>
         <div className="mode-switch" role="group" aria-label={text.title}>
           {(["format", "to_tsv", "to_json", "summary"] as CsvAction[]).map((item) => (
@@ -121,7 +119,6 @@ function CsvToolsPluginTool() {
       </div>
 
       <div className="actions-row">
-        <div className="action-hint">{text.current}\uff1a{actionLabels[action]}</div>
         <div className="button-cluster">
           <button className="ghost-button" disabled={running || (!inputText && !outputText)} onClick={clearAll} type="button">{text.clear}</button>
           <button className="ghost-button" disabled={!outputText} onClick={copyOutput} type="button">{text.copy}</button>
@@ -130,7 +127,7 @@ function CsvToolsPluginTool() {
       </div>
 
       <section className="log-panel" aria-label={text.log}>
-        <div><div className="panel-title">{uiText.common.runtime}</div><p className="muted">{text.recent}</p></div>
+        <div><div className="panel-title">{uiText.common.runtime}</div></div>
         <div className="log-content">
           {error ? <div className="error-box">{error}</div> : null}
           {logs.length ? <ul>{logs.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul> : <p className="muted">{text.emptyLog}</p>}

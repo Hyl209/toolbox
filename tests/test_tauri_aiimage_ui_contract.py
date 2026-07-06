@@ -16,6 +16,7 @@ def test_tauri_aiimage_api_types_and_result_shape_exist() -> None:
         "export type AiImageArtifact",
         "export type AiImageHistoryItem",
         "images?: Array<AiImageArtifact>",
+        "referenceImages?: string[]",
     ):
         assert marker in source
 
@@ -34,17 +35,43 @@ def test_tauri_aiimage_tool_wires_config_generation_preview_and_export() -> None
     source = (ROOT / "desktop-tauri" / "src" / "tools" / "AiImageTool.tsx").read_text(encoding="utf-8")
 
     for marker in (
+        "pickFiles",
         'runTool("aiimage"',
         'action: "load_config"',
         'action: "save_config"',
         'action: "generate"',
         "negativePrompt",
+        "referenceImages",
+        "reference_image_paths",
+        "chooseReferenceImages",
+        "removeReferenceImage",
+        "function referenceImageSrc(path: string): string {\n  return localImageSrc(path);\n}",
         "downloadImage(",
         "downloadAllImages(",
         "open(",
         "image-grid",
     ):
         assert marker in source
+
+
+def test_tauri_aiimage_reference_previews_use_asset_protocol_scope() -> None:
+    source = (ROOT / "desktop-tauri" / "src" / "tools" / "AiImageTool.tsx").read_text(encoding="utf-8")
+    tauri_config = (ROOT / "desktop-tauri" / "src-tauri" / "tauri.conf.json").read_text(encoding="utf-8")
+
+    assert "function referenceImageSrc(path: string): string {\n  return localImageSrc(path);\n}" in source
+    assert '"$HOME/**/*"' in tauri_config
+
+
+def test_tauri_aiimage_reference_actions_stay_on_one_row() -> None:
+    styles = (ROOT / "desktop-tauri" / "src" / "styles.css").read_text(encoding="utf-8")
+
+    for marker in (
+        ".aiimage-reference-head > span {\n  flex: 0 0 auto;\n  white-space: nowrap;",
+        ".aiimage-reference-head .button-cluster {\n  display: grid;\n  grid-template-columns: repeat(2, minmax(76px, 1fr));\n  width: min(100%, 176px);\n}",
+        ".aiimage-control-rail .aiimage-reference-head .button-cluster button {\n  min-height: 34px;\n}",
+        ".aiimage-control-rail .aiimage-reference-head .button-cluster {\n    grid-template-columns: repeat(2, minmax(0, 1fr));\n  }",
+    ):
+        assert marker in styles
 
 
 def test_tauri_aiimage_tool_hides_profile_fields_in_modal_and_prioritizes_prompt_area() -> None:
@@ -87,6 +114,48 @@ def test_tauri_aiimage_tool_hides_profile_fields_in_modal_and_prioritizes_prompt
         ".task-detail-modal",
     ):
         assert marker in styles
+
+
+def test_tauri_aiimage_profile_picker_sits_above_three_horizontal_actions() -> None:
+    source = (ROOT / "desktop-tauri" / "src" / "tools" / "AiImageTool.tsx").read_text(encoding="utf-8")
+    styles = (ROOT / "desktop-tauri" / "src" / "styles.css").read_text(encoding="utf-8")
+
+    for marker in (
+        'className="file-mode-card compact-card aiimage-profile-strip"',
+        'className="button-cluster aiimage-profile-actions"',
+    ):
+        assert marker in source
+
+    for marker in (
+        ".aiimage-profile-strip {\n  gap: 12px;\n  grid-template-columns: minmax(0, 1fr);\n}",
+        ".aiimage-profile-actions {\n  display: grid;\n  grid-template-columns: repeat(3, minmax(0, 1fr));\n  width: 100%;\n}",
+        "@media (max-width: 1180px)",
+        ".aiimage-studio-grid {\n    grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);\n  }",
+        ".aiimage-control-rail .button-cluster {\n    grid-template-columns: 1fr;\n  }",
+        ".aiimage-control-rail .aiimage-profile-actions {\n    grid-template-columns: repeat(3, minmax(0, 1fr));\n  }",
+    ):
+        assert marker in styles
+
+    assert ".aiimage-profile-strip {\n  gap: 12px;\n  grid-template-columns: minmax(0, 1fr) auto;" not in styles
+
+
+def test_tauri_aiimage_removes_static_helper_microcopy() -> None:
+    source = (ROOT / "desktop-tauri" / "src" / "tools" / "AiImageTool.tsx").read_text(encoding="utf-8")
+    shared_parts = (ROOT / "desktop-tauri" / "src" / "features" / "tools" / "components" / "CommonToolParts.tsx").read_text(encoding="utf-8")
+
+    for stale_copy in (
+        "参数区参考 GPT Image Playground 的工作台节奏",
+        "生成成功后会自动保存到时间戳子目录",
+        "先写提示词，再按需调参数",
+        "右侧专注预览和历史结果",
+        "低频配置项收在弹窗里",
+        "不同模型传递具体分辨率参数",
+        "任务详情",
+    ):
+        assert stale_copy not in source
+
+    assert "{description ? <p>{description}</p> : null}" in shared_parts
+    assert "{hint ? <div className=\"action-hint\">{hint}</div> : null}" in shared_parts
 
 
 def test_tauri_aiimage_default_background_maps_to_backend_enum() -> None:
@@ -296,18 +365,33 @@ def test_tauri_aiimage_history_preview_keeps_square_shape_when_text_is_long() ->
             assert marker in styles
 
 
-def test_tauri_aiimage_task_detail_uses_moderate_dialog_size() -> None:
+def test_tauri_aiimage_task_detail_adapts_preview_to_image_resolution() -> None:
+    source = (ROOT / "desktop-tauri" / "src" / "tools" / "AiImageTool.tsx").read_text(encoding="utf-8")
     styles = (ROOT / "desktop-tauri" / "src" / "styles.css").read_text(encoding="utf-8")
 
     for marker in (
-        ".task-detail-card {\n  display: grid;\n  grid-template-columns: minmax(280px, 360px) minmax(320px, 1fr);\n  width: min(860px, calc(100vw - 96px));\n  max-height: min(680px, calc(100vh - 96px));",
-        ".task-detail-media {\n  width: 360px;\n  min-height: 0;\n  aspect-ratio: 1 / 1;",
+        "imageDetailLayout",
+        "--task-detail-image-aspect",
+        "--task-detail-media-column",
+        "data-image-orientation={taskDetailLayout.orientation}",
+        "style={taskDetailLayout.style}",
+    ):
+        assert marker in source
+
+    for marker in (
+        ".task-detail-card {\n  display: grid;\n  grid-template-columns: minmax(260px, var(--task-detail-media-column, 440px)) minmax(320px, 1fr);\n  width: min(var(--task-detail-width, 960px), calc(100vw - 64px));\n  max-height: min(760px, calc(100vh - 64px));",
+        ".task-detail-media {\n  min-height: 0;\n  max-height: min(760px, calc(100vh - 64px));\n  aspect-ratio: var(--task-detail-image-aspect, 1 / 1);",
+        "  box-sizing: border-box;\n  padding: 15px;",
         ".task-detail-media img {\n  display: block;\n  width: 100%;\n  height: 100%;\n  object-fit: contain;",
-        ".task-detail-content {\n  display: grid;\n  gap: 14px;\n  align-content: start;\n  min-height: 0;\n  overflow: auto;",
+        ".task-detail-content {\n  display: grid;\n  gap: 10px;\n  align-content: start;\n  min-height: 0;\n  overflow: auto;\n  padding: 16px;",
+        ".task-detail-content > .result-card {\n  justify-content: flex-start;\n  min-height: 104px;\n  padding: 14px 16px;\n  border-radius: 12px;",
+        ".aiimage-task-meta-grid .result-card {\n  min-height: 76px;\n  padding: 12px 14px;",
     ):
         assert marker in styles
 
-    assert "min-height: 640px;" not in styles
+    assert "grid-template-columns: minmax(280px, 360px)" not in styles
+    assert "width: 360px;" not in styles
+    assert "max-height: 320px;" not in styles
 
 
 def test_tauri_aiimage_results_do_not_duplicate_history_with_large_image_grid() -> None:

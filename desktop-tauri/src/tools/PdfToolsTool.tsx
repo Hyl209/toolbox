@@ -149,7 +149,6 @@ function PdfToolsTool({ initialOutputDir = "" }: { initialOutputDir?: string }) 
       <ToolHeading
         eyebrow="Legacy PDF tools"
         title="PDF 工具"
-        description="合并、拆分和导出 PDF。"
         statusLabel={actionOptions.find((item) => item.value === action)?.label ?? action}
       />
 
@@ -215,7 +214,6 @@ function PdfToolsTool({ initialOutputDir = "" }: { initialOutputDir?: string }) 
       </div>
 
       <ActionBar
-        hint="按当前模式处理 PDF。"
         secondary={<button className="ghost-button" disabled={running || (!files.length && !results.length && !error)} onClick={clearAll} type="button">清空</button>}
         primary={<button className="primary-button" disabled={!canRun} onClick={handleRun} type="button">{running ? "运行中" : "处理"}</button>}
       />

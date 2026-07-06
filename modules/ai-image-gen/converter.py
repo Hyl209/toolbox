@@ -31,6 +31,7 @@ OUTPUT_COMPRESSION_MAX = 100
 BACKGROUND_OPTIONS = {"auto", "transparent", "white", "black"}
 MODERATION_OPTIONS = {"auto", "low"}
 HISTORY_TOOL_ID = "aiimage"
+REFERENCE_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 
 
 class AiImageError(RuntimeError):
@@ -446,6 +447,39 @@ def _download_image(item: dict[str, Any], session: Any) -> bytes | None:
     return bytes(response.content)
 
 
+def _reference_image_paths(payload: dict[str, Any]) -> list[Path]:
+    raw = payload.get("reference_image_paths", [])
+    if raw in (None, ""):
+        return []
+    if isinstance(raw, str):
+        items = [raw]
+    elif isinstance(raw, list):
+        items = raw
+    else:
+        raise AiImageError("reference image paths must be a list")
+
+    paths: list[Path] = []
+    for item in items:
+        path = Path(str(item)).expanduser()
+        if not path.exists() or not path.is_file():
+            raise AiImageError(f"reference image not found: {path}")
+        if path.suffix.lower() not in REFERENCE_IMAGE_EXTENSIONS:
+            raise AiImageError(f"reference image format is unsupported: {path}")
+        paths.append(path)
+    return paths
+
+
+def _reference_image_files(paths: list[Path]) -> tuple[list[tuple[str, tuple[str, Any, str]]], list[Any]]:
+    files: list[tuple[str, tuple[str, Any, str]]] = []
+    handles: list[Any] = []
+    for path in paths:
+        handle = path.open("rb")
+        handles.append(handle)
+        mime = "image/jpeg" if path.suffix.lower() in {".jpg", ".jpeg"} else f"image/{path.suffix.lower().lstrip('.')}"
+        files.append(("image[]", (path.name, handle, mime)))
+    return files, handles
+
+
 def _is_valid_size(size: str) -> bool:
     normalized = size.lower()
     if normalized in SUPPORTED_SIZES:
@@ -502,6 +536,7 @@ def generate_images(
     if count < 1:
         raise AiImageError("image count must be at least 1")
     output_dir = str(payload.get("output_dir", config.get("output_dir", default_output_dir()))).strip() or default_output_dir()
+    reference_images = _reference_image_paths(payload)
 
     request_payload: dict[str, Any] = {
         "model": str(profile.get("model", DEFAULT_MODEL)).strip() or DEFAULT_MODEL,
@@ -547,20 +582,38 @@ def generate_images(
         try:
             import requests
         except ImportError:
+            if reference_images:
+                raise AiImageError("requests is required for reference image uploads")
             client = _UrllibSession()
         else:
             client = requests.Session()
     else:
         client = session
-    response = client.post(
-        f"{base_url}/images/generations",
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
-        json=request_payload,
-        timeout=120,
-    )
+    if reference_images:
+        files, handles = _reference_image_files(reference_images)
+        edit_payload = dict(request_payload)
+        edit_payload.pop("response_format", None)
+        try:
+            response = client.post(
+                f"{base_url}/images/edits",
+                headers={"Authorization": f"Bearer {api_key}"},
+                data=edit_payload,
+                files=files,
+                timeout=120,
+            )
+        finally:
+            for handle in handles:
+                handle.close()
+    else:
+        response = client.post(
+            f"{base_url}/images/generations",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json=request_payload,
+            timeout=120,
+        )
     response.raise_for_status()
     data = response.json()
     items = data.get("data")
@@ -596,6 +649,7 @@ def generate_images(
             "outputCompression": request_payload.get("output_compression", 80),
             "background": request_payload.get("background", "auto"),
             "moderation": request_payload.get("moderation", "auto"),
+            "referenceImages": [str(path) for path in reference_images],
             "count": count,
             "status": "success",
             "outputDir": result["output_dir"],

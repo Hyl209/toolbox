@@ -4,7 +4,7 @@ import { uiText } from "../../../uiText";
 type ToolHeadingProps = {
   eyebrow: string;
   title: string;
-  description: string;
+  description?: string;
   statusLabel: string;
   ready?: boolean;
   message?: string;
@@ -16,7 +16,7 @@ export function ToolHeading({ title, description, ready, message }: ToolHeadingP
       <div className="tool-heading">
         <div>
           <h2>{title}</h2>
-          <p>{description}</p>
+          {description ? <p>{description}</p> : null}
         </div>
       </div>
       {message ? <div className={ready ? "info-box" : "error-box"}>{message}</div> : null}
@@ -86,7 +86,7 @@ export function DirectoryPickerRow({
 }
 
 type ActionBarProps = {
-  hint: string;
+  hint?: string;
   secondary?: ReactNode;
   primary: ReactNode;
   tertiary?: ReactNode;
@@ -95,7 +95,7 @@ type ActionBarProps = {
 export function ActionBar({ hint, secondary, primary, tertiary }: ActionBarProps) {
   return (
     <div className="actions-row">
-      <div className="action-hint">{hint}</div>
+      {hint ? <div className="action-hint">{hint}</div> : null}
       <div className="button-cluster">
         {secondary}
         {tertiary}

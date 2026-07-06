@@ -28,7 +28,8 @@
         "enable": true,
         "scope": [
           "$APPDATA/hyl-toolbox/backgrounds/**",
-          "$HOME/Pictures/Hyl Toolbox/AI Images/**/*"
+          "$HOME/Pictures/Hyl Toolbox/AI Images/**/*",
+          "$HOME/**/*"
         ]
       }
     }

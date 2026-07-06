@@ -14,7 +14,6 @@ const actionLabels: Record<FileHasherAction, string> = {
 
 const text = {
   title: "\u6587\u4ef6\u54c8\u5e0c\u6821\u9a8c",
-  desc: "计算并校验。",
   path: "\u6587\u4ef6\u8def\u5f84",
   browse: "\u6d4f\u89c8",
   pickTitle: "\u9009\u62e9\u6587\u4ef6",
@@ -118,7 +117,6 @@ function FileHasherPluginTool() {
         <div>
           <p className="eyebrow">{uiText.common.pluginLabel("file_hasher")}</p>
           <h2>{text.title}</h2>
-          <p>{text.desc}</p>
         </div>
         <div className="mode-switch" role="group" aria-label={text.title}>
           {(["calculate", "verify"] as FileHasherAction[]).map((item) => (
@@ -168,7 +166,6 @@ function FileHasherPluginTool() {
       </div>
 
       <div className="actions-row">
-        <div className="action-hint">{text.current}\uff1a{actionLabels[action]}</div>
         <div className="button-cluster">
           <button className="ghost-button" disabled={running || (!path && !outputText && !expectedChecksum)} onClick={clearAll} type="button">{text.clear}</button>
           <button className="ghost-button" disabled={!outputText} onClick={copyOutput} type="button">{text.copy}</button>
@@ -177,7 +174,7 @@ function FileHasherPluginTool() {
       </div>
 
       <section className="log-panel" aria-label={text.log}>
-        <div><div className="panel-title">{uiText.common.runtime}</div><p className="muted">{text.recent}</p></div>
+        <div><div className="panel-title">{uiText.common.runtime}</div></div>
         <div className="log-content">
           {error ? <div className="error-box">{error}</div> : null}
           {logs.length ? <ul>{logs.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul> : <p className="muted">{text.emptyLog}</p>}

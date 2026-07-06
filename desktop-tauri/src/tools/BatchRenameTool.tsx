@@ -177,7 +177,6 @@ function BatchRenameTool({ initialSettings = {} }: { initialSettings?: ToolSetti
         <div>
           <p className="eyebrow">Legacy batch rename</p>
           <h2>批量命名</h2>
-          <p>预览后批量重命名。</p>
         </div>
         <span className="settings-mode-pill">{plan.length ? "已预览" : "待预览"}</span>
       </div>
@@ -233,7 +232,6 @@ function BatchRenameTool({ initialSettings = {} }: { initialSettings?: ToolSetti
       </div>
 
       <div className="actions-row">
-        <div className="action-hint">预览不会改动文件；执行前请确认目标名。</div>
         <div className="button-cluster">
           <button className="ghost-button" disabled={running || (!plan.length && !results.length && !error)} onClick={clearAll} type="button">
             清空

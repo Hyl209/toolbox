@@ -12,7 +12,6 @@ const actionLabels: Record<RegexAction, string> = {
 
 const text = {
   title: "\u6b63\u5219\u5de5\u5177",
-  desc: "测试正则并提取文本。",
   pattern: "\u6b63\u5219\u8868\u8fbe\u5f0f",
   replacement: "\u66ff\u6362\u4e3a",
   group: "\u63d0\u53d6\u5206\u7ec4",
@@ -111,7 +110,6 @@ function RegexToolsPluginTool() {
         <div>
           <p className="eyebrow">{uiText.common.pluginLabel("regex_tools")}</p>
           <h2>{text.title}</h2>
-          <p>{text.desc}</p>
         </div>
         <div className="mode-switch" role="group" aria-label={text.title}>
           {(["extract", "replace", "summary"] as RegexAction[]).map((item) => (
@@ -136,7 +134,6 @@ function RegexToolsPluginTool() {
       </div>
 
       <div className="actions-row">
-        <div className="action-hint">{text.current}\uff1a{actionLabels[action]}</div>
         <div className="button-cluster">
           <button className="ghost-button" disabled={running || (!inputText && !outputText)} onClick={clearAll} type="button">{text.clear}</button>
           <button className="ghost-button" disabled={!outputText} onClick={copyOutput} type="button">{text.copy}</button>
@@ -145,7 +142,7 @@ function RegexToolsPluginTool() {
       </div>
 
       <section className="log-panel" aria-label={text.log}>
-        <div><div className="panel-title">{uiText.common.runtime}</div><p className="muted">{text.recent}</p></div>
+        <div><div className="panel-title">{uiText.common.runtime}</div></div>
         <div className="log-content">
           {error ? <div className="error-box">{error}</div> : null}
           {logs.length ? <ul>{logs.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul> : <p className="muted">{text.emptyLog}</p>}
