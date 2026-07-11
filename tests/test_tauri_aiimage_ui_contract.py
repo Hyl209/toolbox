@@ -161,8 +161,8 @@ def test_tauri_aiimage_removes_static_helper_microcopy() -> None:
 def test_tauri_aiimage_default_background_maps_to_backend_enum() -> None:
     source = (ROOT / "desktop-tauri" / "src" / "tools" / "AiImageTool.tsx").read_text(encoding="utf-8")
 
-    assert 'background: background === "true" ? "transparent" : "auto"' in source
-    assert 'background: background === "true" ? "transparent" : "false"' not in source
+    assert 'background: taskInput.background === "true" ? "transparent" : "auto"' in source
+    assert 'background: taskInput.background === "true" ? "transparent" : "false"' not in source
 
 
 def test_tauri_aiimage_1k_ratio_presets_match_required_dimensions() -> None:
@@ -230,7 +230,7 @@ def test_tauri_aiimage_task_summary_has_no_visible_question_mark_placeholders() 
         "分",
         "压缩",
         "耗时",
-        "生成中...",
+        'return `生成中 ${taskElapsedLabel(task, now)}`',
         "张",
     ):
         assert marker in source

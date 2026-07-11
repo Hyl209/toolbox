@@ -339,6 +339,7 @@ type ToolActivityDetail = {
 };
 
 const SESSION_MANAGED_TOOL_IDS = new Set(["directdownloader", "webvideodownloader", "tgdownloader"]);
+const activeToolActionCounts = new Map<string, number>();
 
 function isTauriRuntime(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in (window as TauriWindow);
@@ -351,6 +352,25 @@ function emitToolActivity(toolId: string, state: ToolActivityState) {
   window.dispatchEvent(new CustomEvent<ToolActivityDetail>(TOOL_ACTIVITY_EVENT, { detail: { toolId, state } }));
 }
 
+function beginToolActivity(toolId: string) {
+  const current = activeToolActionCounts.get(toolId) ?? 0;
+  activeToolActionCounts.set(toolId, current + 1);
+  if (current === 0) {
+    emitToolActivity(toolId, "running");
+  }
+}
+
+function finishToolActivity(toolId: string, state: Exclude<ToolActivityState, "running" | "ready">) {
+  const current = activeToolActionCounts.get(toolId) ?? 0;
+  const next = Math.max(0, current - 1);
+  if (next > 0) {
+    activeToolActionCounts.set(toolId, next);
+    return;
+  }
+  activeToolActionCounts.delete(toolId);
+  emitToolActivity(toolId, state);
+}
+
 function shouldTrackToolAction(toolId: string, action: string): boolean {
   return !SESSION_MANAGED_TOOL_IDS.has(toolId) && !["probe", "probe_ocr", "default_config"].includes(action);
 }
@@ -361,18 +381,18 @@ export function runTool(toolId: string, input: ToolInput): Promise<ToolResult> {
   }
   const tracked = shouldTrackToolAction(toolId, input.action);
   if (tracked) {
-    emitToolActivity(toolId, "running");
+    beginToolActivity(toolId);
   }
   return invoke<ToolResult>("run_tool", { toolId, input })
     .then((result) => {
       if (tracked) {
-        emitToolActivity(toolId, "success");
+        finishToolActivity(toolId, "success");
       }
       return result;
     })
     .catch((error) => {
       if (tracked) {
-        emitToolActivity(toolId, "error");
+        finishToolActivity(toolId, "error");
       }
       throw error;
     });

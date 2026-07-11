@@ -2941,9 +2941,21 @@ textarea {
   box-shadow: inset 0 1px 2px oklch(0% 0 0 / 12%);
 }
 
+.theme-root[data-theme-mode="dark"] button.aiimage-size-select {
+  border-color: color-mix(in oklab, var(--legacy-text-secondary), transparent 48%);
+  color: var(--legacy-text-primary);
+  background: color-mix(in oklab, var(--legacy-input-bg), black 20%);
+  box-shadow: inset 0 1px 2px oklch(0% 0 0 / 12%);
+}
+
 .theme-root[data-theme-mode="dark"] textarea:focus,
 .theme-root[data-theme-mode="dark"] input:focus,
 .theme-root[data-theme-mode="dark"] select:focus {
+  background: color-mix(in oklab, var(--legacy-input-bg), black 12%);
+}
+
+.theme-root[data-theme-mode="dark"] button.aiimage-size-select:hover,
+.theme-root[data-theme-mode="dark"] button.aiimage-size-select:focus-visible {
   background: color-mix(in oklab, var(--legacy-input-bg), black 12%);
 }
 
@@ -3576,29 +3588,6 @@ textarea {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.aiimage-param-button {
-  display: grid;
-  gap: 4px;
-  align-content: center;
-  justify-items: start;
-  min-height: 72px;
-  padding: 12px 14px;
-  border-radius: 16px;
-  color: var(--legacy-text-primary);
-  background: color-mix(in oklab, var(--legacy-input-bg), transparent 24%);
-  box-shadow: inset 0 1px 0 oklch(100% 0 0 / 45%), inset 0 0 0 1px oklch(100% 0 0 / 18%);
-}
-
-.aiimage-param-button span {
-  color: var(--legacy-text-secondary);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.aiimage-param-button strong {
-  font-size: 16px;
-}
-
 .aiimage-inline-field {
   gap: 8px;
 }
@@ -3606,6 +3595,30 @@ textarea {
 .aiimage-inline-field select,
 .aiimage-inline-field input {
   min-height: 44px;
+}
+
+button.aiimage-size-select {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 44px;
+  justify-content: flex-start;
+  padding: 0 10px;
+  border: 1px solid oklch(82% 0.012 255deg / 58%);
+  border-radius: 9px;
+  color: var(--legacy-text-primary);
+  background: oklch(96% 0.004 255deg / 72%);
+  box-shadow: inset 0 1px 2px oklch(24% 0.015 255deg / 5%);
+}
+
+button.aiimage-size-select:hover {
+  background: color-mix(in oklab, oklch(96% 0.004 255deg / 72%), white 18%);
+}
+
+button.aiimage-size-select:focus-visible {
+  outline: 0;
+  background: white;
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent), transparent 82%);
 }
 
 .aiimage-summary-card {
@@ -3704,10 +3717,10 @@ textarea {
 
 .size-modal-card {
   display: grid;
-  gap: 18px;
-  width: min(720px, calc(100vw - 48px));
-  padding: 22px;
-  border-radius: 24px;
+  gap: 12px;
+  width: min(560px, calc(100vw - 48px));
+  padding: 16px;
+  border-radius: 18px;
   color: var(--legacy-text-primary);
   background:
     linear-gradient(145deg, var(--legacy-card-bg), color-mix(in oklab, var(--legacy-card-bg), transparent 38%)),
@@ -3741,16 +3754,16 @@ textarea {
 
 .size-mode-tabs {
   display: grid;
-  gap: 8px;
+  gap: 6px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  padding: 6px;
-  border-radius: 16px;
+  padding: 4px;
+  border-radius: 12px;
   background: color-mix(in oklab, var(--legacy-input-bg), transparent 24%);
 }
 
 .size-mode-tabs button {
-  min-height: 42px;
-  border-radius: 12px;
+  min-height: 36px;
+  border-radius: 9px;
   color: var(--legacy-text-secondary);
   background: transparent;
 }
@@ -3762,11 +3775,11 @@ textarea {
 
 .size-mode-body {
   display: grid;
-  gap: 16px;
+  gap: 10px;
 }
 
 .size-mode-auto {
-  min-height: 240px;
+  min-height: 128px;
   place-items: center;
   align-content: center;
   text-align: center;
@@ -3784,7 +3797,7 @@ textarea {
 
 .size-section {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .size-section > span {
@@ -3795,13 +3808,13 @@ textarea {
 
 .size-chip-grid {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .size-chip-grid button {
-  min-height: 52px;
-  border-radius: 16px;
+  min-height: 42px;
+  border-radius: 12px;
   color: var(--legacy-text-primary);
   background: color-mix(in oklab, var(--legacy-input-bg), transparent 24%);
   box-shadow: inset 0 1px 0 oklch(100% 0 0 / 30%), inset 0 0 0 1px oklch(100% 0 0 / 16%);
@@ -3826,8 +3839,14 @@ textarea {
   margin-bottom: 0;
 }
 
+.size-preview-card {
+  min-height: 52px;
+  padding: 10px 12px;
+  gap: 2px;
+}
+
 .size-preview-card strong {
-  font-size: 30px;
+  font-size: 18px;
 }
 
 .generation-history-grid {
@@ -4112,11 +4131,6 @@ textarea {
 
 .aiimage-param-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.aiimage-param-button {
-  grid-column: 1 / -1;
-  min-height: 64px;
 }
 
 .aiimage-summary-card {

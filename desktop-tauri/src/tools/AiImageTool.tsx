@@ -297,8 +297,8 @@ function sizePreviewFor(
 }
 
 
-function taskElapsedLabel(task: GenerationTask): string {
-  const end = task.finishedAt ?? Date.now();
+function taskElapsedLabel(task: GenerationTask, now = Date.now()): string {
+  const end = task.finishedAt ?? now;
   const seconds = Math.max(1, Math.round((end - task.startedAt) / 1000));
   return seconds >= 60 ? `${Math.floor(seconds / 60)}分${seconds % 60}秒` : `${seconds}秒`;
 }
@@ -310,14 +310,14 @@ function taskParamSummary(task: GenerationTask): string {
 }
 
 
-function taskStatusLabel(task: GenerationTask): string {
+function taskStatusLabel(task: GenerationTask, now = Date.now()): string {
   if (task.status === "running") {
-    return "生成中...";
+    return `生成中 ${taskElapsedLabel(task, now)}`;
   }
   if (task.status === "error") {
     return task.error || "生成失败";
   }
-  return `完成 · ${taskElapsedLabel(task)}`;
+  return `完成 ${taskElapsedLabel(task, now)}`;
 }
 
 function taskTitleFromPrompt(prompt: string): string {
@@ -391,7 +391,8 @@ function AiImageTool() {
   const [selectedTaskId, setSelectedTaskId] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [running, setRunning] = useState(false);
+  const [activeGenerateCount, setActiveGenerateCount] = useState(0);
+  const [elapsedNow, setElapsedNow] = useState(() => Date.now());
   const [error, setError] = useState("");
   const [logs, setLogs] = useState<string[]>([]);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
@@ -413,12 +414,22 @@ function AiImageTool() {
   );
   const selectedTaskImage = selectedTask?.images[0];
   const taskDetailLayout = useMemo(() => imageDetailLayout(selectedTaskImage), [selectedTaskImage]);
-  const canGenerate = !running && Boolean(activeProfile?.id) && Boolean(prompt.trim()) && Boolean(outputDir.trim()) && count > 0;
+  const hasActiveGenerations = activeGenerateCount > 0;
+  const canGenerate = Boolean(activeProfile?.id) && Boolean(prompt.trim()) && Boolean(outputDir.trim()) && count > 0;
 
   useEffect(() => {
     void loadConfig();
     void loadHistory();
   }, []);
+
+  useEffect(() => {
+    if (!generationTasks.some((task) => task.status === "running")) {
+      return;
+    }
+    setElapsedNow(Date.now());
+    const timer = window.setInterval(() => setElapsedNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [generationTasks]);
 
   async function loadConfig() {
     setLoading(true);
@@ -649,11 +660,8 @@ function AiImageTool() {
     if (!activeProfile || !canGenerate) {
       return;
     }
-    const taskId = `task-${Date.now()}`;
-    const startedAt = Date.now();
-    const draftTask: GenerationTask = {
-      id: taskId,
-      title: taskTitleFromPrompt(prompt),
+    const taskInput = {
+      profileId: activeProfile.id,
       prompt: prompt.trim(),
       negativePrompt: negativePrompt.trim(),
       size,
@@ -663,33 +671,48 @@ function AiImageTool() {
       background,
       moderation,
       count,
+      referenceImages: [...referenceImages],
+      outputDir,
+    };
+    const taskId = `task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const startedAt = Date.now();
+    const draftTask: GenerationTask = {
+      id: taskId,
+      title: taskTitleFromPrompt(taskInput.prompt),
+      prompt: taskInput.prompt,
+      negativePrompt: taskInput.negativePrompt,
+      size: taskInput.size,
+      quality: taskInput.quality,
+      outputFormat: taskInput.outputFormat,
+      outputCompression: taskInput.outputCompression,
+      background: taskInput.background,
+      moderation: taskInput.moderation,
+      count: taskInput.count,
       status: "running",
       startedAt,
       images: [],
-      referenceImages,
+      referenceImages: taskInput.referenceImages,
     };
-    setRunning(true);
+    setActiveGenerateCount((value) => value + 1);
     setError("");
-    setImages([]);
-    setGeneratedOutputDir("");
     setGenerationTasks((items) => [draftTask, ...items]);
     try {
       const result = await runTool("aiimage", {
         task_id: `aiimage-generate-${Date.now()}`,
         action: "generate",
         payload: {
-          profile_id: activeProfile.id,
-          prompt: prompt.trim(),
-          negative_prompt: negativePrompt.trim(),
-          size,
-          n: count,
-          quality,
-          output_format: outputFormat,
-          ...(outputFormat === "png" ? {} : { output_compression: outputCompression }),
-          background: background === "true" ? "transparent" : "auto",
-          moderation,
-          reference_image_paths: referenceImages,
-          output_dir: outputDir,
+          profile_id: taskInput.profileId,
+          prompt: taskInput.prompt,
+          negative_prompt: taskInput.negativePrompt,
+          size: taskInput.size,
+          n: taskInput.count,
+          quality: taskInput.quality,
+          output_format: taskInput.outputFormat,
+          ...(taskInput.outputFormat === "png" ? {} : { output_compression: taskInput.outputCompression }),
+          background: taskInput.background === "true" ? "transparent" : "auto",
+          moderation: taskInput.moderation,
+          reference_image_paths: taskInput.referenceImages,
+          output_dir: taskInput.outputDir,
         },
       });
       const next = toImages(result);
@@ -709,7 +732,6 @@ function AiImageTool() {
             : task,
         ),
       );
-      void loadHistory();
       setLogs((items) => [`生成完成：${next.images.length} 张`, ...items].slice(0, 6));
     } catch (caught) {
       const message = errorText(caught);
@@ -728,7 +750,7 @@ function AiImageTool() {
       );
       setLogs((items) => [`生成失败：${message}`, ...items].slice(0, 6));
     } finally {
-      setRunning(false);
+      setActiveGenerateCount((value) => Math.max(0, value - 1));
     }
   }
 
@@ -800,7 +822,7 @@ function AiImageTool() {
           <section className="file-mode-card compact-card aiimage-profile-strip">
             <label className="field-block">
               <span>配置档</span>
-              <select disabled={loading || saving || running} onChange={(event) => setSelectedProfileId(event.currentTarget.value)} value={selectedProfileId}>
+              <select disabled={loading || saving} onChange={(event) => setSelectedProfileId(event.currentTarget.value)} value={selectedProfileId}>
                 {profiles.length ? (
                   profiles.map((profile) => (
                     <option key={profile.id} value={profile.id}>
@@ -813,13 +835,13 @@ function AiImageTool() {
               </select>
             </label>
             <div className="button-cluster aiimage-profile-actions">
-              <button className="ghost-button" disabled={saving || running} onClick={openCreateProfileModal} type="button">
+              <button className="ghost-button" disabled={saving || hasActiveGenerations} onClick={openCreateProfileModal} type="button">
                 新建
               </button>
-              <button className="ghost-button" disabled={!activeProfile || saving || running} onClick={openEditProfileModal} type="button">
+              <button className="ghost-button" disabled={!activeProfile || saving || hasActiveGenerations} onClick={openEditProfileModal} type="button">
                 编辑
               </button>
-              <button className="ghost-button" disabled={!activeProfile || saving || running} onClick={deleteProfile} type="button">
+              <button className="ghost-button" disabled={!activeProfile || saving || hasActiveGenerations} onClick={deleteProfile} type="button">
                 删除
               </button>
             </div>
@@ -830,7 +852,6 @@ function AiImageTool() {
               <label className="field-block prompt-field">
                 <span>提示词</span>
                 <textarea
-                  disabled={running}
                   onChange={(event) => setPrompt(event.currentTarget.value)}
                   placeholder="描述你想生成的图片，可输入人物、风格、镜头、光线、材质、背景、构图等信息。"
                   value={prompt}
@@ -840,10 +861,10 @@ function AiImageTool() {
                 <div className="aiimage-reference-head">
                   <span>参考图</span>
                   <div className="button-cluster">
-                    <button className="ghost-button" disabled={running} onClick={chooseReferenceImages} type="button">
+                    <button className="ghost-button" onClick={chooseReferenceImages} type="button">
                       上传图片
                     </button>
-                    <button className="ghost-button" disabled={running || !referenceImages.length} onClick={() => setReferenceImages([])} type="button">
+                    <button className="ghost-button" disabled={!referenceImages.length} onClick={() => setReferenceImages([])} type="button">
                       清空
                     </button>
                   </div>
@@ -853,7 +874,7 @@ function AiImageTool() {
                     {referenceImages.map((path) => (
                       <div className="aiimage-reference-thumb" key={path}>
                         <img alt={filenameFromPath(path)} src={referenceImageSrc(path)} />
-                        <button aria-label={`移除 ${filenameFromPath(path)}`} disabled={running} onClick={() => removeReferenceImage(path)} type="button">
+                        <button aria-label={`移除 ${filenameFromPath(path)}`} onClick={() => removeReferenceImage(path)} type="button">
                           ×
                         </button>
                         <small>{filenameFromPath(path)}</small>
@@ -868,7 +889,6 @@ function AiImageTool() {
               <label className="field-block side-textarea-field">
                 <span>负面词</span>
                 <textarea
-                  disabled={running}
                   onChange={(event) => setNegativePrompt(event.currentTarget.value)}
                   placeholder="可选：不想要的元素"
                   value={negativePrompt}
@@ -876,14 +896,16 @@ function AiImageTool() {
               </label>
 
               <div className="aiimage-param-grid">
-                <button className="aiimage-param-button" disabled={running} onClick={openSizeModal} type="button">
+                <div className="field-block aiimage-inline-field">
                   <span>尺寸</span>
-                  <strong>{sizePreview}</strong>
-                </button>
+                  <button className="aiimage-size-select" onClick={openSizeModal} type="button">
+                    {sizePreview}
+                  </button>
+                </div>
 
                 <label className="field-block aiimage-inline-field">
                   <span>质量</span>
-                  <select disabled={running} onChange={(event) => setQuality(event.currentTarget.value as QualityOption)} value={quality}>
+                  <select onChange={(event) => setQuality(event.currentTarget.value as QualityOption)} value={quality}>
                     <option value="auto">auto</option>
                     <option value="low">low</option>
                     <option value="medium">medium</option>
@@ -893,7 +915,7 @@ function AiImageTool() {
 
                 <label className="field-block aiimage-inline-field">
                   <span>格式</span>
-                  <select disabled={running} onChange={(event) => setOutputFormat(event.currentTarget.value as OutputFormatOption)} value={outputFormat}>
+                  <select onChange={(event) => setOutputFormat(event.currentTarget.value as OutputFormatOption)} value={outputFormat}>
                     <option value="png">PNG</option>
                     <option value="jpeg">JPEG</option>
                     <option value="webp">WebP</option>
@@ -904,7 +926,6 @@ function AiImageTool() {
                   <label className="field-block aiimage-inline-field aiimage-compression-field">
                     <span>压缩</span>
                     <input
-                      disabled={running}
                       max={100}
                       min={0}
                       onChange={(event) => setOutputCompression(Math.max(0, Math.min(100, Number(event.currentTarget.value || 0))))}
@@ -916,7 +937,7 @@ function AiImageTool() {
 
                 <label className="field-block aiimage-inline-field">
                   <span>透明背景</span>
-                  <select disabled={running} onChange={(event) => setBackground(event.currentTarget.value as BackgroundOption)} value={background}>
+                  <select onChange={(event) => setBackground(event.currentTarget.value as BackgroundOption)} value={background}>
                     <option value="false">false</option>
                     <option value="true">true</option>
                   </select>
@@ -924,7 +945,7 @@ function AiImageTool() {
 
                 <label className="field-block aiimage-inline-field">
                   <span>审核</span>
-                  <select disabled={running} onChange={(event) => setModeration(event.currentTarget.value as ModerationOption)} value={moderation}>
+                  <select onChange={(event) => setModeration(event.currentTarget.value as ModerationOption)} value={moderation}>
                     <option value="auto">auto</option>
                     <option value="low">low</option>
                   </select>
@@ -932,11 +953,11 @@ function AiImageTool() {
 
                 <label className="field-block aiimage-inline-field">
                   <span>数量</span>
-                  <input disabled={running} max={9} min={1} onChange={(event) => setCount(Math.max(1, Number(event.currentTarget.value || 1)))} type="number" value={count} />
+                  <input max={9} min={1} onChange={(event) => setCount(Math.max(1, Number(event.currentTarget.value || 1)))} type="number" value={count} />
                 </label>
               </div>
 
-              <DirectoryPickerRow disabled={running} label="输出目录" onChange={setOutputDir} onPick={chooseOutputDir} value={outputDir} />
+              <DirectoryPickerRow label="输出目录" onChange={setOutputDir} onPick={chooseOutputDir} value={outputDir} />
 
               <div className="result-card aiimage-summary-card">
                 <span>当前结果</span>
@@ -959,7 +980,7 @@ function AiImageTool() {
             }
             primary={
               <button className="primary-button" disabled={!canGenerate} onClick={generate} type="button">
-                {running ? "生成中" : "开始生图"}
+                {hasActiveGenerations ? `继续生图（${activeGenerateCount} 进行中）` : "开始生图"}
               </button>
             }
           />
@@ -968,7 +989,7 @@ function AiImageTool() {
         <section className="table-panel aiimage-stage">
           <div className="web-video-log-header">
             <div className="panel-title">结果画布</div>
-            <button className="ghost-button" disabled={!generationTasks.length || running} onClick={() => void clearHistory()} type="button">
+            <button className="ghost-button" disabled={!generationTasks.length || hasActiveGenerations} onClick={() => void clearHistory()} type="button">
               清空历史
             </button>
           </div>
@@ -977,14 +998,14 @@ function AiImageTool() {
               {generationTasks.map((task) => (
                 <button className="generation-card" key={task.id} onClick={() => setSelectedTaskId(task.id)} type="button">
                   <div className="generation-card-preview">
-                    {task.images[0] ? <img alt={task.title} src={localImageSrc(task.images[0].path)} /> : <div className="generation-card-placeholder">{task.status === "running" ? "生成中..." : task.status === "error" ? "失败" : "无图"}</div>}
+                    {task.images[0] ? <img alt={task.title} src={localImageSrc(task.images[0].path)} /> : <div className="generation-card-placeholder">{task.status === "running" ? taskStatusLabel(task, elapsedNow) : task.status === "error" ? "失败" : "无图"}</div>}
                     <div className="generation-card-badge">
                       <span>{task.size}</span>
                     </div>
                   </div>
                   <div className="generation-card-body">
                     <strong>{task.title}</strong>
-                    <small className="generation-card-status">{taskStatusLabel(task)}</small>
+                    <small className="generation-card-status">{taskStatusLabel(task, elapsedNow)}</small>
                     <div className="aiimage-task-footer">
                       <span>{taskParamSummary(task)}</span>
                       <span>{task.images.length ? `${task.images.length} 张` : ""}</span>
@@ -1193,14 +1214,14 @@ function AiImageTool() {
         <div className="modal-scrim task-detail-modal" onClick={() => setSelectedTaskId("")}>
           <div className="task-detail-card" data-image-orientation={taskDetailLayout.orientation} onClick={(event) => event.stopPropagation()} style={taskDetailLayout.style}>
             <div className="task-detail-media">
-              {selectedTaskImage ? <img alt={selectedTask.title} src={localImageSrc(selectedTaskImage.path)} /> : <div className="generation-card-placeholder">{selectedTask.status === "running" ? "生成中..." : selectedTask.status === "error" ? "失败" : "无图"}</div>}
+              {selectedTaskImage ? <img alt={selectedTask.title} src={localImageSrc(selectedTaskImage.path)} /> : <div className="generation-card-placeholder">{selectedTask.status === "running" ? taskStatusLabel(selectedTask, elapsedNow) : selectedTask.status === "error" ? "失败" : "无图"}</div>}
             </div>
             <div className="task-detail-content">
               <div className="size-modal-head">
                 <div>
                   <h3>{selectedTask.title}</h3>
                   {selectedTask.status !== "success" ? (
-                    <p>{selectedTask.status === "running" ? "生成中..." : selectedTask.error || "生成失败"}</p>
+                    <p>{selectedTask.status === "running" ? taskStatusLabel(selectedTask, elapsedNow) : selectedTask.error || "生成失败"}</p>
                   ) : null}
                 </div>
                 <button className="ghost-button size-close-button" onClick={() => setSelectedTaskId("")} type="button">
@@ -1232,7 +1253,7 @@ function AiImageTool() {
                 <div className="result-card"><span>质量</span><strong>{selectedTask.quality}</strong></div>
                 <div className="result-card"><span>格式</span><strong>{selectedTask.outputFormat}</strong></div>
                 <div className="result-card"><span>压缩</span><strong>{selectedTask.outputFormat === "png" ? "-" : selectedTask.outputCompression}</strong></div>
-                <div className="result-card"><span>耗时</span><strong>{taskElapsedLabel(selectedTask)}</strong></div>
+                <div className="result-card"><span>耗时</span><strong>{taskElapsedLabel(selectedTask, elapsedNow)}</strong></div>
                 <div className="result-card"><span>透明背景</span><strong>{selectedTask.background}</strong></div>
                 <div className="result-card"><span>审核</span><strong>{selectedTask.moderation}</strong></div>
                 <div className="result-card"><span>数量</span><strong>{selectedTask.count}</strong></div>
